@@ -1,0 +1,28 @@
+spring:
+  config:
+    import: optional:file:.env[.properties]  # .env 파일을 properties로 읽어옴
+
+  application:
+    name: be
+
+  # DB 연결 설정
+  datasource:
+    url: jdbc:postgresql://localhost:5432/e108_db
+    username: postgres
+    password: ${DB_PASSWORD}           # .env 파일에서 읽어옴
+    driver-class-name: org.postgresql.Driver
+
+  # JPA 설정
+  jpa:
+    hibernate:
+      ddl-auto: update               # 개발 중에는 update (운영에서는 none으로 변경)
+    show-sql: true                    # 콘솔에 SQL 출력 (개발 편의)
+    properties:
+      hibernate:
+        format_sql: true              # SQL 이쁘게 출력
+        default_batch_fetch_size: 100
+
+# JWT 설정
+jwt:
+  secret: ${JWT_SECRET}               # .env 파일에서 읽어옴
+  expiration: 3600000                 # 1시간 (밀리초)
