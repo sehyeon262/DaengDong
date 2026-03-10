@@ -1,6 +1,12 @@
 pipeline {
     agent any
 
+
+    tools {
+        // 위 1단계에서 설정한 Name과 정확히 일치해야 합니다.
+        jdk 'jdk17'
+    }
+
     stages {
         stage('Checkout') {
             steps {
