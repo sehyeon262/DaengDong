@@ -4,33 +4,30 @@ pipeline {
     stages {
         stage('Checkout') {
             steps {
-                // GitLab에서 코드를 내려받습니다.
                 checkout scm
             }
         }
 
         stage('Spring Boot Build') {
             steps {
-                // Gradle을 사용한다면 아래 명령어를 실행합니다. 
-                // 권한 문제가 생길 수 있으니 chmod를 먼저 해줍니다.
-                sh 'chmod +x ./gradlew'
-                sh './gradlew clean build -x test' 
+                // backend 폴더로 이동해서 gradlew를 실행합니다.
+                dir('backend') {
+                    sh 'chmod +x ./gradlew'
+                    sh './gradlew clean build -x test'
+                }
             }
         }
 
         stage('Docker Build & Run') {
             steps {
-                script {
-                    // 1. 기존에 돌아가고 있는 backend-dev 컨테이너가 있다면 중지하고 삭제합니다.
-                    // (에러 방지를 위해 || true 를 붙여 컨테이너가 없어도 통과하게 합니다)
-                    sh 'docker stop backend-dev || true'
-                    sh 'docker rm backend-dev || true'
-
-                    // 2. Dockerfile을 이용해 이미지를 빌드합니다.
-                    sh 'docker build -t backend-dev .'
-
-                    // 3. 새로운 컨테이너를 8080 포트로 실행합니다.
-                    sh 'docker run -d --name backend-dev -p 8080:8080 backend-dev'
+                // Docker 작업도 backend 폴더 안의 Dockerfile을 기준으로 수행합니다.
+                dir('backend') {
+                    script {
+                        sh 'docker stop backend-dev || true'
+                        sh 'docker rm backend-dev || true'
+                        sh 'docker build -t backend-dev .'
+                        sh 'docker run -d --name backend-dev -p 8080:8080 backend-dev'
+                    }
                 }
             }
         }
