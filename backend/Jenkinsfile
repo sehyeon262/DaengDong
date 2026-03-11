@@ -35,9 +35,7 @@ pipeline {
             steps {
                 dir('backend') {
                     script {
-                        // 브랜치 판별 로직
                         def isMain = (env.BRANCH_NAME == 'main' || env.GIT_BRANCH == 'origin/main' || env.GIT_BRANCH == 'main')
-                        
                         if (isMain) {
                             sh 'docker build -t backend-app-prod .'
                         } else {
@@ -48,7 +46,7 @@ pipeline {
             }
         }
 
-        // [개발 환경 배포]
+        // [개발 환경 배포] Secret File과 글로벌 변수를 사용합니다.
         stage('Deploy to Dev') {
             when {
                 anyOf {
@@ -59,8 +57,12 @@ pipeline {
                 }
             }
             steps {
-                script {
-                    sh 'docker compose -f ./docker-compose-dev.yaml --env-file /home/ubuntu/dev/.env up -d --build app'
+                // 젠킨스에 등록한 Secret File을 임시 경로($TEMP_ENV)에 할당합니다.
+                withCredentials([file(credentialsId: 'be-dev-env', variable: 'TEMP_ENV')]) {
+                    script {
+                        // 실제 서버 경로는 환경 변수(${DEV_ENV_PATH})로 처리하여 코드에서 숨깁니다.
+                        sh "docker compose -f ./docker-compose-dev.yaml --env-file ${TEMP_ENV} up -d --build app"
+                    }
                 }
             }
         }
@@ -76,8 +78,11 @@ pipeline {
                 }
             }
             steps {
-                script {
-                    sh 'docker compose -f ./docker-compose-prod.yaml --env-file /home/ubuntu/prod/.env up -d --build app'
+                withCredentials([file(credentialsId: 'be-prod-env', variable: 'TEMP_ENV')]) {
+                    script {
+                        // 운영 서버 경로 역시 변수화하여 노출을 차단합니다.
+                        sh "docker compose -f ./docker-compose-prod.yaml --env-file ${TEMP_ENV} up -d --build app"
+                    }
                 }
             }
         }
