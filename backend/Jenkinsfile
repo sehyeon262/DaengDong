@@ -1,9 +1,7 @@
 pipeline {
     agent any
 
-
     tools {
-        // 위 1단계에서 설정한 Name과 정확히 일치해야 합니다.
         jdk 'jdk17'
     }
 
@@ -16,7 +14,6 @@ pipeline {
 
         stage('Spring Boot Build') {
             steps {
-                // backend 폴더로 이동해서 gradlew를 실행합니다.
                 dir('backend') {
                     sh 'chmod +x ./gradlew'
                     sh './gradlew clean build -x test'
@@ -24,16 +21,22 @@ pipeline {
             }
         }
 
-        stage('Docker Build & Run') {
+        stage('Docker Image Build') {
             steps {
-                // Docker 작업도 backend 폴더 안의 Dockerfile을 기준으로 수행합니다.
                 dir('backend') {
-                    script {
-                        sh 'docker stop backend-dev || true'
-                        sh 'docker rm backend-dev || true'
-                        sh 'docker build -t backend-dev .'
-                        sh 'docker run -d --name backend-dev -p 8080:8080 backend-dev'
-                    }
+                    // 이미지만 빌드합니다. 태그명은 docker-compose와 맞춥니다.
+                    sh 'docker build -t backend-app .'
+                }
+            }
+        }
+
+        stage('Deploy with Docker Compose') {
+            steps {
+                script {
+                    // backend 폴더에서 한 단계 위(루트)로 이동하여 실행
+                    // --build 옵션은 이미지가 갱신되었을 때만 컨테이너를 재생성합니다.
+                    // 'app'을 명시하여 DB 컨테이너는 건드리지 않고 백엔드만 교체합니다.
+                    sh 'docker compose -f ./docker-compose.yml up -d --build app'
                 }
             }
         }
