@@ -24,21 +24,49 @@ pipeline {
         stage('Docker Image Build') {
             steps {
                 dir('backend') {
-                    // 이미지만 빌드합니다. 태그명은 docker-compose와 맞춥니다.
-                    sh 'docker build -t backend-app .'
+                    script {
+                        // 브랜치에 따라 이미지 태그를 다르게 설정하여 관리합니다.
+                        if (env.BRANCH_NAME == 'main') {
+                            sh 'docker build -t backend-app-prod .'
+                        } else {
+                            sh 'docker build -t backend-app-dev .'
+                        }
+                    }
                 }
             }
         }
 
-        stage('Deploy with Docker Compose') {
+        // [개발 환경] develop 브랜치일 때만 실행됩니다.
+        stage('Deploy to Dev') {
+            when {
+                branch 'develop' 
+            }
             steps {
                 script {
-                    // backend 폴더에서 한 단계 위(루트)로 이동하여 실행
-                    // --build 옵션은 이미지가 갱신되었을 때만 컨테이너를 재생성합니다.
-                    // 'app'을 명시하여 DB 컨테이너는 건드리지 않고 백엔드만 교체합니다.
-                    sh 'docker compose -f ./docker-compose.yml up -d --build app'
+                    // 개발용 compose 파일과 개발용 .env 경로를 사용합니다.
+                    sh 'docker compose -f ./docker-compose-dev.yaml --env-file /home/ubuntu/dev/.env up -d --build app'
                 }
             }
+        }
+
+        // [운영 환경] main 브랜치일 때만 실행됩니다.
+        stage('Deploy to Prod') {
+            when {
+                branch 'main'
+            }
+            steps {
+                script {
+                    // 운영용 compose 파일과 운영용 .env 경로를 사용합니다.
+                    sh 'docker compose -f ./docker-compose-prod.yaml --env-file /home/ubuntu/prod/.env up -d --build app'
+                }
+            }
+        }
+    }
+    
+    // 빌드 후 찌꺼기 이미지 정리 (디스크 용량 관리)
+    post {
+        always {
+            sh 'docker image prune -f'
         }
     }
 }

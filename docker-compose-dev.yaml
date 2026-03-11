@@ -1,0 +1,39 @@
+version: '3.8'
+
+services:
+  # 개발용 데이터베이스 (PostgreSQL)
+  db:
+    image: postgres:15
+    container_name: e108-postgres-dev
+    restart: always
+    environment:
+      # .env 파일에서 변수를 읽어와 초기화합니다.
+      POSTGRES_DB: e108_db_dev
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+    ports:
+      - "5433:5432"  # 호스트 5433 -> 컨테이너 5432 (운영 5432와 격리)
+    volumes:
+      # 개발용 데이터를 물리적으로 분리된 경로에 저장합니다.
+      - ~/postgres/dev/data:/var/lib/postgresql/data
+    networks:
+      - e108-network-dev
+
+  # 개발용 백엔드 애플리케이션 (Spring Boot)
+  app:
+    image: backend-app-dev
+    container_name: be-app-dev
+    restart: always
+    # EC2 호스트에 직접 생성한 .env 파일을 참조합니다.
+    env_file:
+      - .env
+    ports:
+      - "8081:8080"  # 호스트 8081 -> 컨테이너 8080 (운영 8080과 격리)
+    depends_on:
+      - db
+    networks:
+      - e108-network-dev
+
+networks:
+  e108-network-dev:
+    driver: bridge

@@ -1,0 +1,38 @@
+version: '3.8'
+
+services:
+  # 운영용 데이터베이스 (PostgreSQL)
+  db:
+    image: postgres:15
+    container_name: e108-postgres-prod
+    restart: always
+    environment:
+      # 운영 서버의 .env 파일에서 값을 읽어옵니다.
+      POSTGRES_DB: e108_db_prod
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+    ports:
+      - "5432:5432"  # 운영은 표준 포트(5432)를 그대로 사용합니다.
+    volumes:
+      # 운영 데이터를 개발 데이터와 완전히 다른 경로에 보관합니다.
+      - ~/postgres/prod/data:/var/lib/postgresql/data
+    networks:
+      - e108-network-prod
+
+  # 운영용 백엔드 애플리케이션 (Spring Boot)
+  app:
+    image: backend-app-prod
+    container_name: be-app-prod
+    restart: always
+    env_file:
+      - .env  # 운영 서버의 /home/ubuntu/prod/.env 를 참조하게 됩니다.
+    ports:
+      - "80:8080"  # 사용자가 포트 번호 없이 접속할 수 있도록 HTTP 표준 포트(80)를 엽니다.
+    depends_on:
+      - db
+    networks:
+      - e108-network-prod
+
+networks:
+  e108-network-prod:
+    driver: bridge
