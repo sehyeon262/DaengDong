@@ -31,6 +31,11 @@ services:
       - "8081:8080"  # 호스트 8081 -> 컨테이너 8080 (운영 8080과 격리)
     depends_on:
       - db
+    environment:
+      - SPRING_PROFILES_ACTIVE=${SPRING_PROFILES_ACTIVE}
+      - JWT_SECRET=${JWT_SECRET}
+      - DB_URL=${DB_URL}
+      - DB_PASSWORD=${DB_PASSWORD}
     networks:
       - e108-network-dev
 
