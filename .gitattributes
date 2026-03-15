@@ -2,7 +2,7 @@
 * text=auto
 
 # .env는 항상 LF로 강제
-.env text eol=lf
+**/.env text eol=lf
 *.yaml text eol=lf
 *.yml text eol=lf
 *.sh text eol=lf
