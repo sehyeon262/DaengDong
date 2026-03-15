@@ -3,44 +3,44 @@ pipeline {
     tools { jdk 'jdk17' }
 
     stages {
-        stage('Checkout') { steps { checkout scm } }
-        
+        // [수정] 설정창 스크립트와 충돌을 피하기 위해 Checkout 단계 삭제
+
         stage('Spring Boot Build') {
             steps {
                 dir('backend') {
-                    sh 'chmod +x ./gradlew'
-                    sh './gradlew clean build -x test'
+                    sh 'chmod +x ./gradlew' // [cite: 2]
+                    sh './gradlew clean build -x test' // [cite: 2]
                 }
             }
         }
 
         stage('Docker Image Build') {
             steps {
-                dir('backend') {
+                dir('backend') { // [cite: 3]
                     script {
                         def isMain = (env.BRANCH_NAME == 'main' || env.GIT_BRANCH == 'origin/main')
                         sh "docker build -t backend-app-${isMain ? 'prod' : 'dev'} ."
-                    }
+                    } // [cite: 4]
                 }
             }
         }
 
-        // 건빈님의 기존 배포 로직 유지 + Health Check 추가
         stage('Deploy to Dev') {
-            when { branch 'develop' } // 브랜치 체크 로직 유지
+            when { branch 'develop' } 
             steps {
-                withCredentials([file(credentialsId: 'be-dev-env', variable: 'TEMP_ENV')]) {
+                withCredentials([file(credentialsId: 'be-dev-env', variable: 'TEMP_ENV')]) { // [cite: 5]
+                    // backend 디렉토리 내에서 실행되도록 경로 확인 필요
                     sh "docker compose -f ./docker-compose-dev.yaml --env-file ${TEMP_ENV} up -d --build app"
-                    script { env.SERVER_STATUS = checkHealth("8080") } // 헬스체크 함수 호출
+                    script { env.SERVER_STATUS = checkHealth("8080") } 
                 }
-            }
+            } // [cite: 6]
         }
 
         stage('Deploy to Prod') {
             when { branch 'main' }
             steps {
                 withCredentials([file(credentialsId: 'be-prod-env', variable: 'TEMP_ENV')]) {
-                    sh "docker compose -f ./docker-compose-prod.yaml --env-file ${TEMP_ENV} up -d --build app"
+                    sh "docker compose -f ./docker-compose-prod.yaml --env-file ${TEMP_ENV} up -d --build app" // [cite: 7]
                     script { env.SERVER_STATUS = checkHealth("8080") }
                 }
             }
@@ -52,12 +52,12 @@ pipeline {
 def checkHealth(port) {
     try {
         timeout(time: 3, unit: 'MINUTES') {
-            waitUntil {
+            waitUntil { // [cite: 8]
                 try {
                     def response = sh(script: "curl -s http://localhost:${port}/actuator/health", returnStdout: true).trim()
                     return response.contains('UP')
                 } catch (e) { return false }
-            }
+            } // [cite: 9]
         }
         return "SUCCESS"
     } catch (e) { return "FAILURE" }
