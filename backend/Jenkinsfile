@@ -3,14 +3,12 @@ pipeline {
     tools { jdk 'jdk17' }
 
     stages {
-        // 빌드 단계: 젠킨스에 등록된 JDK 17 경로를 강제로 주입해
+        // 빌드 단계: 젠킨스 설정의 jdk17 경로를 직접 주입함
         stage('Spring Boot Build') {
-            agent any 
             steps {
                 dir('backend') {
                     sh 'chmod +x ./gradlew'
                     script {
-                        // 젠킨스 설정의 jdk17 경로를 가져와서 그래들에 전달해
                         def jdkPath = tool name: 'jdk17', type: 'jdk'
                         sh "./gradlew clean build -x test -Dorg.gradle.java.home=${jdkPath}"
                     }
@@ -18,9 +16,8 @@ pipeline {
             }
         }
 
-        // 이미지 빌드 단계
+        // 도커 이미지 빌드
         stage('Docker Image Build') {
-            agent any
             steps {
                 dir('backend') {
                     script {
@@ -31,10 +28,9 @@ pipeline {
             }
         }
 
-        // 개발 환경 배포
+        // develop 브랜치 배포
         stage('Deploy to Dev') {
             when { branch 'develop' } 
-            agent any
             steps {
                 withCredentials([file(credentialsId: 'be-dev-env', variable: 'TEMP_ENV')]) {
                     sh "docker compose -f ./docker-compose-dev.yaml --env-file ${TEMP_ENV} up -d --build app"
@@ -43,10 +39,9 @@ pipeline {
             }
         }
 
-        // 운영 환경 배포
+        // main 브랜치 배포
         stage('Deploy to Prod') {
             when { branch 'main' }
-            agent any
             steps {
                 withCredentials([file(credentialsId: 'be-prod-env', variable: 'TEMP_ENV')]) {
                     sh "docker compose -f ./docker-compose-prod.yaml --env-file ${TEMP_ENV} up -d --build app"
@@ -57,7 +52,7 @@ pipeline {
     }
 }
 
-// 서버 구동 확인용 헬스체크 함수
+// 서버 상태 체크 함수
 def checkHealth(port) {
     try {
         timeout(time: 3, unit: 'MINUTES') {
