@@ -4,7 +4,6 @@ pipeline {
 
     stages {
         stage('Spring Boot Build') {
-            agent any 
             steps {
                 dir('backend') {
                     sh 'chmod +x ./gradlew'
@@ -14,7 +13,6 @@ pipeline {
         }
 
         stage('Docker Image Build') {
-            agent any
             steps {
                 dir('backend') {
                     script {
@@ -27,7 +25,6 @@ pipeline {
 
         stage('Deploy to Dev') {
             when { branch 'develop' } 
-            agent any
             steps {
                 withCredentials([file(credentialsId: 'be-dev-env', variable: 'TEMP_ENV')]) {
                     sh "docker compose -f ./docker-compose-dev.yaml --env-file ${TEMP_ENV} up -d --build app"
@@ -38,7 +35,6 @@ pipeline {
 
         stage('Deploy to Prod') {
             when { branch 'main' }
-            agent any
             steps {
                 withCredentials([file(credentialsId: 'be-prod-env', variable: 'TEMP_ENV')]) {
                     sh "docker compose -f ./docker-compose-prod.yaml --env-file ${TEMP_ENV} up -d --build app"
