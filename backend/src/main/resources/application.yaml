@@ -22,3 +22,10 @@ spring:
 jwt:
   secret: ${JWT_SECRET}
   expiration: 3600000
+
+# 외부 API 설정
+api:
+  weather:
+    service-key: ${WEATHER_SERVICE_KEY:Y5jzZvqGJI9kwMTrCq2d1vEfSr5WPvA8quh4D31Re%2BXjPDU6pi2OiV49q0n6EM1%2F3iTIW%2FJcTYy93lmbjm5oog%3D%3D}
+  air-quality:
+    service-key: ${AIR_QUALITY_SERVICE_KEY:Y5jzZvqGJI9kwMTrCq2d1vEfSr5WPvA8quh4D31Re%2BXjPDU6pi2OiV49q0n6EM1%2F3iTIW%2FJcTYy93lmbjm5oog%3D%3D}

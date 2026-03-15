@@ -38,6 +38,7 @@ public class SecurityConfig {
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/auth/**").permitAll()
+                        .requestMatchers("/home/**").permitAll() // TODO: auth 완성 후 제거
                         .anyRequest().authenticated()
                 )
                 // JWT 필터를 UsernamePasswordAuthenticationFilter 앞에 추가
