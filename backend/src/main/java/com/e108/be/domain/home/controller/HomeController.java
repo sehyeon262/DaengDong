@@ -3,8 +3,11 @@ package com.e108.be.domain.home.controller;
 import com.e108.be.domain.home.dto.response.HomeResponse;
 import com.e108.be.domain.home.service.HomeService;
 import com.e108.be.global.common.template.ResTemplate;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
+import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -21,14 +24,15 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 @RequestMapping("/home")
 @RequiredArgsConstructor
+@Validated
 public class HomeController {
 
     private final HomeService homeService;
 
     @GetMapping
     public ResTemplate<HomeResponse> getHome(
-            @RequestParam double latitude,
-            @RequestParam double longitude) {
+            @RequestParam @Min(-90) @Max(90) double latitude,
+            @RequestParam @Min(-180) @Max(180) double longitude) {
 
         HomeResponse response = homeService.getHomeData(latitude, longitude);
         return ResTemplate.success(HttpStatus.OK, "홈 화면 조회 성공", response);

@@ -7,7 +7,7 @@ import lombok.RequiredArgsConstructor;
  * 하늘 상태 코드
  *
  * 기상청 SKY 코드: 1(맑음), 3(구름많음), 4(흐림)
- * 기상청 PTY 코드: 0(없음), 1(비), 2(비/눈), 3(눈), 5(빗방울), 6(빗방울눈날림), 7(눈날림)
+ * 기상청 PTY 코드: 0(없음), 1(비), 2(비/눈), 3(눈), 4(소나기), 5(빗방울), 6(빗방울눈날림), 7(눈날림)
  */
 @Getter
 @RequiredArgsConstructor
