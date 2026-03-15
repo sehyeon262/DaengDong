@@ -4,8 +4,8 @@ server:
 
 spring:
   config:
-    import: optional:file:.env
-
+    import:
+      - file:../infra/.env[.properties]
   profiles:
     active: ${SPRING_PROFILES_ACTIVE:dev}  # 기본값 dev, 서버에서 prod로 변경
 

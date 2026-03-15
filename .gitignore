@@ -14,7 +14,8 @@ Thumbs.db
 *.log
 
 # 3. 데이터 폴더 (Docker Volume 등)
-pg_data/
+infra/postgres_data/
+postgres_data/
 redis_data/
 jenkins_home/
 chroma_data/
