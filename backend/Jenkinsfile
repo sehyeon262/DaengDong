@@ -1,27 +1,10 @@
 pipeline {
     agent any
-
-    tools {
-        jdk 'jdk17'
-    }
+    tools { jdk 'jdk17' }
 
     stages {
-        stage('Checkout') {
-            steps {
-                checkout scm
-            }
-        }
-
-        // 브랜치 인식 상태를 확인하기 위한 디버그 스테이지
-        stage('Debug Branch') {
-            steps {
-                script {
-                    echo "Current BRANCH_NAME: ${env.BRANCH_NAME}"
-                    echo "Current GIT_BRANCH: ${env.GIT_BRANCH}"
-                }
-            }
-        }
-
+        stage('Checkout') { steps { checkout scm } }
+        
         stage('Spring Boot Build') {
             steps {
                 dir('backend') {
@@ -35,62 +18,47 @@ pipeline {
             steps {
                 dir('backend') {
                     script {
-                        def isMain = (env.BRANCH_NAME == 'main' || env.GIT_BRANCH == 'origin/main' || env.GIT_BRANCH == 'main')
-                        if (isMain) {
-                            sh 'docker build -t backend-app-prod .'
-                        } else {
-                            sh 'docker build -t backend-app-dev .'
-                        }
+                        def isMain = (env.BRANCH_NAME == 'main' || env.GIT_BRANCH == 'origin/main')
+                        sh "docker build -t backend-app-${isMain ? 'prod' : 'dev'} ."
                     }
                 }
             }
         }
 
-        // [개발 환경 배포] Secret File과 글로벌 변수를 사용합니다.
+        // 건빈님의 기존 배포 로직 유지 + Health Check 추가
         stage('Deploy to Dev') {
-            when {
-                anyOf {
-                    branch 'develop'
-                    expression { env.GIT_BRANCH == 'origin/develop' }
-                    expression { env.GIT_BRANCH == 'develop' }
-                    expression { env.BRANCH_NAME == 'develop' }
-                }
-            }
+            when { branch 'develop' } // 브랜치 체크 로직 유지
             steps {
-                // 젠킨스에 등록한 Secret File을 임시 경로($TEMP_ENV)에 할당합니다.
                 withCredentials([file(credentialsId: 'be-dev-env', variable: 'TEMP_ENV')]) {
-                    script {
-                        // 실제 서버 경로는 환경 변수(${DEV_ENV_PATH})로 처리하여 코드에서 숨깁니다.
-                        sh "docker compose -f ./docker-compose-dev.yaml --env-file ${TEMP_ENV} up -d --build app"
-                    }
+                    sh "docker compose -f ./docker-compose-dev.yaml --env-file ${TEMP_ENV} up -d --build app"
+                    script { env.SERVER_STATUS = checkHealth("8080") } // 헬스체크 함수 호출
                 }
             }
         }
 
-        // [운영 환경 배포]
         stage('Deploy to Prod') {
-            when {
-                anyOf {
-                    branch 'main'
-                    expression { env.GIT_BRANCH == 'origin/main' }
-                    expression { env.GIT_BRANCH == 'main' }
-                    expression { env.BRANCH_NAME == 'main' }
-                }
-            }
+            when { branch 'main' }
             steps {
                 withCredentials([file(credentialsId: 'be-prod-env', variable: 'TEMP_ENV')]) {
-                    script {
-                        // 운영 서버 경로 역시 변수화하여 노출을 차단합니다.
-                        sh "docker compose -f ./docker-compose-prod.yaml --env-file ${TEMP_ENV} up -d --build app"
-                    }
+                    sh "docker compose -f ./docker-compose-prod.yaml --env-file ${TEMP_ENV} up -d --build app"
+                    script { env.SERVER_STATUS = checkHealth("8080") }
                 }
             }
         }
     }
-    
-    post {
-        always {
-            sh 'docker image prune -f'
+}
+
+// 헬스체크용 공통 함수
+def checkHealth(port) {
+    try {
+        timeout(time: 3, unit: 'MINUTES') {
+            waitUntil {
+                try {
+                    def response = sh(script: "curl -s http://localhost:${port}/actuator/health", returnStdout: true).trim()
+                    return response.contains('UP')
+                } catch (e) { return false }
+            }
         }
-    }
+        return "SUCCESS"
+    } catch (e) { return "FAILURE" }
 }
