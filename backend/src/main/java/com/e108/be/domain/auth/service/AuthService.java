@@ -46,11 +46,13 @@ public class AuthService {
 
         // 3) JWT 토큰 생성
         String token = jwtTokenProvider.createToken(member.getId(), member.getEmail());
+        String refreshToken = jwtTokenProvider.createRefreshToken(member.getId(), member.getEmail());
 
         // 4) 응답 DTO 만들어서 반환
         return LoginResponse.builder()
                 .accessToken(token)
-                .nickname(member.getNickname())
+                .refreshToken(refreshToken)
+                .userId(member.getId())
                 .build();
     }
 }
