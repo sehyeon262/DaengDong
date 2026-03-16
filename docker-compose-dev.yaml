@@ -3,7 +3,7 @@ version: '3.8'
 services:
   # 개발용 데이터베이스 (PostgreSQL)
   db:
-    image: postgres:15
+    image: postgis/postgis:15-3.5
     container_name: e108-postgres-dev
     restart: always
     environment:

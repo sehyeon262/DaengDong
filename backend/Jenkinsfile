@@ -34,7 +34,11 @@ pipeline {
 
         stage('Docker Image Build') {
             when {
-                changeset "backend/**"
+                anyOf {
+                    changeset "backend/**"
+                    changeset "docker-compose-dev.yaml"
+                    changeset "docker-compose-prod.yaml"
+                }
             }
             steps {
                 dir('backend') {
@@ -49,7 +53,10 @@ pipeline {
         stage('Deploy to Dev') {
             when { 
                 allOf {
-                    changeset "backend/**"
+                    anyOf {
+                        changeset "backend/**"
+                        changeset "docker-compose-dev.yaml"
+                    }
                     anyOf {
                         branch 'develop'
                         expression { return sh(script: 'git rev-parse --abbrev-ref HEAD', returnStdout: true).trim() == 'develop' }
@@ -68,7 +75,10 @@ pipeline {
         stage('Deploy to Prod') {
             when { 
                 allOf {
-                    changeset "backend/**"
+                    anyOf {
+                        changeset "backend/**"
+                        changeset "docker-compose-prod.yaml"
+                    }
                     anyOf {
                         branch 'main'
                         expression { return sh(script: 'git rev-parse --abbrev-ref HEAD', returnStdout: true).trim() == 'main' }
