@@ -1,7 +1,7 @@
 package com.frontend.ui.screen.home.components
 
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import coil.compose.AsyncImage
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -46,9 +46,11 @@ fun HomeHeader(
     ) {
         // 왼쪽: 프로필 이미지 + (위치 + 이름)
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Image(
-                painter = painterResource(id = R.drawable.default_profile),
+            AsyncImage(
+                model = profileImageUrl ?: R.drawable.default_profile,
                 contentDescription = "프로필",
+                placeholder = painterResource(R.drawable.default_profile),
+                error = painterResource(R.drawable.default_profile),
                 modifier = Modifier
                     .size(48.dp)
                     .clip(CircleShape)
