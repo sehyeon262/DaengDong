@@ -1,3 +1,17 @@
+checkHealth = { containerName, port ->
+    try {
+        timeout(time: 3, unit: 'MINUTES') {
+            waitUntil {
+                try {
+                    def response = sh(script: "curl -s http://${containerName}:${port}/api/v1/actuator/health", returnStdout: true).trim()
+                    return response.contains('UP')
+                } catch (e) { return false }
+            }
+        }
+        return "SUCCESS"
+    } catch (e) { return "FAILURE" }
+}
+
 pipeline {
     agent none 
     tools { jdk 'jdk17' }
@@ -30,15 +44,12 @@ pipeline {
             when { 
                 anyOf {
                     branch 'develop'
-                    expression { 
-                        return sh(script: 'git rev-parse --abbrev-ref HEAD', returnStdout: true).trim() == 'develop' 
-                    }
+                    expression { return sh(script: 'git rev-parse --abbrev-ref HEAD', returnStdout: true).trim() == 'develop' }
                 }
             } 
             steps {
                 withCredentials([file(credentialsId: 'be-dev-env', variable: 'TEMP_ENV')]) {
-
-		    sh "docker compose -f ./docker-compose-dev.yaml down || true"
+                    sh "docker compose -f ./docker-compose-dev.yaml down || true"
                     sh "docker compose -f ./docker-compose-dev.yaml --env-file ${TEMP_ENV} up -d --build app"
                     script { env.SERVER_STATUS = checkHealth("be-app-dev", "8081") } 
                 }
@@ -49,32 +60,16 @@ pipeline {
             when { 
                 anyOf {
                     branch 'main'
-                    expression { 
-                        return sh(script: 'git rev-parse --abbrev-ref HEAD', returnStdout: true).trim() == 'main' 
-                    }
+                    expression { return sh(script: 'git rev-parse --abbrev-ref HEAD', returnStdout: true).trim() == 'main' }
                 }
             }
             steps {
                 withCredentials([file(credentialsId: 'be-prod-env', variable: 'TEMP_ENV')]) {
-		    sh "docker compose -f ./docker-compose-prod.yaml down || true"
+                    sh "docker compose -f ./docker-compose-prod.yaml down || true"
                     sh "docker compose -f ./docker-compose-prod.yaml --env-file ${TEMP_ENV} up -d --build app"
                     script { env.SERVER_STATUS = checkHealth("be-app-prod", "8080") }
                 }
             }
         }
     }
-}
-
-def checkHealth(port) {
-    try {
-        timeout(time: 3, unit: 'MINUTES') {
-            waitUntil {
-                try {
-                    def response = sh(script: "curl -s http://localhost:${port}/api/v1/actuator/health", returnStdout: true).trim()
-                    return response.contains('UP')
-                } catch (e) { return false }
-            }
-        }
-        return "SUCCESS"
-    } catch (e) { return "FAILURE" }
 }
