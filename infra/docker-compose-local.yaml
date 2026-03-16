@@ -2,7 +2,7 @@ version: '3.8'
 
 services:
   db-local:
-    image: postgres:15
+    image: postgis/postgis:15-3.5
     container_name: e108-postgres-local
     restart: always
     env_file:

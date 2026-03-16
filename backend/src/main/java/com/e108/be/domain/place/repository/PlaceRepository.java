@@ -1,0 +1,94 @@
+package com.e108.be.domain.place.repository;
+
+import com.e108.be.domain.place.entity.Place;
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
+
+import java.util.List;
+
+public interface PlaceRepository extends JpaRepository<Place, Long> {
+
+    /**
+     * 반경 내 주변 장소 조회 (거리 오름차순)
+     *
+     * geometry → geography 캐스팅으로 미터 단위 거리 계산
+     * ST_DWithin: radiusMeters 반경 이내 필터
+     * ST_Distance: 정확한 거리 반환 (meters)
+     *
+     * @param lat          기준 위도
+     * @param lon          기준 경도
+     * @param radiusMeters 검색 반경 (미터)
+     * @param limit        최대 반환 개수
+     */
+    @Query(value = """
+        SELECT p.id,
+               p.name,
+               p.address,
+               p.contact,
+               p.image_url                                                        AS imageUrl,
+               ST_Y(p.location)                                                   AS latitude,
+               ST_X(p.location)                                                   AS longitude,
+               c.name                                                             AS categoryName,
+               c.route_weight                                                     AS routeWeight,
+               ST_Distance(
+                   p.location::geography,
+                   ST_SetSRID(ST_MakePoint(:lon, :lat), 4326)::geography
+               )                                                                  AS distanceMeters
+        FROM places p
+        LEFT JOIN place_category c ON p.category_id = c.id
+        WHERE p.is_active = true
+          AND ST_DWithin(
+                  p.location::geography,
+                  ST_SetSRID(ST_MakePoint(:lon, :lat), 4326)::geography,
+                  :radiusMeters
+              )
+        ORDER BY distanceMeters
+        LIMIT :limit
+        """, nativeQuery = true)
+    List<NearbyPlaceProjection> findNearby(
+            @Param("lat") double lat,
+            @Param("lon") double lon,
+            @Param("radiusMeters") double radiusMeters,
+            @Param("limit") int limit
+    );
+
+    /**
+     * 카테고리별 반경 내 주변 장소 조회
+     */
+    @Query(value = """
+        SELECT p.id,
+               p.name,
+               p.address,
+               p.contact,
+               p.image_url                                                        AS imageUrl,
+               ST_Y(p.location)                                                   AS latitude,
+               ST_X(p.location)                                                   AS longitude,
+               c.name                                                             AS categoryName,
+               c.route_weight                                                     AS routeWeight,
+               ST_Distance(
+                   p.location::geography,
+                   ST_SetSRID(ST_MakePoint(:lon, :lat), 4326)::geography
+               )                                                                  AS distanceMeters
+        FROM places p
+        LEFT JOIN place_category c ON p.category_id = c.id
+        WHERE p.is_active = true
+          AND c.name = :categoryName
+          AND ST_DWithin(
+                  p.location::geography,
+                  ST_SetSRID(ST_MakePoint(:lon, :lat), 4326)::geography,
+                  :radiusMeters
+              )
+        ORDER BY distanceMeters
+        LIMIT :limit
+        """, nativeQuery = true)
+    List<NearbyPlaceProjection> findNearbyByCategory(
+            @Param("lat") double lat,
+            @Param("lon") double lon,
+            @Param("radiusMeters") double radiusMeters,
+            @Param("categoryName") String categoryName,
+            @Param("limit") int limit
+    );
+
+    boolean existsByProviderAndSourceId(String provider, String sourceId);
+}

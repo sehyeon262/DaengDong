@@ -9,6 +9,12 @@ spring:
   application:
     name: be
 
+  # schema.sql 실행 활성화 (외부 DB는 기본 never → always로 명시)
+  # 실행 순서: schema.sql(PostGIS 확장) → Hibernate DDL(테이블 생성) → ApplicationReadyEvent(GiST 인덱스)
+  sql:
+    init:
+      mode: always
+
   # 공통 JPA 설정
   jpa:
     properties:
