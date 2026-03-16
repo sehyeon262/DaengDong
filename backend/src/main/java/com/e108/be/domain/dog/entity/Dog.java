@@ -9,6 +9,8 @@ import lombok.NoArgsConstructor;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.List;
 
 @Entity
 @Table(name = "dogs")
@@ -18,6 +20,7 @@ public class Dog extends BaseEntity {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @Column(name = "dog_id")
     private Long id;
 
     @Column(name = "user_id", nullable = false)
@@ -44,6 +47,12 @@ public class Dog extends BaseEntity {
     @Column(name = "profile_image_url", length = 500)
     private String profileImageUrl;
 
+    // 별도 dog_traits 테이블로 관리 (ERD에 없지만 API 명세 요구사항)
+    @ElementCollection
+    @CollectionTable(name = "dog_traits", joinColumns = @JoinColumn(name = "dog_id"))
+    @Column(name = "trait")
+    private List<String> traits = new ArrayList<>();
+
     @Builder
     public Dog(Long userId, String name, String breed, LocalDate birthDate,
                BigDecimal weight, String gender, Boolean neuteredYn, String profileImageUrl) {
@@ -55,5 +64,24 @@ public class Dog extends BaseEntity {
         this.gender = gender;
         this.neuteredYn = neuteredYn;
         this.profileImageUrl = profileImageUrl;
+    }
+
+    // 프로필 부분 수정 (null이면 기존 값 유지)
+    public void updateProfile(String name, String breed, LocalDate birthDate, String gender) {
+        if (name != null) this.name = name;
+        if (breed != null) this.breed = breed;
+        if (birthDate != null) this.birthDate = birthDate;
+        if (gender != null) this.gender = gender;
+    }
+
+    // 체중 수정
+    public void updateWeight(BigDecimal weight) {
+        this.weight = weight;
+    }
+
+    // 성향 태그 전체 교체
+    public void updateTraits(List<String> newTraits) {
+        this.traits.clear();
+        this.traits.addAll(newTraits);
     }
 }
