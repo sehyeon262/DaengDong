@@ -76,4 +76,18 @@ public class AuthController {
         ValidateTokenResponse response = authService.validateToken(authorization);
         return ResTemplate.success(HttpStatus.OK, "유효한 토큰입니다.", response);
     }
+
+    /**
+     * 로그아웃 API
+     * POST /auth/logout
+     * Authorization: Bearer {accessToken}
+     * - JWT는 stateless이므로 서버에서 토큰 무효화 불가
+     * - 토큰 유효성만 확인 후 200 반환, 실제 삭제는 클라이언트에서 처리
+     */
+    @PostMapping("/logout")
+    public ResTemplate<Void> logout(
+            @RequestHeader("Authorization") String authorization) {
+        authService.logout(authorization);
+        return ResTemplate.success(HttpStatus.OK, "로그아웃이 완료되었습니다.");
+    }
 }
