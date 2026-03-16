@@ -1,4 +1,8 @@
 spring:
+
+  config:
+    import:
+      - optional:file:../infra/.env[.properties]
   # 개발용 DB 설정
   datasource:
     url: ${DB_URL:jdbc:postgresql://localhost:5432/e108_db}
