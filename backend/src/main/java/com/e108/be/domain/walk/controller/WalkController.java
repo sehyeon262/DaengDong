@@ -1,6 +1,6 @@
 package com.e108.be.domain.walk.controller;
 
-import com.e108.be.domain.walk.dto.request.LocationBatchRequest;
+import com.e108.be.domain.walk.dto.request.WalkLocationRequest;
 import com.e108.be.domain.walk.dto.response.CaloriesResponse;
 import com.e108.be.domain.walk.dto.response.DistanceResponse;
 import com.e108.be.domain.walk.service.WalkService;
@@ -32,7 +32,7 @@ public class WalkController {
     @PostMapping("/{walkId}/locations")
     public ResTemplate<?> saveLocations(
             @PathVariable Long walkId,
-            @RequestBody LocationBatchRequest request) {
+            @RequestBody WalkLocationRequest request) {
         int savedCount = walkService.saveLocations(walkId, request);
         return ResTemplate.success(HttpStatus.OK, "위치 저장 성공",
                 java.util.Map.of("savedCount", savedCount));

@@ -2,7 +2,7 @@ package com.e108.be.domain.walk.service;
 
 import com.e108.be.domain.dog.entity.Dog;
 import com.e108.be.domain.dog.repository.DogRepository;
-import com.e108.be.domain.walk.dto.request.LocationBatchRequest;
+import com.e108.be.domain.walk.dto.request.WalkLocationRequest;
 import com.e108.be.domain.walk.dto.response.CaloriesResponse;
 import com.e108.be.domain.walk.dto.response.DistanceResponse;
 import com.e108.be.domain.walk.entity.WalkRecord;
@@ -36,13 +36,13 @@ public class WalkService {
      * Redis 키: "walk:gps:{walkId}"
      * 저장 형식: "위도,경도,타임스탬프"
      */
-    public int saveLocations(Long walkId, LocationBatchRequest request) {
+    public int saveLocations(Long walkId, WalkLocationRequest request) {
         WalkRecord walk = walkRecordRepository.findById(walkId)
                 .orElseThrow(WalkNotFoundException::new);
 
         String redisKey = GPS_KEY_PREFIX + walkId;
 
-        for (LocationBatchRequest.LocationPoint point : request.getLocations()) {
+        for (WalkLocationRequest.LocationPoint point : request.getLocations()) {
             String value = point.getLatitude() + "," + point.getLongitude() + "," + point.getTimestamp();
             redisTemplate.opsForList().rightPush(redisKey, value);
         }
