@@ -31,3 +31,6 @@ thoughts/
 # 6. python venv
 venv/
 __pycache__/
+
+# 7. markdown 파일
+*.md

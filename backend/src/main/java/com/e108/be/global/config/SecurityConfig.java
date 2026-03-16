@@ -38,6 +38,8 @@ public class SecurityConfig {
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/auth/**").permitAll()
+                        .requestMatchers("/walks/**").permitAll() // 테스트용 임시 허용
+                        .requestMatchers("/error").permitAll()   // Spring 오류 포워딩 허용
                         .anyRequest().authenticated()
                 )
                 // JWT 필터를 UsernamePasswordAuthenticationFilter 앞에 추가
