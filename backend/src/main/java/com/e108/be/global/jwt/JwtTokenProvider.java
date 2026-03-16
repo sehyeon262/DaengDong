@@ -44,6 +44,17 @@ public class JwtTokenProvider {
                 .compact();
     }
 
+    public String createRefreshToken(Long memberId, String email) {
+        Date now = new Date();
+        return Jwts.builder()
+                .subject(String.valueOf(memberId))       // 토큰에 회원 ID 저장
+                .claim("email", email)                   // 토큰에 이메일도 저장
+                .issuedAt(now)                           // 발급 시간
+                .expiration(new Date(now.getTime() + expiration * 336)) // 만료 시간(2주 설정)
+                .signWith(secretKey)                     // 서명 (위조 방지)
+                .compact();
+    }
+
     // 토큰에서 회원 ID 꺼내기
     public Long getMemberId(String token) {
         Claims claims = parseClaims(token);
