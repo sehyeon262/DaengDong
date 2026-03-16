@@ -2,9 +2,11 @@ package com.e108.be.domain.walk.service;
 
 import com.e108.be.domain.walk.dto.request.StartWalkRequest;
 import com.e108.be.domain.walk.dto.response.StartWalkResponse;
+import com.e108.be.domain.walk.dto.response.WalkDurationResponse;
 import com.e108.be.domain.walk.entity.WalkRecord;
 import com.e108.be.domain.walk.entity.WalkStatus;
 import com.e108.be.domain.walk.exception.WalkAlreadyInProgressException;
+import com.e108.be.domain.walk.exception.WalkNotFoundException;
 import com.e108.be.domain.walk.repository.WalkRecordRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -33,5 +35,15 @@ public class WalkService {
 
         WalkRecord saved = walkRecordRepository.save(walkRecord);
         return StartWalkResponse.from(saved);
+    }
+
+    /**
+     * W1-03 산책 시간 조회
+     * GET /api/v1/walks/{walkId}/duration
+     */
+    public WalkDurationResponse getWalkDuration(Long walkId) {
+        WalkRecord walkRecord = walkRecordRepository.findById(walkId)
+                .orElseThrow(WalkNotFoundException::new);
+        return WalkDurationResponse.from(walkRecord);
     }
 }

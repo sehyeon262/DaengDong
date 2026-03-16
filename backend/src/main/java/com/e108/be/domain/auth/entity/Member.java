@@ -33,7 +33,7 @@ public class Member extends BaseEntity { // BaseEntity 상속 → createdAt, upd
     @Column(nullable = false)
     private String nickname;
 
-    @Column(nullable = false)
+    @Column(nullable = true)
     private String phone;
 
     @Builder

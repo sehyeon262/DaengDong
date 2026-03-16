@@ -2,6 +2,7 @@ package com.e108.be.domain.walk.controller;
 
 import com.e108.be.domain.walk.dto.request.StartWalkRequest;
 import com.e108.be.domain.walk.dto.response.StartWalkResponse;
+import com.e108.be.domain.walk.dto.response.WalkDurationResponse;
 import com.e108.be.domain.walk.service.WalkService;
 import com.e108.be.global.common.template.ResTemplate;
 import lombok.RequiredArgsConstructor;
@@ -32,5 +33,15 @@ public class WalkController {
     public ResTemplate<StartWalkResponse> startWalk(@RequestBody StartWalkRequest request) {
         StartWalkResponse response = walkService.startWalk(request);
         return ResTemplate.success(HttpStatus.OK, "산책이 시작되었습니다.", response);
+    }
+
+    /**
+     * W1-03 산책 시간 조회
+     * GET /api/v1/walks/{walkId}/duration
+     */
+    @GetMapping("/{walkId}/duration")
+    public ResTemplate<WalkDurationResponse> getWalkDuration(@PathVariable Long walkId) {
+        WalkDurationResponse response = walkService.getWalkDuration(walkId);
+        return ResTemplate.success(HttpStatus.OK, "산책 시간 조회 성공", response);
     }
 }
