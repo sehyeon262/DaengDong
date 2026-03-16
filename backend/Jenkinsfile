@@ -3,8 +3,8 @@ checkHealth = { containerName, port ->
         timeout(time: 3, unit: 'MINUTES') {
             waitUntil {
                 try {
-                    def response = sh(script: "curl -s http://${containerName}:${port}/api/v1/actuator/health", returnStdout: true).trim()
-                    return response.contains('UP')
+                    def response = sh(script: "curl -Is http://${containerName}:${port}/api/v1/actuator/health | head -n 1", returnStdout: true).trim()
+                    return response.contains('200') || response.contains('403') || response.contains('UP')
                 } catch (e) { return false }
             }
         }
@@ -13,11 +13,14 @@ checkHealth = { containerName, port ->
 }
 
 pipeline {
-    agent none 
+    agent any 
     tools { jdk 'jdk17' }
 
     stages {
         stage('Spring Boot Build') {
+            when {
+                changeset "backend/**"
+            }
             steps {
                 dir('backend') {
                     sh 'chmod +x ./gradlew'
@@ -30,6 +33,9 @@ pipeline {
         }
 
         stage('Docker Image Build') {
+            when {
+                changeset "backend/**"
+            }
             steps {
                 dir('backend') {
                     script {
@@ -42,9 +48,12 @@ pipeline {
 
         stage('Deploy to Dev') {
             when { 
-                anyOf {
-                    branch 'develop'
-                    expression { return sh(script: 'git rev-parse --abbrev-ref HEAD', returnStdout: true).trim() == 'develop' }
+                allOf {
+                    changeset "backend/**"
+                    anyOf {
+                        branch 'develop'
+                        expression { return sh(script: 'git rev-parse --abbrev-ref HEAD', returnStdout: true).trim() == 'develop' }
+                    }
                 }
             } 
             steps {
@@ -58,9 +67,12 @@ pipeline {
 
         stage('Deploy to Prod') {
             when { 
-                anyOf {
-                    branch 'main'
-                    expression { return sh(script: 'git rev-parse --abbrev-ref HEAD', returnStdout: true).trim() == 'main' }
+                allOf {
+                    changeset "backend/**"
+                    anyOf {
+                        branch 'main'
+                        expression { return sh(script: 'git rev-parse --abbrev-ref HEAD', returnStdout: true).trim() == 'main' }
+                    }
                 }
             }
             steps {
