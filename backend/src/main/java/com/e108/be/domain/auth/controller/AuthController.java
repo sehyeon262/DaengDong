@@ -14,12 +14,15 @@ import com.e108.be.domain.auth.dto.request.LoginRequest;
 import com.e108.be.domain.auth.dto.request.RegisterRequest;
 import com.e108.be.domain.auth.dto.response.LoginResponse;
 import com.e108.be.domain.auth.dto.response.RegisterResponse;
+import com.e108.be.domain.auth.dto.response.ValidateTokenResponse;
 import com.e108.be.domain.auth.service.AuthService;
 import com.e108.be.global.common.template.ResTemplate;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -60,5 +63,17 @@ public class AuthController {
     public ResTemplate<LoginResponse> login(@RequestBody LoginRequest request) {
         LoginResponse response = authService.login(request);
         return ResTemplate.success(HttpStatus.OK, "로그인 성공", response);
+    }
+
+    /**
+     * 토큰 유효성 검증 API (로그인 상태 유지)
+     * GET /auth/validate-token
+     * Authorization: Bearer {accessToken}
+     */
+    @GetMapping("/validate-token")
+    public ResTemplate<ValidateTokenResponse> validateToken(
+            @RequestHeader("Authorization") String authorization) {
+        ValidateTokenResponse response = authService.validateToken(authorization);
+        return ResTemplate.success(HttpStatus.OK, "유효한 토큰입니다.", response);
     }
 }
