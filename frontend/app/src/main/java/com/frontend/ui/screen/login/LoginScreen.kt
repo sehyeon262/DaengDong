@@ -43,7 +43,7 @@ fun LoginScreen(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(BackgroundBeige)
+            .background(Background)
     ) {
         Column(
             modifier = Modifier
@@ -58,13 +58,13 @@ fun LoginScreen(
                 text = "반가워요!",
                 fontSize = 36.sp,
                 fontWeight = FontWeight.Bold,
-                color = TextDark
+                color = TextMain
             )
             Spacer(modifier = Modifier.height(8.dp))
             Text(
-                text = "대동여지도와 함께 오늘의 산책을 시작해보세요",
+                text = "댕동여지도와 함께 오늘의 산책을 시작해보세요",
                 fontSize = 14.sp,
-                color = TextGray
+                color = TextBrown
             )
 
             Spacer(modifier = Modifier.height(32.dp))
@@ -73,13 +73,13 @@ fun LoginScreen(
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(16.dp),
-                colors = CardDefaults.cardColors(containerColor = CardWhite),
+                colors = CardDefaults.cardColors(containerColor = White),
                 elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
             ) {
                 Column(modifier = Modifier.padding(24.dp)) {
 
                     // 이메일 입력
-                    Text(text = "이메일", fontSize = 14.sp, color = TextDark, fontWeight = FontWeight.Medium)
+                    Text(text = "이메일", fontSize = 14.sp, color = TextMain, fontWeight = FontWeight.Medium)
                     Spacer(modifier = Modifier.height(6.dp))
                     TextField(
                         value = email,
@@ -101,7 +101,7 @@ fun LoginScreen(
                     Spacer(modifier = Modifier.height(16.dp))
 
                     // 비밀번호 입력
-                    Text(text = "비밀번호", fontSize = 14.sp, color = TextDark, fontWeight = FontWeight.Medium)
+                    Text(text = "비밀번호", fontSize = 14.sp, color = TextMain, fontWeight = FontWeight.Medium)
                     Spacer(modifier = Modifier.height(6.dp))
                     TextField(
                         value = password,
@@ -133,12 +133,12 @@ fun LoginScreen(
                             Checkbox(
                                 checked = keepLogin,
                                 onCheckedChange = { keepLogin = it },
-                                colors = CheckboxDefaults.colors(checkedColor = ButtonGreen)
+                                colors = CheckboxDefaults.colors(checkedColor = PointGreen)
                             )
-                            Text(text = "로그인 유지", fontSize = 13.sp, color = TextDark)
+                            Text(text = "로그인 유지", fontSize = 13.sp, color = TextGray)
                         }
                         TextButton(onClick = { /* 비밀번호 찾기 */ }) {
-                            Text(text = "비밀번호 찾기", fontSize = 13.sp, color = TextGreen)
+                            Text(text = "비밀번호 찾기", fontSize = 13.sp, color = PointGreen)
                         }
                     }
 
@@ -161,7 +161,7 @@ fun LoginScreen(
                             .fillMaxWidth()
                             .height(52.dp),
                         shape = RoundedCornerShape(8.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = ButtonGreen),
+                        colors = ButtonDefaults.buttonColors(containerColor = PointGreen),
                         enabled = !state.isLoading
                     ) {
                         if (state.isLoading) {
@@ -179,10 +179,12 @@ fun LoginScreen(
             Spacer(modifier = Modifier.height(24.dp))
 
             // 회원가입 안내
-            Row {
+            Row(
+                verticalAlignment = Alignment.CenterVertically
+            ) {
                 Text(text = "아직 계정이 없으신가요?  ", fontSize = 14.sp, color = TextGray)
                 TextButton(onClick = { /* 회원가입 */ }, contentPadding = PaddingValues(0.dp)) {
-                    Text(text = "회원가입", fontSize = 14.sp, color = TextGreen, fontWeight = FontWeight.Bold)
+                    Text(text = "회원가입", fontSize = 14.sp, color = PointGreen, fontWeight = FontWeight.Bold)
                 }
             }
 
