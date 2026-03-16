@@ -51,7 +51,7 @@ pipeline {
                 withCredentials([file(credentialsId: 'be-dev-env', variable: 'TEMP_ENV')]) {
                     sh "docker compose -f ./docker-compose-dev.yaml down || true"
                     sh "docker compose -f ./docker-compose-dev.yaml --env-file ${TEMP_ENV} up -d --build app"
-                    script { env.SERVER_STATUS = checkHealth("be-app-dev", "8081") } 
+                    script { env.SERVER_STATUS = checkHealth("be-app-dev", "8080") } 
                 }
             }
         }
