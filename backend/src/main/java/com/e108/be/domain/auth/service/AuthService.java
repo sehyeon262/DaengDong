@@ -115,4 +115,24 @@ public class AuthService {
                 .userId(userId)
                 .build();
     }
+
+    /**
+     * 로그아웃 처리 흐름:
+     * 1) Authorization 헤더에서 토큰 추출
+     * 2) 토큰 유효성 검증 (유효하지 않으면 401)
+     * 3) 정상이면 200 반환 (토큰 삭제는 클라이언트에서 처리)
+     * - JWT 특성상 서버에서 토큰을 무효화할 수 없으므로
+     *   클라이언트(앱)에서 저장된 토큰을 삭제하는 방식으로 로그아웃 처리
+     */
+    public void logout(String authorizationHeader) {
+        if (authorizationHeader == null || !authorizationHeader.startsWith("Bearer ")) {
+            throw new AuthException("Authorization 헤더가 올바르지 않습니다.");
+        }
+        String token = authorizationHeader.substring(7);
+
+        if (!jwtTokenProvider.validateToken(token)) {
+            throw new AuthException("유효하지 않은 토큰입니다.");
+        }
+        // JWT는 stateless이므로 서버 측 처리 없이 클라이언트에서 토큰 삭제로 로그아웃 완료
+    }
 }
