@@ -9,9 +9,12 @@ package com.e108.be.domain.auth.service;
  */
 
 import com.e108.be.domain.auth.dto.request.LoginRequest;
+import com.e108.be.domain.auth.dto.request.RegisterRequest;
 import com.e108.be.domain.auth.dto.response.LoginResponse;
+import com.e108.be.domain.auth.dto.response.RegisterResponse;
 import com.e108.be.domain.auth.entity.Member;
 import com.e108.be.domain.auth.exception.AuthException;
+import com.e108.be.domain.auth.exception.EmailDuplicateException;
 import com.e108.be.domain.auth.repository.MemberRepository;
 import com.e108.be.global.jwt.JwtTokenProvider;
 import lombok.RequiredArgsConstructor;
@@ -27,6 +30,36 @@ public class AuthService {
     private final MemberRepository memberRepository;
     private final BCryptPasswordEncoder passwordEncoder;
     private final JwtTokenProvider jwtTokenProvider;
+
+    /**
+     * 회원가입 처리 흐름:
+     * 1) 이메일 중복 확인
+     * 2) 비밀번호 BCrypt 암호화
+     * 3) 회원 저장
+     */
+    @Transactional
+    public RegisterResponse register(RegisterRequest request) {
+        if (memberRepository.existsByEmail(request.getEmail())) {
+            throw new EmailDuplicateException();
+        }
+
+        String encodedPassword = passwordEncoder.encode(request.getPassword());
+
+        Member member = Member.builder()
+                .email(request.getEmail())
+                .password(encodedPassword)
+                .nickname(request.getNickname())
+                .phone(request.getPhone())
+                .build();
+
+        Member saved = memberRepository.save(member);
+
+        return RegisterResponse.builder()
+                .userId(saved.getId())
+                .email(saved.getEmail())
+                .nickname(saved.getNickname())
+                .build();
+    }
 
     /**
      * 로그인 처리 흐름:

@@ -16,6 +16,6 @@ import lombok.Getter;
 public class LoginResponse {
 
     private Long userId;
-    private String accessToken; // JWT 토큰 (프론트에서 이걸 저장해서 인증에 사용)
+    private String accessToken;
     private String refreshToken;
 }
