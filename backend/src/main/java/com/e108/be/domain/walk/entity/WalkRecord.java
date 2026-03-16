@@ -9,6 +9,7 @@ import lombok.NoArgsConstructor;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.time.temporal.ChronoUnit;
 
 @Entity
 @Table(name = "walk_records")
@@ -51,5 +52,23 @@ public class WalkRecord extends BaseEntity {
         this.dogId = dogId;
         this.walkStatus = walkStatus;
         this.startTime = startTime;
+    }
+
+    /**
+     * 산책 종료 처리
+     * - 종료 시각, 총 시간(초) 자동 계산
+     * - totalDistance, calories는 외부에서 주입 (GPS 연동 완료 후 실제 값 전달)
+     * - GPS 연동 전: BigDecimal.ZERO 전달
+     *
+     * @param totalDistance 총 이동 거리 (km) - GPS 연동 후 실제 값으로 전달
+     * @param calories      소모 칼로리 - GPS 연동 후 실제 값으로 전달
+     */
+    public void end(BigDecimal totalDistance, BigDecimal calories) {
+        LocalDateTime now = LocalDateTime.now();
+        this.walkStatus = WalkStatus.COMPLETED;
+        this.endTime = now;
+        this.totalDuration = (int) ChronoUnit.SECONDS.between(this.startTime, now);
+        this.totalDistance = totalDistance;
+        this.calories = calories;
     }
 }
