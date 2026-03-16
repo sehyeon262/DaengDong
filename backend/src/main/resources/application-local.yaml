@@ -1,0 +1,20 @@
+spring:
+
+  config:
+    import:
+      - optional:file:../infra/.env[.properties]
+  # 개발용 DB 설정
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/e108_db}
+    username: postgres
+    password: ${DB_PASSWORD}
+    driver-class-name: org.postgresql.Driver
+
+  # 개발용 JPA 설정
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: true
+    properties:
+      hibernate:
+        format_sql: true
