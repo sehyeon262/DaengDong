@@ -12,6 +12,7 @@ import com.e108.be.domain.auth.dto.request.LoginRequest;
 import com.e108.be.domain.auth.dto.request.RegisterRequest;
 import com.e108.be.domain.auth.dto.response.LoginResponse;
 import com.e108.be.domain.auth.dto.response.RegisterResponse;
+import com.e108.be.domain.auth.dto.response.ValidateTokenResponse;
 import com.e108.be.domain.auth.entity.Member;
 import com.e108.be.domain.auth.exception.AuthException;
 import com.e108.be.domain.auth.exception.EmailDuplicateException;
@@ -86,6 +87,32 @@ public class AuthService {
                 .accessToken(token)
                 .refreshToken(refreshToken)
                 .userId(member.getId())
+                .build();
+    }
+
+    /**
+     * 토큰 유효성 검증 처리 흐름:
+     * 1) Authorization 헤더에서 "Bearer " 제거 후 토큰 추출
+     * 2) 토큰 유효성 검증
+     * 3) 유효하면 userId 포함해서 반환 / 유효하지 않으면 401 예외
+     */
+    public ValidateTokenResponse validateToken(String authorizationHeader) {
+        // 1) "Bearer " 제거
+        if (authorizationHeader == null || !authorizationHeader.startsWith("Bearer ")) {
+            throw new AuthException("Authorization 헤더가 올바르지 않습니다.");
+        }
+        String token = authorizationHeader.substring(7);
+
+        // 2) 토큰 유효성 검증
+        if (!jwtTokenProvider.validateToken(token)) {
+            throw new AuthException("유효하지 않은 토큰입니다.");
+        }
+
+        // 3) userId 추출 후 반환
+        Long userId = jwtTokenProvider.getMemberId(token);
+        return ValidateTokenResponse.builder()
+                .isValid(true)
+                .userId(userId)
                 .build();
     }
 }
