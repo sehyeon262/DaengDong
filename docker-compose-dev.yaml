@@ -31,6 +31,7 @@ services:
       - "8081:8080"  # 호스트 8081 -> 컨테이너 8080 (운영 8080과 격리)
     depends_on:
       - db
+      - redis-dev
     environment:
       - SPRING_PROFILES_ACTIVE=${SPRING_PROFILES_ACTIVE}
       - JWT_SECRET=${JWT_SECRET}
@@ -48,7 +49,7 @@ services:
     ports:
       - "6380:6379"
     networks:
-      - e108-local-network
+      - e108-network-dev
 
 networks:
   e108-network-dev:
