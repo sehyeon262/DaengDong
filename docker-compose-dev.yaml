@@ -41,6 +41,15 @@ services:
     networks:
       - e108-network-dev
 
+  redis-dev:
+    image: redis:alpine
+    container_name: e108-redis-dev
+    restart: always
+    ports:
+      - "6380:6379"
+    networks:
+      - e108-local-network
+
 networks:
   e108-network-dev:
     driver: bridge
