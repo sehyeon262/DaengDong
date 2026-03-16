@@ -16,15 +16,15 @@ pipeline {
     agent any 
     tools { jdk 'jdk17' }
 
-     stage('Checkout') {
-         steps {
-             git branch: 'develop',
-                 url: 'https://lab.ssafy.com/s14-bigdata-recom-sub1/S14P21E108.git',
-                 credentialsId: 'gitlab-auth'
-         }
-     }
-
     stages {
+        stage('Checkout') {
+            steps {
+                git branch: 'develop',
+                    url: 'https://lab.ssafy.com/s14-bigdata-recom-sub1/S14P21E108.git',
+                    credentialsId: 'gitlab-auth'
+            }
+        }
+
         stage('Spring Boot Build') {
             when {
                 changeset "backend/**"
