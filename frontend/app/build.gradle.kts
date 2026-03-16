@@ -50,6 +50,7 @@ dependencies {
     implementation(libs.androidx.compose.ui.graphics)
     implementation(libs.androidx.compose.ui.tooling.preview)
     implementation(libs.androidx.compose.material3)
+    implementation(libs.androidx.compose.material.icons.extended)
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
@@ -69,4 +70,8 @@ dependencies {
     implementation(libs.okhttp.logging)
     // DataStore
     implementation(libs.datastore.preferences)
+    // Coil
+    implementation(libs.coil.compose)
+    // Location
+    implementation(libs.play.services.location)
 }

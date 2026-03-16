@@ -1,6 +1,7 @@
 package com.frontend.di
 
 import com.frontend.data.remote.AuthApi
+import com.frontend.data.remote.HomeApi
 import com.frontend.util.Constants
 import dagger.Module
 import dagger.Provides
@@ -40,5 +41,11 @@ object NetworkModule {
     @Singleton
     fun provideAuthApi(retrofit: Retrofit): AuthApi {
         return retrofit.create(AuthApi::class.java)
+    }
+
+    @Provides
+    @Singleton
+    fun provideHomeApi(retrofit: Retrofit): HomeApi {
+        return retrofit.create(HomeApi::class.java)
     }
 }
