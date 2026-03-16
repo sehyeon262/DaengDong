@@ -30,7 +30,9 @@ pipeline {
             when { 
                 anyOf {
                     branch 'develop'
-                    expression { env.GIT_BRANCH == 'origin/develop' }
+                    expression { 
+                        return sh(script: 'git rev-parse --abbrev-ref HEAD', returnStdout: true).trim() == 'develop' 
+                    }
                 }
             } 
             steps {
@@ -45,7 +47,9 @@ pipeline {
             when { 
                 anyOf {
                     branch 'main'
-                    expression { env.GIT_BRANCH == 'origin/main' }
+                    expression { 
+                        return sh(script: 'git rev-parse --abbrev-ref HEAD', returnStdout: true).trim() == 'main' 
+                    }
                 }
             }
             steps {
