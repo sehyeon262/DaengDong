@@ -1,9 +1,10 @@
 checkHealth = { containerName, port ->
     try {
+        def hostPort = (containerName == "be-app-dev") ? "8081" : "8080"
         timeout(time: 3, unit: 'MINUTES') {
             waitUntil {
                 try {
-                    def response = sh(script: "curl -Is http://${containerName}:${port}/api/v1/actuator/health | head -n 1", returnStdout: true).trim()
+                    def response = sh(script: "curl -Is http://172.17.0.1:${hostPort}/api/v1/actuator/health | head -n 1", returnStdout: true).trim()
                     return response.contains('200') || response.contains('403') || response.contains('UP')
                 } catch (e) { return false }
             }
