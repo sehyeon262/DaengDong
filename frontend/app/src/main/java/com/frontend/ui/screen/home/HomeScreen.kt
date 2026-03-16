@@ -23,7 +23,11 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -47,6 +51,7 @@ fun HomeScreen(
 ) {
     val state by viewModel.state.collectAsState()
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
     var locationLoaded by remember { mutableStateOf(false) }
 
     val permissionLauncher = rememberLauncherForActivityResult(
@@ -55,9 +60,13 @@ fun HomeScreen(
         val granted = permissions.values.any { it }
         if (granted) {
             fetchLocation(context) { lat, lng ->
-                val address = getAddressFromLatLng(context, lat, lng)
-                viewModel.loadHomeData(lat, lng, address)
-                locationLoaded = true
+                scope.launch {
+                    val address = withContext(Dispatchers.IO) {
+                        getAddressFromLatLng(context, lat, lng)
+                    }
+                    viewModel.loadHomeData(lat, lng, address)
+                    locationLoaded = true
+                }
             }
         } else {
             viewModel.loadHomeData(35.1796, 129.0756, "부산광역시")
@@ -100,8 +109,12 @@ fun HomeScreen(
                     Spacer(modifier = Modifier.height(8.dp))
                     TextButton(onClick = {
                         fetchLocation(context) { lat, lng ->
-                            val address = getAddressFromLatLng(context, lat, lng)
-                            viewModel.loadHomeData(lat, lng, address)
+                            scope.launch {
+                                val address = withContext(Dispatchers.IO) {
+                                    getAddressFromLatLng(context, lat, lng)
+                                }
+                                viewModel.loadHomeData(lat, lng, address)
+                            }
                         }
                     }) {
                         Text("다시 시도")
