@@ -33,12 +33,22 @@ python import_places.py --csv "../raw/반려동문 문화시설 데이터.csv"
 ```bash
 pip install requests pandas
 
+# infra/.env 에 API 키 추가
+echo "PET_TOUR_API_KEY=발급받은_인증키" >> ../infra/.env
+
 cd data/scripts
 python api_to_csv.py
 # → raw/pet_tour_data.csv 생성
 ```
 
+## 환경변수 (infra/.env)
+
+| 변수명 | 용도 | 필수 |
+|--------|------|------|
+| `DB_PASSWORD` | DB 연결 비밀번호 | ✅ |
+| `PET_TOUR_API_KEY` | 공공데이터포털 반려동물 관광 API 인증키 | `api_to_csv.py` 사용 시 |
+
 ## 주의사항
 - `raw/` 폴더는 `.gitignore` 처리되어 있어 git에 커밋되지 않음
 - CSV 파일은 팀 공유 채널(Notion/Mattermost)에서 다운로드 후 `raw/`에 위치시킬 것
-- DB 비밀번호는 `infra/.env`에서 자동으로 읽음 (`DB_PASSWORD` 필수)
+- `PET_TOUR_API_KEY`는 절대 코드에 하드코딩하지 말 것 — 반드시 `infra/.env`를 통해 주입

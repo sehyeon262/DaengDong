@@ -6,10 +6,13 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.event.EventListener;
+import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 /**
  * 앱 기동 완료 후 place_category 기본 데이터를 JPA로 삽입
@@ -19,6 +22,7 @@ import java.util.List;
 @Slf4j
 @Component
 @RequiredArgsConstructor
+@Order(2)
 public class PlaceCategoryInitializer {
 
     private final PlaceCategoryRepository placeCategoryRepository;
@@ -43,23 +47,21 @@ public class PlaceCategoryInitializer {
     @EventListener(ApplicationReadyEvent.class)
     @Transactional
     public void init() {
-        int inserted = 0;
-        for (Object[] row : DEFAULT_CATEGORIES) {
-            String name = (String) row[0];
-            Integer routeWeight = (Integer) row[1];
+        Set<String> existing = placeCategoryRepository.findAll().stream()
+                .map(PlaceCategory::getName)
+                .collect(Collectors.toSet());
 
-            if (placeCategoryRepository.findByName(name).isEmpty()) {
-                placeCategoryRepository.save(
-                    PlaceCategory.builder()
-                        .name(name)
-                        .routeWeight(routeWeight)
-                        .build()
-                );
-                inserted++;
-            }
-        }
-        if (inserted > 0) {
-            log.info("[PlaceCategory] 기본 카테고리 {}개 삽입 완료", inserted);
+        List<PlaceCategory> toInsert = DEFAULT_CATEGORIES.stream()
+                .filter(row -> !existing.contains((String) row[0]))
+                .map(row -> PlaceCategory.builder()
+                        .name((String) row[0])
+                        .routeWeight((Integer) row[1])
+                        .build())
+                .toList();
+
+        if (!toInsert.isEmpty()) {
+            placeCategoryRepository.saveAll(toInsert);
+            log.info("[PlaceCategory] 기본 카테고리 {}개 삽입 완료", toInsert.size());
         }
     }
 }

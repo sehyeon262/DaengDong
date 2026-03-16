@@ -16,10 +16,10 @@ import java.time.LocalDateTime;
  * places 테이블 - 반려견 동반 가능 장소
  *
  * [공간 데이터 주의사항]
- * - location 컬럼은 geometry(Point, 4326) 타입 (경도/위도 WGS84 좌표계)
+ * - location 컬럼은 geography(Point, 4326) 타입 (경도/위도 WGS84 좌표계)
  * - Point 생성 시 반드시 X=경도(longitude), Y=위도(latitude) 순서
- * - 거리 계산 시 meters 단위를 원하면 ::geography 캐스팅 필요
- *   예: ST_DWithin(location::geography, ..., radiusMeters)
+ * - geography 타입이므로 ST_DWithin/ST_Distance가 미터 단위로 직접 동작
+ *   예: ST_DWithin(location, ST_SetSRID(ST_MakePoint(lon, lat), 4326)::geography, radiusMeters)
  */
 @Entity
 @Table(
@@ -56,8 +56,9 @@ public class Place {
     @JoinColumn(name = "category_id")
     private PlaceCategory category;
 
-    // geometry(Point, 4326): X=경도, Y=위도
-    @Column(columnDefinition = "geometry(Point, 4326)", nullable = false)
+    // geography(Point, 4326): X=경도, Y=위도
+    // geography 타입 사용 시 ST_DWithin/ST_Distance가 미터 단위로 직접 동작 + GiST 인덱스 활용 가능
+    @Column(columnDefinition = "geography(Point, 4326)", nullable = false)
     private Point location;
 
     @Column(length = 255)

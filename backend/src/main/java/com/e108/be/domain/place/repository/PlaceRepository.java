@@ -12,8 +12,8 @@ public interface PlaceRepository extends JpaRepository<Place, Long> {
     /**
      * 반경 내 주변 장소 조회 (거리 오름차순)
      *
-     * geometry → geography 캐스팅으로 미터 단위 거리 계산
-     * ST_DWithin: radiusMeters 반경 이내 필터
+     * location 컬럼이 geography 타입이므로 캐스팅 없이 미터 단위 거리 계산
+     * ST_DWithin: radiusMeters 반경 이내 필터 + GiST 인덱스 활용
      * ST_Distance: 정확한 거리 반환 (meters)
      *
      * @param lat          기준 위도
@@ -27,19 +27,19 @@ public interface PlaceRepository extends JpaRepository<Place, Long> {
                p.address,
                p.contact,
                p.image_url                                                        AS imageUrl,
-               ST_Y(p.location)                                                   AS latitude,
-               ST_X(p.location)                                                   AS longitude,
+               ST_Y(p.location::geometry)                                         AS latitude,
+               ST_X(p.location::geometry)                                         AS longitude,
                c.name                                                             AS categoryName,
                c.route_weight                                                     AS routeWeight,
                ST_Distance(
-                   p.location::geography,
+                   p.location,
                    ST_SetSRID(ST_MakePoint(:lon, :lat), 4326)::geography
                )                                                                  AS distanceMeters
         FROM places p
         LEFT JOIN place_category c ON p.category_id = c.id
         WHERE p.is_active = true
           AND ST_DWithin(
-                  p.location::geography,
+                  p.location,
                   ST_SetSRID(ST_MakePoint(:lon, :lat), 4326)::geography,
                   :radiusMeters
               )
@@ -62,12 +62,12 @@ public interface PlaceRepository extends JpaRepository<Place, Long> {
                p.address,
                p.contact,
                p.image_url                                                        AS imageUrl,
-               ST_Y(p.location)                                                   AS latitude,
-               ST_X(p.location)                                                   AS longitude,
+               ST_Y(p.location::geometry)                                         AS latitude,
+               ST_X(p.location::geometry)                                         AS longitude,
                c.name                                                             AS categoryName,
                c.route_weight                                                     AS routeWeight,
                ST_Distance(
-                   p.location::geography,
+                   p.location,
                    ST_SetSRID(ST_MakePoint(:lon, :lat), 4326)::geography
                )                                                                  AS distanceMeters
         FROM places p
@@ -75,7 +75,7 @@ public interface PlaceRepository extends JpaRepository<Place, Long> {
         WHERE p.is_active = true
           AND c.name = :categoryName
           AND ST_DWithin(
-                  p.location::geography,
+                  p.location,
                   ST_SetSRID(ST_MakePoint(:lon, :lat), 4326)::geography,
                   :radiusMeters
               )
