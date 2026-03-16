@@ -1,6 +1,7 @@
 package com.e108.be.domain.walk.controller;
 
 import com.e108.be.domain.walk.dto.request.StartWalkRequest;
+import com.e108.be.domain.walk.dto.response.EndWalkResponse;
 import com.e108.be.domain.walk.dto.response.StartWalkResponse;
 import com.e108.be.domain.walk.dto.response.WalkDurationResponse;
 import com.e108.be.domain.walk.service.WalkService;
@@ -43,5 +44,15 @@ public class WalkController {
     public ResTemplate<WalkDurationResponse> getWalkDuration(@PathVariable Long walkId) {
         WalkDurationResponse response = walkService.getWalkDuration(walkId);
         return ResTemplate.success(HttpStatus.OK, "산책 시간 조회 성공", response);
+    }
+
+    /**
+     * W1-06 산책 종료
+     * POST /api/v1/walks/{walkId}/end
+     */
+    @PostMapping("/{walkId}/end")
+    public ResTemplate<EndWalkResponse> endWalk(@PathVariable Long walkId) {
+        EndWalkResponse response = walkService.endWalk(walkId);
+        return ResTemplate.success(HttpStatus.OK, "산책이 종료되었습니다.", response);
     }
 }
