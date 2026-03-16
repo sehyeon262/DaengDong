@@ -1,24 +1,69 @@
 package com.frontend.navigation
 
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.sp
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
+import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import com.frontend.ui.screen.home.HomeScreen
 import com.frontend.ui.screen.login.LoginScreen
 
 @Composable
 fun NavGraph() {
     val navController = rememberNavController()
+    val navBackStackEntry by navController.currentBackStackEntryAsState()
+    val currentRoute = navBackStackEntry?.destination?.route
 
-    NavHost(
-        navController = navController,
-        startDestination = Routes.LOGIN
+    val showBottomBar = currentRoute in listOf(
+        Routes.HOME, Routes.WALK, Routes.RECORD, Routes.MY_INFO
+    )
+
+    Scaffold(
+        bottomBar = {
+            if (showBottomBar) {
+                BottomNavBar(navController = navController)
+            }
+        }
+    ) { innerPadding ->
+        NavHost(
+            navController = navController,
+            startDestination = Routes.HOME,
+            modifier = Modifier.padding(innerPadding)
+        ) {
+            composable(Routes.LOGIN) {
+                LoginScreen(navController = navController)
+            }
+            composable(Routes.HOME) {
+                HomeScreen()
+            }
+            composable(Routes.WALK) {
+                PlaceholderScreen("산책")
+            }
+            composable(Routes.RECORD) {
+                PlaceholderScreen("기록")
+            }
+            composable(Routes.MY_INFO) {
+                PlaceholderScreen("내정보")
+            }
+        }
+    }
+}
+
+@Composable
+fun PlaceholderScreen(title: String) {
+    Box(
+        modifier = Modifier.fillMaxSize(),
+        contentAlignment = Alignment.Center
     ) {
-        composable(Routes.LOGIN) {
-            LoginScreen(navController = navController)
-        }
-        composable(Routes.HOME) {
-            // 홈 화면 만들면 여기에 추가
-        }
+        Text(text = title, fontSize = 24.sp)
     }
 }
