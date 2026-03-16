@@ -11,6 +11,7 @@ package com.e108.be.global.jwt;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
@@ -18,6 +19,7 @@ import javax.crypto.SecretKey;
 import java.nio.charset.StandardCharsets;
 import java.util.Date;
 
+@Slf4j
 @Component
 public class JwtTokenProvider {
 
@@ -67,7 +69,8 @@ public class JwtTokenProvider {
             parseClaims(token);
             return true;
         } catch (Exception e) {
-            return false; // 만료됐거나, 위조됐거나, 형식이 잘못된 경우
+            log.warn("[JWT] 토큰 검증 실패: {} - {}", e.getClass().getSimpleName(), e.getMessage());
+            return false;
         }
     }
 
