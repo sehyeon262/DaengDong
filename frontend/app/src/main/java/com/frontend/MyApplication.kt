@@ -13,7 +13,9 @@ class MyApplication : Application() {
     override fun onCreate() {
         super.onCreate()
         KakaoMapSdk.init(this, BuildConfig.KAKAO_MAP_API_KEY)
-        printKeyHash()
+        if (BuildConfig.DEBUG) {
+            printKeyHash()
+        }
     }
 
     private fun printKeyHash() {
