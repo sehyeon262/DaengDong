@@ -1,0 +1,105 @@
+pipeline {
+    agent any
+
+    environment {
+        ANDROID_HOME = '/opt/android-sdk'
+        KAKAO_MAP_API_KEY = credentials('kakao-map-api-key')
+        FIREBASE_APP_ID = '1:570380494661:android:9018724828aacf5e60002c'
+    }
+
+    stages {
+        // ============================================
+        // local.properties 생성 (API 키 주입)
+        // ============================================
+        stage('Setup Properties') {
+            when {
+                changeset "frontend/**"
+            }
+            steps {
+                dir('frontend') {
+                    writeFile file: 'local.properties', text: "sdk.dir=${ANDROID_HOME}\nKAKAO_MAP_API_KEY=${KAKAO_MAP_API_KEY}"
+                }
+            }
+        }
+
+        // ============================================
+        // APK 빌드: develop → debug, main → release
+        // ============================================
+        stage('Build APK') {
+            when {
+                changeset "frontend/**"
+            }
+            steps {
+                dir('frontend') {
+                    sh 'chmod +x gradlew'
+                    script {
+                        def isMain = (env.BRANCH_NAME == 'main' || env.GIT_BRANCH == 'origin/main')
+                        if (isMain) {
+                            sh './gradlew clean assembleRelease --no-daemon --stacktrace'
+                        } else {
+                            sh './gradlew clean assembleDebug --no-daemon --stacktrace'
+                        }
+                    }
+                }
+            }
+        }
+
+        // ============================================
+        // DEV 배포: develop 브랜치 → dev-testers 그룹
+        // ============================================
+        stage('Deploy to Dev') {
+            when {
+                allOf {
+                    changeset "frontend/**"
+                    anyOf {
+                        branch 'develop'
+                        expression { return sh(script: 'git rev-parse --abbrev-ref HEAD', returnStdout: true).trim() == 'develop' }
+                    }
+                }
+            }
+            steps {
+                dir('frontend') {
+                    withCredentials([file(credentialsId: 'firebase-service-account', variable: 'FIREBASE_CRED')]) {
+                        sh """
+                            export GOOGLE_APPLICATION_CREDENTIALS=\${FIREBASE_CRED}
+                            firebase appdistribution:distribute \
+                                app/build/outputs/apk/debug/app-debug.apk \
+                                --app ${FIREBASE_APP_ID} \
+                                --groups "dev-testers" \
+                                --release-notes "DEV Build #${BUILD_NUMBER} - ${GIT_BRANCH}"
+                        """
+                    }
+                }
+            }
+        }
+
+        // ============================================
+        // PROD 배포: main 브랜치 → release-testers 그룹
+        // ============================================
+        stage('Deploy to Prod') {
+            when {
+                allOf {
+                    changeset "frontend/**"
+                    anyOf {
+                        branch 'main'
+                        expression { return sh(script: 'git rev-parse --abbrev-ref HEAD', returnStdout: true).trim() == 'main' }
+                    }
+                }
+            }
+            steps {
+                dir('frontend') {
+                    withCredentials([file(credentialsId: 'firebase-service-account', variable: 'FIREBASE_CRED')]) {
+                        sh """
+                            export GOOGLE_APPLICATION_CREDENTIALS=\${FIREBASE_CRED}
+                            firebase appdistribution:distribute \
+                                app/build/outputs/apk/release/app-release.apk \
+                                --app ${FIREBASE_APP_ID} \
+                                --groups "release-testers" \
+                                --release-notes "PROD Release #${BUILD_NUMBER} - ${GIT_BRANCH}"
+                        """
+                    }
+                }
+            }
+        }
+    }
+}
