@@ -3,14 +3,17 @@ server:
     context-path: /api/v1
 
 spring:
-  config:
-    import:
-      - file:../infra/.env[.properties]
   profiles:
-    active: ${SPRING_PROFILES_ACTIVE:dev}  # 기본값 dev, 서버에서 prod로 변경
+    active: ${SPRING_PROFILES_ACTIVE:local}  # 기본값 dev, 서버에서 prod로 변경
 
   application:
     name: be
+
+  # schema.sql 실행 활성화 (외부 DB는 기본 never → always로 명시)
+  # 실행 순서: schema.sql(PostGIS 확장) → Hibernate DDL(테이블 생성) → ApplicationReadyEvent(GiST 인덱스)
+  sql:
+    init:
+      mode: always
 
   # 공통 JPA 설정
   jpa:
@@ -22,3 +25,10 @@ spring:
 jwt:
   secret: ${JWT_SECRET}
   expiration: 3600000
+
+# 외부 API 설정
+api:
+  weather:
+    service-key: ${WEATHER_SERVICE_KEY}
+  air-quality:
+    service-key: ${AIR_QUALITY_SERVICE_KEY}

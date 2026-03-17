@@ -53,6 +53,19 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             SecurityContextHolder.getContext().setAuthentication(authentication);
         }
 
+        // TODO: 개발 테스트용 임시 코드 - 로그인 구현 완료 후 아래 블록 제거
+        // X-Dev-User-Id 헤더로 memberId를 직접 전달해 인증 없이 테스트 가능
+        // Postman 사용법: Headers에 X-Dev-User-Id: 1 추가
+        if (SecurityContextHolder.getContext().getAuthentication() == null) {
+            String devUserId = request.getHeader("X-Dev-User-Id");
+            if (StringUtils.hasText(devUserId)) {
+                UsernamePasswordAuthenticationToken authentication =
+                        new UsernamePasswordAuthenticationToken(Long.valueOf(devUserId), null, Collections.emptyList());
+                SecurityContextHolder.getContext().setAuthentication(authentication);
+            }
+        }
+        // TODO: 여기까지 제거
+
         // 3. 다음 필터로 진행
         filterChain.doFilter(request, response);
     }

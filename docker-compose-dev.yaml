@@ -3,7 +3,7 @@ version: '3.8'
 services:
   # 개발용 데이터베이스 (PostgreSQL)
   db:
-    image: postgres:15
+    image: postgis/postgis:15-3.5
     container_name: e108-postgres-dev
     restart: always
     environment:
@@ -31,11 +31,23 @@ services:
       - "8081:8080"  # 호스트 8081 -> 컨테이너 8080 (운영 8080과 격리)
     depends_on:
       - db
+      - redis-dev
     environment:
       - SPRING_PROFILES_ACTIVE=${SPRING_PROFILES_ACTIVE}
       - JWT_SECRET=${JWT_SECRET}
       - DB_URL=${DB_URL}
       - DB_PASSWORD=${DB_PASSWORD}
+      - WEATHER_SERVICE_KEY=${WEATHER_SERVICE_KEY}
+      - AIR_QUALITY_SERVICE_KEY=${AIR_QUALITY_SERVICE_KEY}
+    networks:
+      - e108-network-dev
+
+  redis-dev:
+    image: redis:alpine
+    container_name: e108-redis-dev
+    restart: always
+    ports:
+      - "6380:6379"
     networks:
       - e108-network-dev
 

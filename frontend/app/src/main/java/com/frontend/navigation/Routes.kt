@@ -1,0 +1,9 @@
+package com.frontend.navigation
+
+object Routes {
+    const val LOGIN = "login"
+    const val HOME = "home"
+    const val WALK = "walk"
+    const val RECORD = "record"
+    const val MY_INFO = "myinfo"
+}

@@ -33,10 +33,14 @@ public class Member extends BaseEntity { // BaseEntity 상속 → createdAt, upd
     @Column(nullable = false)
     private String nickname;
 
-    @Builder // Member.builder().email("...").password("...").build() 이런 식으로 생성
-    public Member(String email, String password, String nickname) {
+    @Column(nullable = true)
+    private String phone;
+
+    @Builder
+    public Member(String email, String password, String nickname, String phone) {
         this.email = email;
         this.password = password;
         this.nickname = nickname;
+        this.phone = phone;
     }
 }

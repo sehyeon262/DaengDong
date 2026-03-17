@@ -38,3 +38,7 @@ out/
 
 ### Environment ###
 .env
+
+.claude
+data.sql
+
