@@ -2,7 +2,6 @@ package com.e108.be.domain.walk.service;
 
 import com.e108.be.domain.dog.entity.Dog;
 import com.e108.be.domain.dog.repository.DogRepository;
-import com.e108.be.domain.walk.dto.request.WalkLocationRequest;
 import com.e108.be.domain.walk.dto.response.CaloriesResponse;
 import com.e108.be.domain.walk.dto.response.DistanceResponse;
 import com.e108.be.domain.walk.entity.WalkRecord;
@@ -27,28 +26,6 @@ public class WalkService {
     private final WalkRecordRepository walkRecordRepository;
     private final DogRepository dogRepository;
     private final RedisTemplate<String, String> redisTemplate;
-
-    /**
-     * GPS 좌표 배치 저장
-     * POST /walks/{walkId}/locations
-     *
-     * FE에서 보낸 좌표 목록을 Redis List에 순서대로 저장
-     * Redis 키: "walk:gps:{walkId}"
-     * 저장 형식: "위도,경도,타임스탬프"
-     */
-    public int saveLocations(Long walkId, WalkLocationRequest request) {
-        WalkRecord walk = walkRecordRepository.findById(walkId)
-                .orElseThrow(WalkNotFoundException::new);
-
-        String redisKey = GPS_KEY_PREFIX + walkId;
-
-        for (WalkLocationRequest.LocationPoint point : request.getLocations()) {
-            String value = point.getLatitude() + "," + point.getLongitude() + "," + point.getTimestamp();
-            redisTemplate.opsForList().rightPush(redisKey, value);
-        }
-
-        return request.getLocations().size();
-    }
 
     /**
      * 누적 거리 조회

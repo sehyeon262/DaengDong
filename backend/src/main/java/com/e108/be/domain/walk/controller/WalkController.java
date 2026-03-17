@@ -1,6 +1,5 @@
 package com.e108.be.domain.walk.controller;
 
-import com.e108.be.domain.walk.dto.request.WalkLocationRequest;
 import com.e108.be.domain.walk.dto.response.CaloriesResponse;
 import com.e108.be.domain.walk.dto.response.DistanceResponse;
 import com.e108.be.domain.walk.service.WalkService;
@@ -15,28 +14,6 @@ import org.springframework.web.bind.annotation.*;
 public class WalkController {
 
     private final WalkService walkService;
-
-    /**
-     * GPS 좌표 배치 저장
-     * POST /api/v1/walks/{walkId}/locations
-     *
-     * 요청:
-     * {
-     *   "locations": [
-     *     {"latitude": 37.5665, "longitude": 126.9780, "timestamp": 1234567890000}
-     *   ]
-     * }
-     * 응답:
-     * { "code": 200, "message": "위치 저장 성공", "data": {"savedCount": 1} }
-     */
-    @PostMapping("/{walkId}/locations")
-    public ResTemplate<?> saveLocations(
-            @PathVariable Long walkId,
-            @RequestBody WalkLocationRequest request) {
-        int savedCount = walkService.saveLocations(walkId, request);
-        return ResTemplate.success(HttpStatus.OK, "위치 저장 성공",
-                java.util.Map.of("savedCount", savedCount));
-    }
 
     /**
      * 누적 거리 조회
