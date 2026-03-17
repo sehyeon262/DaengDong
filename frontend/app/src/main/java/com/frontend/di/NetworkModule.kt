@@ -1,6 +1,7 @@
 package com.frontend.di
 
 import com.frontend.data.remote.AuthApi
+import com.frontend.data.remote.DogApi
 import com.frontend.data.remote.HomeApi
 import com.frontend.util.Constants
 import dagger.Module
@@ -47,5 +48,11 @@ object NetworkModule {
     @Singleton
     fun provideHomeApi(retrofit: Retrofit): HomeApi {
         return retrofit.create(HomeApi::class.java)
+    }
+
+    @Provides
+    @Singleton
+    fun provideDogApi(retrofit: Retrofit): DogApi {
+        return retrofit.create(DogApi::class.java)
     }
 }

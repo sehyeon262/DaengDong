@@ -3,5 +3,6 @@ package com.frontend.domain.model
 data class LoginResponse(
     val accessToken: String,
     val refreshToken: String,
-    val userId: Long
+    val userId: Long,
+    val dogId: Long? = null
 )

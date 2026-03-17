@@ -6,4 +6,5 @@ object Routes {
     const val WALK = "walk"
     const val RECORD = "record"
     const val MY_INFO = "myinfo"
+    const val DOG_EDIT = "dog_edit"
 }

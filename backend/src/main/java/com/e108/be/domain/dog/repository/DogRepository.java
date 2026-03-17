@@ -8,4 +8,6 @@ import java.util.Optional;
 public interface DogRepository extends JpaRepository<Dog, Long> {
 
     Optional<Dog> findByIdAndUserId(Long id, Long userId);
+
+    Optional<Dog> findFirstByUserId(Long userId);
 }

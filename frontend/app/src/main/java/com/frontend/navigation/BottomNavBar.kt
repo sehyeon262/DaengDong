@@ -41,7 +41,7 @@ fun BottomNavBar(navController: NavController) {
         BottomNavItem(Routes.HOME, "홈", Icons.Filled.Home),
         BottomNavItem(Routes.WALK, "산책", Icons.Filled.Pets),
         BottomNavItem(Routes.RECORD, "기록", Icons.Filled.MenuBook),
-        BottomNavItem(Routes.MY_INFO, "내정보", Icons.Filled.Person)
+        BottomNavItem(Routes.MY_INFO, "프로필", Icons.Filled.Person)
     )
 
     val navBackStackEntry by navController.currentBackStackEntryAsState()

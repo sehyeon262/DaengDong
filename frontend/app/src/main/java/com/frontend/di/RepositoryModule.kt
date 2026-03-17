@@ -2,8 +2,10 @@ package com.frontend.di
 
 import com.frontend.data.local.TokenDataStore
 import com.frontend.data.remote.AuthApi
+import com.frontend.data.remote.DogApi
 import com.frontend.data.remote.HomeApi
 import com.frontend.data.repository.AuthRepository
+import com.frontend.data.repository.DogRepository
 import com.frontend.data.repository.HomeRepository
 import dagger.Module
 import dagger.Provides
@@ -30,5 +32,14 @@ object RepositoryModule {
         homeApi: HomeApi
     ): HomeRepository {
         return HomeRepository(homeApi)
+    }
+
+    @Provides
+    @Singleton
+    fun provideDogRepository(
+        dogApi: DogApi,
+        tokenDataStore: TokenDataStore
+    ): DogRepository {
+        return DogRepository(dogApi, tokenDataStore)
     }
 }
