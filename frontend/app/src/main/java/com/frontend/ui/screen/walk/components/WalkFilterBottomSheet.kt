@@ -26,6 +26,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
@@ -34,13 +35,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.frontend.ui.screen.walk.WalkFilterType
+import com.frontend.ui.theme.Dimens
 import com.frontend.ui.theme.IconGray
 import com.frontend.ui.theme.PointGreen
 import com.frontend.ui.theme.TextMain
 import com.frontend.ui.theme.White
+
+private val ScrimColor = Color.Black.copy(alpha = 0.4f)
 
 @Composable
 fun WalkFilterBottomSheet(
@@ -55,7 +57,7 @@ fun WalkFilterBottomSheet(
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .background(Color.Black.copy(alpha = 0.4f))
+                .background(ScrimColor)
                 .clickable(
                     interactionSource = remember { MutableInteractionSource() },
                     indication = null,
@@ -70,14 +72,17 @@ fun WalkFilterBottomSheet(
                 .fillMaxWidth()
                 .background(
                     color = White,
-                    shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp)
+                    shape = RoundedCornerShape(
+                        topStart = Dimens.RadiusLarge,
+                        topEnd = Dimens.RadiusLarge
+                    )
                 )
                 .clickable(
                     interactionSource = remember { MutableInteractionSource() },
                     indication = null,
                     onClick = {}
                 )
-                .padding(horizontal = 20.dp, vertical = 20.dp)
+                .padding(horizontal = Dimens.SpacingLarge, vertical = Dimens.SpacingLarge)
                 .navigationBarsPadding()
         ) {
             // 헤더
@@ -88,9 +93,11 @@ fun WalkFilterBottomSheet(
             ) {
                 Text(
                     text = "필터 설정",
-                    fontSize = 18.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = TextMain
+                    style = MaterialTheme.typography.titleMedium.copy(
+                        fontWeight = FontWeight.Bold,
+                        fontSize = Dimens.TextSizeLarge,
+                        color = TextMain
+                    )
                 )
                 IconButton(onClick = onDismiss) {
                     Icon(
@@ -101,12 +108,12 @@ fun WalkFilterBottomSheet(
                 }
             }
 
-            Spacer(modifier = Modifier.height(20.dp))
+            Spacer(modifier = Modifier.height(Dimens.SpacingXLarge))
 
             // 필터 옵션 3개
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
+                horizontalArrangement = Arrangement.spacedBy(Dimens.SpacingSmall)
             ) {
                 FilterOption(
                     icon = Icons.Filled.LocationOn,
@@ -131,26 +138,28 @@ fun WalkFilterBottomSheet(
                 )
             }
 
-            Spacer(modifier = Modifier.height(24.dp))
+            Spacer(modifier = Modifier.height(Dimens.SpacingXLarge))
 
             // 적용하기 버튼
             Button(
                 onClick = onApply,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(54.dp),
-                shape = RoundedCornerShape(16.dp),
+                    .height(Dimens.ButtonHeight),
+                shape = RoundedCornerShape(Dimens.RadiusMedium),
                 colors = ButtonDefaults.buttonColors(containerColor = PointGreen)
             ) {
                 Text(
                     text = "적용하기",
-                    fontSize = 16.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = White
+                    style = MaterialTheme.typography.bodyLarge.copy(
+                        fontWeight = FontWeight.Bold,
+                        fontSize = Dimens.TextSizeMedium,
+                        color = White
+                    )
                 )
             }
 
-            Spacer(modifier = Modifier.height(8.dp))
+            Spacer(modifier = Modifier.height(Dimens.SpacingXSmall))
         }
     }
 }
@@ -166,19 +175,19 @@ private fun FilterOption(
     Column(
         modifier = modifier
             .border(
-                width = 2.dp,
+                width = Dimens.SpacingXSmall / 4,
                 color = if (isSelected) PointGreen else Color.Transparent,
-                shape = RoundedCornerShape(16.dp)
+                shape = RoundedCornerShape(Dimens.RadiusMedium)
             )
-            .background(White, RoundedCornerShape(16.dp))
+            .background(White, RoundedCornerShape(Dimens.RadiusMedium))
             .clickable(onClick = onClick)
-            .padding(vertical = 16.dp),
+            .padding(vertical = Dimens.SpacingMedium),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
         Box(
             modifier = Modifier
-                .size(52.dp)
+                .size(Dimens.FilterIconBoxSize)
                 .background(
                     color = if (isSelected) PointGreen else IconGray.copy(alpha = 0.15f),
                     shape = CircleShape
@@ -189,15 +198,17 @@ private fun FilterOption(
                 imageVector = icon,
                 contentDescription = label,
                 tint = if (isSelected) White else IconGray,
-                modifier = Modifier.size(28.dp)
+                modifier = Modifier.size(Dimens.FilterIconSize)
             )
         }
-        Spacer(modifier = Modifier.height(8.dp))
+        Spacer(modifier = Modifier.height(Dimens.SpacingXSmall))
         Text(
             text = label,
-            fontSize = 13.sp,
-            fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal,
-            color = if (isSelected) PointGreen else TextMain
+            style = MaterialTheme.typography.bodySmall.copy(
+                fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal,
+                fontSize = Dimens.TextSizeSmall,
+                color = if (isSelected) PointGreen else TextMain
+            )
         )
     }
 }

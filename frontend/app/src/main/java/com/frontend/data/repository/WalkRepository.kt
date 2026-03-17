@@ -15,16 +15,16 @@ class WalkRepository @Inject constructor(
     /**
      * 산책 시작 API 호출.
      * TokenDataStore에서 accessToken·dogId를 직접 조회하므로 외부 주입 불필요.
-     * @return 서버가 발급한 walkId
+     * @return Result<Long> — 성공 시 서버가 발급한 walkId, 실패 시 예외를 래핑
      */
-    suspend fun startWalk(): Long {
+    suspend fun startWalk(): Result<Long> = runCatching {
         val token = tokenDataStore.getAccessToken().first()
             ?: throw Exception("로그인이 필요합니다")
         val dogId = tokenDataStore.getDogId().first()
             ?: throw Exception("강아지 정보가 없습니다")
 
         val response = walkApi.startWalk("Bearer $token", StartWalkRequest(dogId))
-        return response.data?.walkId
+        response.data?.walkId
             ?: throw Exception("산책 시작 실패: walkId가 없습니다")
     }
 
