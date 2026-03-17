@@ -13,6 +13,9 @@ pipeline {
                 git branch: 'develop',
                     url: 'https://lab.ssafy.com/s14-bigdata-recom-sub1/S14P21E108.git',
                     credentialsId: 'gitlab-auth'
+                script {
+                    env.CURRENT_BRANCH = sh(script: 'git rev-parse --abbrev-ref HEAD', returnStdout: true).trim()
+                }
             }
         }
 
@@ -35,13 +38,13 @@ pipeline {
                 dir('frontend') {
                     sh 'chmod +x gradlew'
                     script {
-                        def isMain = (env.BRANCH_NAME == 'main' || env.GIT_BRANCH == 'origin/main')
-                        if (isMain) {
+                        if (env.CURRENT_BRANCH == 'main') {
                             sh './gradlew clean assembleRelease --no-daemon --stacktrace'
                         } else {
                             sh './gradlew clean assembleDebug --no-daemon --stacktrace'
                         }
                     }
+                    archiveArtifacts artifacts: 'app/build/outputs/apk/**/*.apk', fingerprint: true
                 }
             }
         }
@@ -50,10 +53,7 @@ pipeline {
             when {
                 allOf {
                     changeset "frontend/**"
-                    anyOf {
-                        branch 'develop'
-                        expression { return sh(script: 'git rev-parse --abbrev-ref HEAD', returnStdout: true).trim() == 'develop' }
-                    }
+                    expression { return env.CURRENT_BRANCH == 'develop' }
                 }
             }
             steps {
@@ -65,7 +65,7 @@ pipeline {
                                 app/build/outputs/apk/debug/app-debug.apk \
                                 --app ${FIREBASE_APP_ID} \
                                 --groups "dev-testers" \
-                                --release-notes "DEV Build #${BUILD_NUMBER} - ${GIT_BRANCH}"
+                                --release-notes "DEV Build #${BUILD_NUMBER} - ${env.CURRENT_BRANCH}"
                         """
                     }
                 }
@@ -76,10 +76,7 @@ pipeline {
             when {
                 allOf {
                     changeset "frontend/**"
-                    anyOf {
-                        branch 'main'
-                        expression { return sh(script: 'git rev-parse --abbrev-ref HEAD', returnStdout: true).trim() == 'main' }
-                    }
+                    expression { return env.CURRENT_BRANCH == 'main' }
                 }
             }
             steps {
@@ -91,7 +88,7 @@ pipeline {
                                 app/build/outputs/apk/release/app-release.apk \
                                 --app ${FIREBASE_APP_ID} \
                                 --groups "release-testers" \
-                                --release-notes "PROD Release #${BUILD_NUMBER} - ${GIT_BRANCH}"
+                                --release-notes "PROD Release #${BUILD_NUMBER} - ${env.CURRENT_BRANCH}"
                         """
                     }
                 }
