@@ -29,9 +29,10 @@ object RepositoryModule {
     @Provides
     @Singleton
     fun provideHomeRepository(
-        homeApi: HomeApi
+        homeApi: HomeApi,
+        tokenDataStore: TokenDataStore
     ): HomeRepository {
-        return HomeRepository(homeApi)
+        return HomeRepository(homeApi, tokenDataStore)
     }
 
     @Provides

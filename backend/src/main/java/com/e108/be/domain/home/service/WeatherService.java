@@ -51,7 +51,7 @@ public class WeatherService {
             return cached.data;
         }
 
-        log.info("기상청 API 호출: nx={}, ny={}", grid[0], grid[1]);
+        log.info("기상청 API 호출: lat={}, lon={}, nx={}, ny={}", latitude, longitude, grid[0], grid[1]);
         WeatherData data = fetchFromApi(grid[0], grid[1]);
         cache.put(cacheKey, new CachedWeather(data, LocalDateTime.now()));
         return data;
@@ -77,6 +77,7 @@ public class WeatherService {
 
             // URI.create()로 이중 인코딩 방지 (서비스키에 %2B, %2F 등 포함)
             String response = restTemplate.getForObject(URI.create(url), String.class);
+            log.info("기상청 API 응답: {}", response);
             return parseWeatherResponse(response);
 
         } catch (WeatherApiException e) {
@@ -114,8 +115,16 @@ public class WeatherService {
             String skyCode = "1";
             String ptyCode = "0";
 
-            // 가장 가까운 예보 시간의 데이터를 추출
+            // 가장 가까운 예보 시간(첫 번째 fcstTime)의 데이터만 추출
+            String targetFcstTime = null;
             for (JsonNode item : items) {
+                String fcstTime = item.path("fcstTime").asText();
+                if (targetFcstTime == null) {
+                    targetFcstTime = fcstTime;
+                }
+                if (!fcstTime.equals(targetFcstTime)) {
+                    continue;
+                }
                 String category = item.path("category").asText();
                 String value = item.path("fcstValue").asText();
 

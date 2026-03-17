@@ -1,5 +1,11 @@
 package com.frontend.ui.screen.home.components
 
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -18,6 +24,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -43,7 +50,60 @@ fun CharacterSection(
     val characterRes = getCharacterImage(characterType)
     val statusColor = getWalkStatusColor(walkStatus)
     val statusLabel = getWalkStatusLabel(walkStatus)
+    val sky = characterType.split("_").getOrNull(0) ?: ""
     val showClouds = walkStatus == "GOOD"
+    val showBest = walkStatus == "GREAT"
+    val showSun = sky == "SUNNY" && walkStatus == "CAUTION"
+    val showRain = sky in listOf("RAINY", "SNOWY")
+
+    // 애니메이션
+    val infiniteTransition = rememberInfiniteTransition(label = "decoration")
+    val leftOffset by infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = -14f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(2200, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "leftAnim"
+    )
+    val rightOffset by infiniteTransition.animateFloat(
+        initialValue = -12f,
+        targetValue = 0f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(2800, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "rightAnim"
+    )
+    // sun/rain용 위아래 애니메이션
+    val sunOffset by infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = -10f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(1800, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "sunAnim"
+    )
+    val rainLeftOffset by infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = 8f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(1500, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "rainLeft"
+    )
+    val rainRightOffset by infiniteTransition.animateFloat(
+        initialValue = 8f,
+        targetValue = 0f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(1700, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "rainRight"
+    )
 
     Column(
         modifier = Modifier.fillMaxWidth(),
@@ -62,26 +122,81 @@ fun CharacterSection(
                 contentScale = ContentScale.Fit
             )
 
-            // GOOD일 때 구름 - 강아지 귀 옆에 아기자기하게
+            // GOOD - 구름
             if (showClouds) {
-                // 왼쪽 구름 - 강아지 머리 바로 왼쪽
                 Image(
                     painter = painterResource(id = R.drawable.cloud),
                     contentDescription = "구름",
                     modifier = Modifier
                         .size(65.dp)
                         .align(Alignment.TopStart)
-                        .offset(x = 4.dp, y = 48.dp),
+                        .offset(x = 4.dp, y = (48 + leftOffset).dp),
                     contentScale = ContentScale.Fit
                 )
-                // 오른쪽 구름 - 강아지 머리 바로 오른쪽
                 Image(
                     painter = painterResource(id = R.drawable.cloud),
                     contentDescription = "구름",
                     modifier = Modifier
                         .size(50.dp)
                         .align(Alignment.TopEnd)
-                        .offset(x = (-28).dp, y = 36.dp),
+                        .offset(x = (-28).dp, y = (36 + rightOffset).dp),
+                    contentScale = ContentScale.Fit
+                )
+            }
+
+            // BEST - best_left / best_rignt 양쪽
+            if (showBest) {
+                Image(
+                    painter = painterResource(id = R.drawable.best_left),
+                    contentDescription = "베스트 왼쪽",
+                    modifier = Modifier
+                        .size(70.dp)
+                        .align(Alignment.CenterStart)
+                        .offset(x = 4.dp, y = leftOffset.dp),
+                    contentScale = ContentScale.Fit
+                )
+                Image(
+                    painter = painterResource(id = R.drawable.best_rignt),
+                    contentDescription = "베스트 오른쪽",
+                    modifier = Modifier
+                        .size(70.dp)
+                        .align(Alignment.CenterEnd)
+                        .offset(x = (-4).dp, y = rightOffset.dp),
+                    contentScale = ContentScale.Fit
+                )
+            }
+
+            // HOT - 태양
+            if (showSun) {
+                Image(
+                    painter = painterResource(id = R.drawable.sun),
+                    contentDescription = "태양",
+                    modifier = Modifier
+                        .size(60.dp)
+                        .align(Alignment.TopEnd)
+                        .offset(x = (-12).dp, y = (20 + sunOffset).dp),
+                    contentScale = ContentScale.Fit
+                )
+            }
+
+            // RAINY - 비 양쪽
+            if (showRain) {
+                Image(
+                    painter = painterResource(id = R.drawable.rain),
+                    contentDescription = "비 왼쪽",
+                    modifier = Modifier
+                        .size(55.dp)
+                        .align(Alignment.TopStart)
+                        .offset(x = 8.dp, y = (30 + rainLeftOffset).dp),
+                    contentScale = ContentScale.Fit
+                )
+                Image(
+                    painter = painterResource(id = R.drawable.rain),
+                    contentDescription = "비 오른쪽",
+                    modifier = Modifier
+                        .size(55.dp)
+                        .align(Alignment.TopEnd)
+                        .offset(x = (-8).dp, y = (40 + rainRightOffset).dp),
                     contentScale = ContentScale.Fit
                 )
             }
