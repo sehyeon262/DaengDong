@@ -2,12 +2,14 @@ package com.frontend.ui.screen.dog
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.frontend.data.local.TokenDataStore
 import com.frontend.data.repository.DogRepository
 import com.frontend.domain.model.UpdateDogRequest
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import javax.inject.Inject
@@ -17,7 +19,7 @@ data class DogEditState(
     val isSaving: Boolean = false,
     val isSaved: Boolean = false,
     val error: String? = null,
-    val dogId: Long = 1L,
+    val dogId: Long = 0L,
     val name: String = "",
     val breed: String = "",
     val birthYear: String = "",
@@ -30,7 +32,8 @@ data class DogEditState(
 
 @HiltViewModel
 class DogEditViewModel @Inject constructor(
-    private val dogRepository: DogRepository
+    private val dogRepository: DogRepository,
+    private val tokenDataStore: TokenDataStore
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(DogEditState())
@@ -44,7 +47,9 @@ class DogEditViewModel @Inject constructor(
         viewModelScope.launch {
             _state.update { it.copy(isLoading = true, error = null) }
             try {
-                val profile = dogRepository.getDogProfile(1L)
+                val dogId = tokenDataStore.getDogId().first()
+                    ?: throw Exception("반려견 정보가 없습니다. 다시 로그인해주세요.")
+                val profile = dogRepository.getDogProfile(dogId)
                 val parts = profile.birthDate.split("-")
                 _state.update {
                     it.copy(

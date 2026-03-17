@@ -16,6 +16,7 @@ import lombok.Getter;
 public class LoginResponse {
 
     private Long userId;
+    private Long dogId;
     private String accessToken;
     private String refreshToken;
 }
