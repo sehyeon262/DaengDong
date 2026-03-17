@@ -26,19 +26,26 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.navigation.NavController
 import coil.compose.AsyncImage
 import com.frontend.R
 import com.frontend.domain.model.DogProfileResponse
+import com.frontend.navigation.Routes
 import com.frontend.ui.theme.PointGreen
 import com.frontend.ui.theme.TextGray
 import com.frontend.ui.theme.TextMain
 import java.util.Calendar
+import androidx.compose.ui.platform.LocalLifecycleOwner
 
-private val MOCK_TRAITS = listOf("겁쟁이", "에너지이저", "짖음 많음")
 private val TRAIT_COLORS = listOf(
     Color(0xFFB2EBE9) to Color(0xFF2E7D7B),
     Color(0xFFFFF9C4) to Color(0xFF7B6D00),
     Color(0xFFF0F0F0) to Color(0xFF555555),
+    Color(0xFFFFCDD2) to Color(0xFF9B2226),
+    Color(0xFFD1C4E9) to Color(0xFF4527A0),
+    Color(0xFFFFE0B2) to Color(0xFF8B4513),
 )
 private const val MOCK_WALK_MINUTES = 45
 private const val MOCK_WALK_KM = 1.2
@@ -67,8 +74,22 @@ private fun calculateAge(birthDateStr: String): Int {
 }
 
 @Composable
-fun DogProfileScreen(viewModel: DogProfileViewModel = hiltViewModel()) {
+fun DogProfileScreen(
+    navController: NavController,
+    viewModel: DogProfileViewModel = hiltViewModel()
+) {
     val state by viewModel.state.collectAsState()
+    val lifecycleOwner = LocalLifecycleOwner.current
+
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                viewModel.loadDogProfile()
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
 
     Column(
         modifier = Modifier
@@ -83,7 +104,7 @@ fun DogProfileScreen(viewModel: DogProfileViewModel = hiltViewModel()) {
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text("반려견 프로필", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = TextMain)
-            IconButton(onClick = {}) {
+            IconButton(onClick = { navController.navigate(Routes.DOG_EDIT) }) {
                 Icon(Icons.Filled.Edit, contentDescription = "수정", tint = PointGreen)
             }
         }
@@ -112,7 +133,7 @@ private fun DogProfileContent(profile: DogProfileResponse) {
         verticalArrangement = Arrangement.spacedBy(20.dp)
     ) {
         item { ProfileSection(profile) }
-        item { TraitsSection() }
+        item { TraitsSection(profile.traits.orEmpty()) }
         item { WalkStatsSection() }
         item { RecentFriendSection() }
         item { BadgeSection() }
@@ -172,16 +193,20 @@ private fun ProfileSection(profile: DogProfileResponse) {
 }
 
 @Composable
-private fun TraitsSection() {
+private fun TraitsSection(traits: List<String>) {
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
         Text("성향", fontSize = 16.sp, fontWeight = FontWeight.SemiBold, color = TextMain)
-        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            MOCK_TRAITS.chunked(2).forEach { row ->
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    row.forEach { trait ->
-                        val idx = MOCK_TRAITS.indexOf(trait).coerceIn(0, TRAIT_COLORS.size - 1)
-                        val (bg, fg) = TRAIT_COLORS[idx]
-                        TraitChip(trait, bg, fg)
+        if (traits.isEmpty()) {
+            Text("등록된 성향 태그가 없습니다", fontSize = 13.sp, color = TextGray)
+        } else {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                traits.chunked(2).forEach { row ->
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        row.forEachIndexed { i, trait ->
+                            val idx = (traits.indexOf(trait) + i).coerceIn(0, TRAIT_COLORS.size - 1)
+                            val (bg, fg) = TRAIT_COLORS[idx]
+                            TraitChip(trait, bg, fg)
+                        }
                     }
                 }
             }
