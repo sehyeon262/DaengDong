@@ -8,9 +8,14 @@ pipeline {
     }
 
     stages {
-        // ============================================
-        // local.properties 생성 (API 키 주입)
-        // ============================================
+        stage('Checkout') {
+            steps {
+                git branch: 'develop',
+                    url: 'https://lab.ssafy.com/s14-bigdata-recom-sub1/S14P21E108.git',
+                    credentialsId: 'gitlab-auth'
+            }
+        }
+
         stage('Setup Properties') {
             when {
                 changeset "frontend/**"
@@ -22,9 +27,6 @@ pipeline {
             }
         }
 
-        // ============================================
-        // APK 빌드: develop → debug, main → release
-        // ============================================
         stage('Build APK') {
             when {
                 changeset "frontend/**"
@@ -44,9 +46,6 @@ pipeline {
             }
         }
 
-        // ============================================
-        // DEV 배포: develop 브랜치 → dev-testers 그룹
-        // ============================================
         stage('Deploy to Dev') {
             when {
                 allOf {
@@ -73,9 +72,6 @@ pipeline {
             }
         }
 
-        // ============================================
-        // PROD 배포: main 브랜치 → release-testers 그룹
-        // ============================================
         stage('Deploy to Prod') {
             when {
                 allOf {
