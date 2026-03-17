@@ -1,13 +1,12 @@
 package com.frontend.ui.screen.walk
 
-import androidx.compose.foundation.Canvas
+import android.Manifest
+import android.content.pm.PackageManager
 import androidx.compose.foundation.Image
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -28,29 +27,42 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.viewinterop.AndroidView
+import androidx.core.app.ActivityCompat
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.frontend.R
 import com.frontend.ui.component.MapOverlayButton
 import com.frontend.ui.screen.walk.components.WalkRouteCard
 import com.frontend.ui.screen.walk.components.WalkSearchBar
 import com.frontend.ui.theme.PointGreen
 import com.frontend.ui.theme.TextMain
+import com.google.android.gms.location.LocationServices
+import com.kakao.vectormap.KakaoMap
+import com.kakao.vectormap.KakaoMapReadyCallback
+import com.kakao.vectormap.LatLng
+import com.kakao.vectormap.MapLifeCycleCallback
+import com.kakao.vectormap.MapView
+import com.kakao.vectormap.camera.CameraUpdateFactory
 
 @Composable
 fun WalkScreen(
@@ -58,6 +70,9 @@ fun WalkScreen(
 ) {
     val state by viewModel.state.collectAsState()
     val routes = viewModel.routes
+    val context = LocalContext.current
+
+    var kakaoMap by remember { mutableStateOf<KakaoMap?>(null) }
 
     val pagerState = rememberPagerState(
         initialPage = state.selectedRouteIndex,
@@ -80,8 +95,11 @@ fun WalkScreen(
 
     Box(modifier = Modifier.fillMaxSize()) {
 
-        // ── 1. 지도 배경 ──────────────────────────────────────────────
-        MapBackground(modifier = Modifier.fillMaxSize())
+        // ── 1. 카카오맵 ─────────────────────────────────────────────────
+        KakaoMapView(
+            modifier = Modifier.fillMaxSize(),
+            onMapReady = { map -> kakaoMap = map }
+        )
 
         // ── 2. 지도 위 강아지 캐릭터 + 시야 원뿔 ────────────────────
         MapCharacter(
@@ -176,7 +194,9 @@ fun WalkScreen(
             MapOverlayButton(
                 icon = Icons.Filled.GpsFixed,
                 contentDescription = "현재 위치",
-                onClick = {}
+                onClick = {
+                    moveToCurrentLocation(context, kakaoMap)
+                }
             )
             MapOverlayButton(
                 icon = Icons.Filled.FilterAlt,
@@ -187,95 +207,72 @@ fun WalkScreen(
     }
 }
 
-// ── 지도 플레이스홀더 ─────────────────────────────────────────────────────────
+// ── 카카오맵 뷰 ───────────────────────────────────────────────────────────────
 @Composable
-private fun MapBackground(modifier: Modifier = Modifier) {
-    Canvas(modifier = modifier) {
-        // 배경 (연한 베이지/회색 - 지도 색상)
-        drawRect(color = Color(0xFFEEECE4))
+private fun KakaoMapView(
+    modifier: Modifier = Modifier,
+    onMapReady: (KakaoMap) -> Unit = {}
+) {
+    val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
+    val mapView = remember { MapView(context) }
 
-        // 도로 (수평)
-        val roadColor = Color(0xFFFFFFFF)
-        val roadWidth = 28.dp.toPx()
-        drawRect(
-            color = roadColor,
-            topLeft = Offset(0f, size.height * 0.35f - roadWidth / 2),
-            size = androidx.compose.ui.geometry.Size(size.width, roadWidth)
-        )
-        drawRect(
-            color = roadColor,
-            topLeft = Offset(0f, size.height * 0.65f - roadWidth / 2),
-            size = androidx.compose.ui.geometry.Size(size.width, roadWidth)
-        )
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            when (event) {
+                Lifecycle.Event.ON_RESUME -> mapView.resume()
+                Lifecycle.Event.ON_PAUSE -> mapView.pause()
+                else -> {}
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
 
-        // 도로 (수직)
-        drawRect(
-            color = roadColor,
-            topLeft = Offset(size.width * 0.28f - roadWidth / 2, 0f),
-            size = androidx.compose.ui.geometry.Size(roadWidth, size.height)
-        )
-        drawRect(
-            color = roadColor,
-            topLeft = Offset(size.width * 0.68f - roadWidth / 2, 0f),
-            size = androidx.compose.ui.geometry.Size(roadWidth, size.height)
-        )
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+            mapView.finish()
+        }
+    }
 
-        // 건물 블록
-        val blockColor = Color(0xFFDDDACF)
-        drawRoundRect(
-            color = blockColor,
-            topLeft = Offset(size.width * 0.05f, size.height * 0.08f),
-            size = androidx.compose.ui.geometry.Size(size.width * 0.20f, size.height * 0.24f),
-            cornerRadius = androidx.compose.ui.geometry.CornerRadius(8.dp.toPx())
-        )
-        drawRoundRect(
-            color = blockColor,
-            topLeft = Offset(size.width * 0.32f, size.height * 0.08f),
-            size = androidx.compose.ui.geometry.Size(size.width * 0.32f, size.height * 0.24f),
-            cornerRadius = androidx.compose.ui.geometry.CornerRadius(8.dp.toPx())
-        )
-        drawRoundRect(
-            color = blockColor,
-            topLeft = Offset(size.width * 0.72f, size.height * 0.08f),
-            size = androidx.compose.ui.geometry.Size(size.width * 0.22f, size.height * 0.24f),
-            cornerRadius = androidx.compose.ui.geometry.CornerRadius(8.dp.toPx())
-        )
-        drawRoundRect(
-            color = blockColor,
-            topLeft = Offset(size.width * 0.05f, size.height * 0.38f),
-            size = androidx.compose.ui.geometry.Size(size.width * 0.20f, size.height * 0.24f),
-            cornerRadius = androidx.compose.ui.geometry.CornerRadius(8.dp.toPx())
-        )
-        drawRoundRect(
-            color = blockColor,
-            topLeft = Offset(size.width * 0.32f, size.height * 0.38f),
-            size = androidx.compose.ui.geometry.Size(size.width * 0.32f, size.height * 0.24f),
-            cornerRadius = androidx.compose.ui.geometry.CornerRadius(8.dp.toPx())
-        )
-        drawRoundRect(
-            color = blockColor,
-            topLeft = Offset(size.width * 0.72f, size.height * 0.38f),
-            size = androidx.compose.ui.geometry.Size(size.width * 0.22f, size.height * 0.24f),
-            cornerRadius = androidx.compose.ui.geometry.CornerRadius(8.dp.toPx())
-        )
-        drawRoundRect(
-            color = blockColor,
-            topLeft = Offset(size.width * 0.05f, size.height * 0.68f),
-            size = androidx.compose.ui.geometry.Size(size.width * 0.20f, size.height * 0.24f),
-            cornerRadius = androidx.compose.ui.geometry.CornerRadius(8.dp.toPx())
-        )
-        drawRoundRect(
-            color = blockColor,
-            topLeft = Offset(size.width * 0.32f, size.height * 0.68f),
-            size = androidx.compose.ui.geometry.Size(size.width * 0.32f, size.height * 0.24f),
-            cornerRadius = androidx.compose.ui.geometry.CornerRadius(8.dp.toPx())
-        )
-        drawRoundRect(
-            color = blockColor,
-            topLeft = Offset(size.width * 0.72f, size.height * 0.68f),
-            size = androidx.compose.ui.geometry.Size(size.width * 0.22f, size.height * 0.24f),
-            cornerRadius = androidx.compose.ui.geometry.CornerRadius(8.dp.toPx())
-        )
+    AndroidView(
+        factory = { _ ->
+            mapView.apply {
+                start(
+                    object : MapLifeCycleCallback() {
+                        override fun onMapDestroy() {}
+                        override fun onMapError(error: Exception) {
+                            android.util.Log.e("KakaoMap", "onMapError: ${error.message}", error)
+                        }
+                    },
+                    object : KakaoMapReadyCallback() {
+                        override fun onMapReady(kakaoMap: KakaoMap) {
+                            android.util.Log.d("KakaoMap", "onMapReady 성공!")
+                            onMapReady(kakaoMap)
+                        }
+                    }
+                )
+                // start() 이후 이미 RESUMED 상태이면 resume() 호출
+                if (lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) {
+                    resume()
+                }
+            }
+        },
+        modifier = modifier
+    )
+}
+
+// ── 현재 위치로 카메라 이동 ────────────────────────────────────────────────────
+private fun moveToCurrentLocation(context: android.content.Context, kakaoMap: KakaoMap?) {
+    if (kakaoMap == null) return
+    if (ActivityCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION)
+        != PackageManager.PERMISSION_GRANTED
+    ) return
+
+    val fusedLocationClient = LocationServices.getFusedLocationProviderClient(context)
+    fusedLocationClient.lastLocation.addOnSuccessListener { location ->
+        location?.let {
+            val position = LatLng.from(it.latitude, it.longitude)
+            kakaoMap.moveCamera(CameraUpdateFactory.newCenterPosition(position, 15))
+        }
     }
 }
 
@@ -287,13 +284,13 @@ private fun MapCharacter(modifier: Modifier = Modifier) {
         contentAlignment = Alignment.BottomCenter
     ) {
         // 시야 원뿔 (Canvas)
-        Canvas(
+        androidx.compose.foundation.Canvas(
             modifier = Modifier
                 .width(120.dp)
                 .height(130.dp)
                 .align(Alignment.BottomCenter)
         ) {
-            val path = Path().apply {
+            val path = androidx.compose.ui.graphics.Path().apply {
                 moveTo(size.width / 2, 0f)
                 lineTo(0f, size.height)
                 lineTo(size.width, size.height)
@@ -301,7 +298,7 @@ private fun MapCharacter(modifier: Modifier = Modifier) {
             }
             drawPath(
                 path = path,
-                brush = Brush.verticalGradient(
+                brush = androidx.compose.ui.graphics.Brush.verticalGradient(
                     colors = listOf(
                         PointGreen.copy(alpha = 0.45f),
                         PointGreen.copy(alpha = 0.15f)

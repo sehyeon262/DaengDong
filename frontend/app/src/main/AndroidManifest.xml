@@ -16,6 +16,10 @@
         android:supportsRtl="true"
         android:usesCleartextTraffic="true"
         android:theme="@style/Theme.Frontend">
+        <meta-data
+            android:name="com.kakao.vectormap.APP_KEY"
+            android:value="${kakaoMapApiKey}" />
+
         <activity
             android:name=".MainActivity"
             android:exported="true"
