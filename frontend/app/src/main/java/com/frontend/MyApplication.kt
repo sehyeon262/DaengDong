@@ -12,7 +12,11 @@ import java.security.MessageDigest
 class MyApplication : Application() {
     override fun onCreate() {
         super.onCreate()
-        KakaoMapSdk.init(this, BuildConfig.KAKAO_MAP_API_KEY)
+        try {
+            KakaoMapSdk.init(this, BuildConfig.KAKAO_MAP_API_KEY)
+        } catch (e: Exception) {
+            // 에뮬레이터(x86_64)에서는 카카오맵 네이티브 라이브러리 미지원 - 무시
+        }
         if (BuildConfig.DEBUG) {
             printKeyHash()
         }
