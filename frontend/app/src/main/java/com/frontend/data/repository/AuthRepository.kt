@@ -12,16 +12,14 @@ class AuthRepository @Inject constructor(
 ) {
 
     suspend fun login(email: String, password: String): LoginResponse {
-        // 서버에 로그인 요청
         val response = api.login(LoginRequest(email, password))
+        val loginData = response.data ?: throw Exception("로그인 응답 데이터가 없습니다")
 
-        // 토큰 로컬에 저장
         tokenDataStore.saveTokens(
-            accessToken = response.accessToken,
-            refreshToken = response.refreshToken
+            accessToken = loginData.accessToken,
+            refreshToken = loginData.refreshToken
         )
 
-        // 응답 반환
-        return response
+        return loginData
     }
 }

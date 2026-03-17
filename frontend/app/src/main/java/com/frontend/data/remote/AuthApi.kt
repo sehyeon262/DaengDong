@@ -1,5 +1,6 @@
 package com.frontend.data.remote
 
+import com.frontend.domain.model.ApiResponse
 import com.frontend.domain.model.LoginRequest
 import com.frontend.domain.model.LoginResponse
 import retrofit2.http.Body
@@ -10,5 +11,5 @@ interface AuthApi {
     @POST("auth/login")
     suspend fun login(
         @Body request: LoginRequest
-    ): LoginResponse
+    ): ApiResponse<LoginResponse>
 }

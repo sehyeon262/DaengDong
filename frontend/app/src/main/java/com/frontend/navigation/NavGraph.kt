@@ -14,6 +14,8 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import com.frontend.ui.screen.dog.DogEditScreen
+import com.frontend.ui.screen.dog.DogProfileScreen
 import com.frontend.ui.screen.home.HomeScreen
 import com.frontend.ui.screen.login.LoginScreen
 import com.frontend.ui.screen.walk.WalkScreen
@@ -37,7 +39,7 @@ fun NavGraph() {
     ) { innerPadding ->
         NavHost(
             navController = navController,
-            startDestination = Routes.HOME,
+            startDestination = Routes.LOGIN,
             modifier = Modifier.padding(innerPadding)
         ) {
             composable(Routes.LOGIN) {
@@ -53,7 +55,10 @@ fun NavGraph() {
                 PlaceholderScreen("기록")
             }
             composable(Routes.MY_INFO) {
-                PlaceholderScreen("내정보")
+                DogProfileScreen(navController = navController)
+            }
+            composable(Routes.DOG_EDIT) {
+                DogEditScreen(navController = navController)
             }
         }
     }

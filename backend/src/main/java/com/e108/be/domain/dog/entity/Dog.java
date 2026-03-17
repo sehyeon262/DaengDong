@@ -48,7 +48,7 @@ public class Dog extends BaseEntity {
     private String profileImageUrl;
 
     // 별도 dog_traits 테이블로 관리 (ERD에 없지만 API 명세 요구사항)
-    @ElementCollection
+    @ElementCollection(fetch = jakarta.persistence.FetchType.EAGER)
     @CollectionTable(name = "dog_traits", joinColumns = @JoinColumn(name = "dog_id"))
     @Column(name = "trait")
     private List<String> traits = new ArrayList<>();

@@ -5,6 +5,7 @@ import lombok.Getter;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.List;
 
 @Getter
 public class DogProfileResponse {
@@ -14,6 +15,7 @@ public class DogProfileResponse {
     private LocalDate birthDate;
     private BigDecimal weight;
     private String gender;
+    private List<String> traits;
 
     public DogProfileResponse(Dog dog) {
         this.dogId = dog.getId();
@@ -22,5 +24,6 @@ public class DogProfileResponse {
         this.birthDate = dog.getBirthDate();
         this.weight = dog.getWeight();
         this.gender = dog.getGender();
+        this.traits = dog.getTraits();
     }
 }
