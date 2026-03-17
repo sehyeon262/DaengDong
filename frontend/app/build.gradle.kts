@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
@@ -5,6 +7,11 @@ plugins {
     alias(libs.plugins.hilt)
     kotlin("kapt")
 }
+
+val localProps = Properties()
+val localPropsFile = rootProject.file("local.properties")
+if (localPropsFile.exists()) localPropsFile.inputStream().use { localProps.load(it) }
+val kakaoMapApiKey: String = localProps.getProperty("KAKAO_MAP_API_KEY", "")
 
 android {
     namespace = "com.frontend"
@@ -18,6 +25,9 @@ android {
         versionName = "1.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+
+        manifestPlaceholders["kakaoMapApiKey"] = kakaoMapApiKey
+        buildConfigField("String", "KAKAO_MAP_API_KEY", "\"$kakaoMapApiKey\"")
     }
 
     buildTypes {
@@ -38,6 +48,12 @@ android {
     }
     buildFeatures {
         compose = true
+        buildConfig = true
+    }
+    packaging {
+        jniLibs {
+            useLegacyPackaging = true
+        }
     }
 }
 
@@ -74,4 +90,6 @@ dependencies {
     implementation(libs.coil.compose)
     // Location
     implementation(libs.play.services.location)
+    // Kakao Maps
+    implementation(libs.kakao.maps)
 }

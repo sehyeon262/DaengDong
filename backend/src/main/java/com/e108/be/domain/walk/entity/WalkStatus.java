@@ -1,5 +1,7 @@
 package com.e108.be.domain.walk.entity;
 
 public enum WalkStatus {
-    IN_PROGRESS, COMPLETED, CANCELED
+    IN_PROGRESS,  // 산책 중
+    COMPLETED,    // 산책 완료
+    CANCELED      // 산책 취소
 }

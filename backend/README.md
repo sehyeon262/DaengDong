@@ -1,33 +1,3 @@
-# E108 Backend
-
-## 기술 스택
-- Java 17 / Spring Boot 3.5
-- Spring Security + JWT
-- Spring Data JPA + PostgreSQL
-- Gradle
-
----
-
-## 실행 전 준비
-
-### 1. `.env` 파일 생성
-프로젝트 루트(`build.gradle`과 같은 위치)에 `.env` 파일을 만들고 본인 환경에 맞게 값을 채워주세요.
-```
-DB_PASSWORD=본인_PostgreSQL_비밀번호
-JWT_SECRET=32자_이상의_시크릿키_아무거나
-```
-> `.env`는 `.gitignore`에 포함되어 있어 Git에 올라가지 않습니다.
-
-### 2. PostgreSQL 데이터베이스 생성
-```sql
-CREATE DATABASE e108_db;
-```
-
-### 3. 실행
-```bash
-./gradlew bootRun
-```
-
 ---
 
 ## 프로젝트 구조
@@ -155,3 +125,142 @@ domain/board/
 └── exception/BoardNotFoundException.java  ← extends NotFoundGroupException
 ```
 > `global/` 쪽은 건드릴 필요 없이, `domain/` 안에서만 작업하면 됩니다.
+
+---
+
+## ⚠️ 팀원 필독 — 환경 변경 사항 (2026-03-16)
+
+> GPS 산책 기능(#107, #109, #110) 구현으로 인해 아래 변경 사항이 생겼습니다.
+> **Pull 후 반드시 아래 순서대로 환경을 다시 세팅해주세요.**
+
+### 1. Docker PostgreSQL 이미지 변경
+
+**변경 파일:** `infra/docker-compose-local.yaml`
+
+```yaml
+# 변경 전
+image: postgres:15
+
+# 변경 후
+image: postgis/postgis:15-3.5
+```
+
+**이유:** GPS 경로(`route_line`)를 `GEOGRAPHY(LINESTRING, 4326)` 타입으로 저장하기 위해 PostGIS 확장이 필요합니다.
+기존 `postgres:15` 이미지는 `geography` 타입을 지원하지 않아 서버 시작 시 오류가 발생합니다.
+
+**적용 방법 (볼륨까지 초기화 필요):**
+```bash
+cd infra
+docker-compose -f docker-compose-local.yaml down -v
+docker-compose -f docker-compose-local.yaml up -d
+```
+
+> ⚠️ `-v` 옵션은 기존 DB 데이터를 모두 삭제합니다. 로컬 테스트 데이터가 있다면 미리 백업하세요.
+
+---
+
+### 2. PostGIS 확장 활성화
+
+컨테이너 재시작 후, **한 번만** 아래 명령어를 실행해주세요:
+
+```bash
+docker exec -it e108-postgres-local psql -U postgres -d e108_db -c "CREATE EXTENSION IF NOT EXISTS postgis;"
+```
+
+이후 Spring Boot 서버를 시작하면 Hibernate가 `walk_records` 테이블을 자동 생성합니다.
+
+---
+
+### 3. Redis 추가
+
+Redis가 `docker-compose-local.yaml`에 포함되어 있습니다. (포트: 6379)
+`build.gradle`에 Redis 의존성이 추가되어 있으므로, Pull 후 빌드만 하면 됩니다.
+
+---
+
+## GPS 산책 기능 — 구현 내용 (#107, #109, #110)
+
+### 추가된 API
+
+| 메서드 | URL | 설명 |
+|--------|-----|------|
+| `POST` | `/api/v1/walks/{walkId}/locations` | GPS 좌표 배치 저장 |
+| `GET` | `/api/v1/walks/{walkId}/distance` | 누적 산책 거리 조회 |
+| `GET` | `/api/v1/walks/{walkId}/calories` | 소모 칼로리 조회 |
+
+### 동작 방식
+
+```
+산책 중 GPS 좌표 수신
+       ↓
+POST /walks/{walkId}/locations
+       ↓
+Redis List에 임시 저장 (키: "walk:gps:{walkId}")
+저장 형식: "위도,경도,타임스탬프"
+       ↓
+GET /walks/{walkId}/distance
+       ↓
+Redis에서 좌표 꺼내 Haversine 공식으로 거리 계산
+       ↓
+GET /walks/{walkId}/calories
+       ↓
+walk_records → dog → 체중 조회 → 체중 × 거리km × 0.8
+```
+
+### 칼로리 계산 공식
+
+```
+calories (kcal) = 체중(kg) × 거리(km) × 0.8
+```
+
+체중이 입력되지 않은 경우 `requiresWeight: true` 를 반환하여 프론트에서 입력 유도 UI를 표시합니다.
+
+### 요청/응답 예시
+
+**GPS 좌표 저장**
+```json
+// POST /api/v1/walks/1/locations
+{
+  "locations": [
+    { "latitude": 37.5665, "longitude": 126.9780, "timestamp": 1234567890000 },
+    { "latitude": 37.5670, "longitude": 126.9785, "timestamp": 1234567895000 }
+  ]
+}
+// 응답
+{ "code": 200, "message": "위치 저장 성공", "data": { "savedCount": 2 } }
+```
+
+**거리 조회**
+```json
+// GET /api/v1/walks/1/distance
+{ "code": 200, "message": "거리 조회 성공", "data": { "distanceM": 67.3, "distanceKm": 0.07 } }
+```
+
+**칼로리 조회**
+```json
+// GET /api/v1/walks/1/calories (체중 있을 때)
+{ "code": 200, "message": "칼로리 조회 성공", "data": { "calories": 0.3, "requiresWeight": false } }
+
+// GET /api/v1/walks/1/calories (체중 미입력 시)
+{ "code": 200, "message": "체중을 입력해 주세요", "data": { "requiresWeight": true } }
+```
+
+---
+
+## SecurityConfig 변경 사항
+
+`global/config/SecurityConfig.java`에 `/error` 경로 허용이 추가되었습니다.
+
+```java
+.authorizeHttpRequests(auth -> auth
+    .requestMatchers("/auth/**").permitAll()
+    .requestMatchers("/walks/**").permitAll()
+    .requestMatchers("/error").permitAll()   // ← 추가됨
+    .anyRequest().authenticated()
+)
+```
+
+**추가 이유:**
+Spring Boot는 서버 내부에서 오류(500 등)가 발생하면 자동으로 `/error` 경로로 포워딩합니다.
+`/error`가 허용되지 않으면 Spring Security가 이 요청을 차단하여 실제 오류 메시지 대신 **403 Forbidden**이 반환됩니다.
+추가 후에는 오류 발생 시 정확한 .,에러 메시지(500, 404 등)가 클라이언트에 전달됩니다.
