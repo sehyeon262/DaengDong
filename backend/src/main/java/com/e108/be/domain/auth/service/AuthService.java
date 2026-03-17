@@ -17,6 +17,7 @@ import com.e108.be.domain.auth.entity.Member;
 import com.e108.be.domain.auth.exception.AuthException;
 import com.e108.be.domain.auth.exception.EmailDuplicateException;
 import com.e108.be.domain.auth.repository.MemberRepository;
+import com.e108.be.domain.dog.repository.DogRepository;
 import com.e108.be.global.jwt.JwtTokenProvider;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
@@ -31,6 +32,7 @@ public class AuthService {
     private final MemberRepository memberRepository;
     private final BCryptPasswordEncoder passwordEncoder;
     private final JwtTokenProvider jwtTokenProvider;
+    private final DogRepository dogRepository;
 
     /**
      * 회원가입 처리 흐름:
@@ -82,11 +84,17 @@ public class AuthService {
         String token = jwtTokenProvider.createToken(member.getId(), member.getEmail());
         String refreshToken = jwtTokenProvider.createRefreshToken(member.getId(), member.getEmail());
 
-        // 4) 응답 DTO 만들어서 반환
+        // 4) 해당 유저의 반려견 ID 조회 (없으면 null)
+        Long dogId = dogRepository.findFirstByUserId(member.getId())
+                .map(dog -> dog.getId())
+                .orElse(null);
+
+        // 5) 응답 DTO 만들어서 반환
         return LoginResponse.builder()
                 .accessToken(token)
                 .refreshToken(refreshToken)
                 .userId(member.getId())
+                .dogId(dogId)
                 .build();
     }
 

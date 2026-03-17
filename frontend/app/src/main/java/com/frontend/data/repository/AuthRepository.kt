@@ -19,6 +19,7 @@ class AuthRepository @Inject constructor(
             accessToken = loginData.accessToken,
             refreshToken = loginData.refreshToken
         )
+        loginData.dogId?.let { tokenDataStore.saveDogId(it) }
 
         return loginData
     }
