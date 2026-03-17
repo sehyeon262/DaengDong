@@ -52,6 +52,7 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.frontend.R
 import com.frontend.ui.component.MapOverlayButton
+import com.frontend.ui.screen.walk.components.WalkFilterBottomSheet
 import com.frontend.ui.screen.walk.components.WalkRouteCard
 import com.frontend.ui.screen.walk.components.WalkSearchBar
 import com.frontend.ui.theme.PointGreen
@@ -201,7 +202,17 @@ fun WalkScreen(
             MapOverlayButton(
                 icon = Icons.Filled.FilterAlt,
                 contentDescription = "필터",
-                onClick = {}
+                onClick = { viewModel.showFilter() }
+            )
+        }
+
+        // ── 5. 필터 바텀시트 ────────────────────────────────────────────
+        if (state.showFilterSheet) {
+            WalkFilterBottomSheet(
+                selectedFilter = state.selectedFilter,
+                onFilterSelect = { viewModel.selectFilter(it) },
+                onApply = { viewModel.applyFilter() },
+                onDismiss = { viewModel.hideFilter() }
             )
         }
     }

@@ -8,10 +8,25 @@ plugins {
     kotlin("kapt")
 }
 
-val localProps = Properties()
-val localPropsFile = rootProject.file("local.properties")
-if (localPropsFile.exists()) localPropsFile.inputStream().use { localProps.load(it) }
-val kakaoMapApiKey: String = localProps.getProperty("KAKAO_MAP_API_KEY", "")
+fun loadEnv(): Properties {
+    val envFile = rootProject.file(".env")
+    val properties = Properties()
+
+    if (envFile.exists()) {
+        envFile.forEachLine { line ->
+            val cleanLine = line.trim()
+            if (cleanLine.isNotEmpty() && !cleanLine.startsWith("#")) {
+                val (key, value) = cleanLine.split("=", limit = 2)
+                properties[key] = value
+            }
+        }
+    }
+
+    return properties
+}
+
+val env = loadEnv()
+val kakaoMapApiKey = env.getProperty("KAKAO_MAP_API_KEY", "")
 
 android {
     namespace = "com.frontend"

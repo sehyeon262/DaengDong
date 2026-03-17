@@ -42,4 +42,20 @@ class WalkViewModel @Inject constructor() : ViewModel() {
     fun selectRoute(index: Int) {
         _state.update { it.copy(selectedRouteIndex = index) }
     }
+
+    fun showFilter() {
+        _state.update { it.copy(showFilterSheet = true) }
+    }
+
+    fun hideFilter() {
+        _state.update { it.copy(showFilterSheet = false) }
+    }
+
+    fun selectFilter(filter: WalkFilterType) {
+        _state.update { it.copy(selectedFilter = filter) }
+    }
+
+    fun applyFilter() {
+        _state.update { it.copy(showFilterSheet = false) }
+    }
 }
