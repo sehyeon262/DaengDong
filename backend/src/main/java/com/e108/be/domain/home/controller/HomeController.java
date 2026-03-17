@@ -7,6 +7,7 @@ import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -31,10 +32,11 @@ public class HomeController {
 
     @GetMapping
     public ResTemplate<HomeResponse> getHome(
+            @AuthenticationPrincipal Long memberId,
             @RequestParam @Min(-90) @Max(90) double latitude,
             @RequestParam @Min(-180) @Max(180) double longitude) {
 
-        HomeResponse response = homeService.getHomeData(latitude, longitude);
+        HomeResponse response = homeService.getHomeData(memberId, latitude, longitude);
         return ResTemplate.success(HttpStatus.OK, "홈 화면 조회 성공", response);
     }
 }

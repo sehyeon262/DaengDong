@@ -1,5 +1,9 @@
 package com.e108.be.domain.home.service;
 
+import com.e108.be.domain.auth.entity.Member;
+import com.e108.be.domain.auth.repository.MemberRepository;
+import com.e108.be.domain.dog.entity.Dog;
+import com.e108.be.domain.dog.repository.DogRepository;
 import com.e108.be.domain.home.dto.response.*;
 import com.e108.be.domain.home.enums.*;
 import lombok.RequiredArgsConstructor;
@@ -23,8 +27,10 @@ public class HomeService {
 
     private final WeatherService weatherService;
     private final AirQualityService airQualityService;
+    private final MemberRepository memberRepository;
+    private final DogRepository dogRepository;
 
-    public HomeResponse getHomeData(double latitude, double longitude) {
+    public HomeResponse getHomeData(Long memberId, double latitude, double longitude) {
         // 1. 외부 API 호출 (실패 시 기본값 반환)
         WeatherService.WeatherData weather = fetchWeatherSafely(latitude, longitude);
         AirQualityService.AirQualityData airQuality = fetchAirQualitySafely(latitude, longitude);
@@ -35,26 +41,25 @@ public class HomeService {
         FineDustGrade dustGrade = FineDustGrade.from(airQuality.pm10Value());
         WindGrade windGrade = WindGrade.from(weather.windSpeed());
         WalkStatus walkStatus = WalkStatus.calculate(tempGrade, dustGrade, windGrade, skyStatus);
+        Member member = memberRepository.findById(memberId).orElse(null);
+        Dog dog = dogRepository.findFirstByUserId(memberId).orElse(null);
+        String dogName = dog != null ? dog.getName() : "";
 
         // 3. 응답 조합
         return HomeResponse.builder()
-                .user(buildUserInfo())
+                .user(buildUserInfo(member, dog))
                 .location(buildLocationInfo(latitude, longitude))
                 .weather(buildWeatherInfo(weather, airQuality, skyStatus, tempGrade, dustGrade, windGrade))
-                .walk(buildWalkInfo(walkStatus, skyStatus))
+                .walk(buildWalkInfo(walkStatus, skyStatus, dogName))
                 .weeklySummary(null) // TODO: 산책 기록 구현 후 연동
                 .build();
     }
 
-    /**
-     * 사용자/반려견 정보
-     * TODO: auth 완성 후 실제 멤버 조회로 교체
-     */
-    private HomeUserInfo buildUserInfo() {
+    private HomeUserInfo buildUserInfo(Member member, Dog dog) {
         return HomeUserInfo.builder()
-                .nickname("서린")
-                .dogName("김뽀삐")
-                .dogProfileImageUrl("default.png")
+                .nickname(member != null ? member.getNickname() : "")
+                .dogName(dog != null ? dog.getName() : "")
+                .dogProfileImageUrl(dog != null ? dog.getProfileImageUrl() : null)
                 .build();
     }
 
@@ -91,8 +96,8 @@ public class HomeService {
                 .build();
     }
 
-    private HomeWalkInfo buildWalkInfo(WalkStatus walkStatus, SkyStatus skyStatus) {
-        String message = generateWalkMessage(walkStatus);
+    private HomeWalkInfo buildWalkInfo(WalkStatus walkStatus, SkyStatus skyStatus, String dogName) {
+        String message = generateWalkMessage(walkStatus, dogName);
         String characterType = generateCharacterType(skyStatus, walkStatus);
 
         return HomeWalkInfo.builder()
@@ -102,19 +107,28 @@ public class HomeService {
                 .build();
     }
 
-    /**
-     * 산책 적합도 기반 한 줄 메시지 (룰 기반)
-     */
-    private String generateWalkMessage(WalkStatus walkStatus) {
-        // TODO: auth 연동 후 반려견 이름 동적 삽입
-        String dogName = "뽀삐";
-
+    private String generateWalkMessage(WalkStatus walkStatus, String dogName) {
+        String nameWith = withParticle(dogName, "와", "이와");
         return switch (walkStatus) {
-            case GREAT -> "오늘 날씨가 좋아요. " + dogName + "와 함께 즐거운 산책 가볼까요?";
-            case GOOD -> "산책하기 무난한 날이에요. " + dogName + "와 가볍게 다녀오기 좋아요.";
-            case CAUTION -> "오늘은 환경이 조금 아쉬워요. " + dogName + "와 짧은 산책을 추천해요.";
-            case BAD -> "오늘은 산책을 쉬거나 " + dogName + "와 실내 놀이를 추천해요.";
+            case GREAT -> "오늘 날씨가 좋아요. " + nameWith + " 함께 즐거운 산책 가볼까요?";
+            case GOOD -> "산책하기 무난한 날이에요. " + nameWith + " 가볍게 다녀오기 좋아요.";
+            case CAUTION -> "오늘은 환경이 조금 아쉬워요. " + nameWith + " 짧은 산책을 추천해요.";
+            case BAD -> "오늘은 산책을 쉬거나 " + nameWith + " 실내 놀이를 추천해요.";
         };
+    }
+
+    /**
+     * 한국어 조사 처리 (받침 유무에 따라 조사 선택)
+     * 예: 와/이와, 가/이가, 을/를
+     */
+    private String withParticle(String name, String noFinal, String hasFinal) {
+        if (name == null || name.isEmpty()) return name + noFinal;
+        char lastChar = name.charAt(name.length() - 1);
+        if (lastChar >= 0xAC00 && lastChar <= 0xD7A3) {
+            int batchim = (lastChar - 0xAC00) % 28;
+            return name + (batchim == 0 ? noFinal : hasFinal);
+        }
+        return name + noFinal;
     }
 
     /**

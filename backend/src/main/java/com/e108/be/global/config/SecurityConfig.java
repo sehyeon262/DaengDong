@@ -43,7 +43,7 @@ public class SecurityConfig {
                         // context-path(/api/v1) 이후 경로만 매칭됨
                         .requestMatchers("/walks/**").permitAll()
 
-                        .requestMatchers("/home/**").permitAll() // TODO: auth 완성 후 제거
+
 
                         .anyRequest().authenticated()
                 )
