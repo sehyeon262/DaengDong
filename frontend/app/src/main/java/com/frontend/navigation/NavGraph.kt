@@ -16,6 +16,7 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.frontend.ui.screen.home.HomeScreen
 import com.frontend.ui.screen.login.LoginScreen
+import com.frontend.ui.screen.walk.WalkScreen
 
 @Composable
 fun NavGraph() {
@@ -46,7 +47,7 @@ fun NavGraph() {
                 HomeScreen()
             }
             composable(Routes.WALK) {
-                PlaceholderScreen("산책")
+                WalkScreen()
             }
             composable(Routes.RECORD) {
                 PlaceholderScreen("기록")
