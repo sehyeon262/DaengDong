@@ -59,9 +59,9 @@ fun HomeScreen(
     ) { permissions ->
         val granted = permissions.values.any { it }
         if (granted) {
-            fetchLocation(context) { lat, lng ->
+            fetchLocation(context) { lat, lng, fallbackAddress ->
                 scope.launch {
-                    val address = withContext(Dispatchers.IO) {
+                    val address = fallbackAddress ?: withContext(Dispatchers.IO) {
                         getAddressFromLatLng(context, lat, lng)
                     }
                     viewModel.loadHomeData(lat, lng, address)
@@ -69,7 +69,7 @@ fun HomeScreen(
                 }
             }
         } else {
-            viewModel.loadHomeData(35.1796, 129.0756, "부산광역시")
+            viewModel.loadHomeData(35.2322, 128.5469, "마산 내서읍")
             locationLoaded = true
         }
     }
@@ -108,9 +108,9 @@ fun HomeScreen(
                     )
                     Spacer(modifier = Modifier.height(8.dp))
                     TextButton(onClick = {
-                        fetchLocation(context) { lat, lng ->
+                        fetchLocation(context) { lat, lng, fallbackAddress ->
                             scope.launch {
-                                val address = withContext(Dispatchers.IO) {
+                                val address = fallbackAddress ?: withContext(Dispatchers.IO) {
                                     getAddressFromLatLng(context, lat, lng)
                                 }
                                 viewModel.loadHomeData(lat, lng, address)
@@ -169,21 +169,25 @@ fun HomeScreen(
 @SuppressLint("MissingPermission")
 private fun fetchLocation(
     context: android.content.Context,
-    onResult: (Double, Double) -> Unit
+    onResult: (Double, Double, String?) -> Unit
 ) {
     val fusedClient = LocationServices.getFusedLocationProviderClient(context)
+
+    val isInKorea = { lat: Double, lng: Double ->
+        lat in 33.0..39.0 && lng in 124.0..132.0
+    }
 
     fusedClient.getCurrentLocation(
         Priority.PRIORITY_HIGH_ACCURACY,
         CancellationTokenSource().token
     ).addOnSuccessListener { location ->
-        if (location != null) {
-            onResult(location.latitude, location.longitude)
+        if (location != null && isInKorea(location.latitude, location.longitude)) {
+            onResult(location.latitude, location.longitude, null)
         } else {
-            onResult(35.1796, 129.0756)
+            onResult(35.2322, 128.5469, "마산 내서읍")
         }
     }.addOnFailureListener {
-        onResult(35.1796, 129.0756)
+        onResult(35.2322, 128.5469, "마산 내서읍")
     }
 }
 
