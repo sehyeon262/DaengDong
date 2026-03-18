@@ -14,10 +14,9 @@ import java.time.LocalDateTime;
  * [JPA 공통 엔티티]
  * 모든 Entity가 상속받는 베이스 클래스
  *
- * 상속하면 자동으로 아래 3개 컬럼이 추가됨:
+ * 상속하면 자동으로 아래 2개 컬럼이 추가됨:
  * - createdAt  : 생성일 (INSERT 시 자동 저장)
  * - updatedAt  : 수정일 (UPDATE 시 자동 갱신)
- * - isDeleted  : 삭제 여부 (Soft Delete용, 실제 DB에서 안 지움)
  *
  * 사용법:
  *   @Entity
@@ -35,11 +34,4 @@ public abstract class BaseEntity {
     @LastModifiedDate
     private LocalDateTime updatedAt;
 
-    @Column(nullable = false)
-    private boolean isDeleted = false;
-
-    // Soft Delete: 실제로 DB에서 지우지 않고 isDeleted = true로 표시
-    public void delete() {
-        this.isDeleted = true;
-    }
 }
