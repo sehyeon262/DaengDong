@@ -26,6 +26,8 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -84,6 +86,19 @@ fun WalkScreen(
     var kakaoMap by remember { mutableStateOf<KakaoMap?>(null) }
     var currentLocationLabel by remember { mutableStateOf<Label?>(null) }
 
+    // 위치 권한 요청 launcher - 허용 시 현재 위치로 이동
+    val locationPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestMultiplePermissions()
+    ) { permissions ->
+        val granted = permissions[Manifest.permission.ACCESS_FINE_LOCATION] == true
+                || permissions[Manifest.permission.ACCESS_COARSE_LOCATION] == true
+        if (granted) {
+            moveToCurrentLocation(context, kakaoMap, currentLocationLabel) { label ->
+                currentLocationLabel = label
+            }
+        }
+    }
+
     val pagerState = rememberPagerState(
         initialPage = state.selectedRouteIndex,
         pageCount = { routes.size }
@@ -93,6 +108,26 @@ fun WalkScreen(
     LaunchedEffect(pagerState) {
         snapshotFlow { pagerState.currentPage }.collect { page ->
             viewModel.selectRoute(page)
+        }
+    }
+
+    // 지도 준비 완료 시 현재 위치로 자동 이동
+    LaunchedEffect(kakaoMap) {
+        if (kakaoMap == null) return@LaunchedEffect
+        val hasPermission = ActivityCompat.checkSelfPermission(
+            context, Manifest.permission.ACCESS_FINE_LOCATION
+        ) == PackageManager.PERMISSION_GRANTED
+        if (hasPermission) {
+            moveToCurrentLocation(context, kakaoMap, currentLocationLabel) { label ->
+                currentLocationLabel = label
+            }
+        } else {
+            locationPermissionLauncher.launch(
+                arrayOf(
+                    Manifest.permission.ACCESS_FINE_LOCATION,
+                    Manifest.permission.ACCESS_COARSE_LOCATION
+                )
+            )
         }
     }
 
@@ -352,16 +387,24 @@ private fun MapCharacter(modifier: Modifier = Modifier) {
     val screenWidth = configuration.screenWidthDp.dp
     val screenHeight = configuration.screenHeightDp.dp
 
-    Box(
+    Column(
         modifier = modifier,
-        contentAlignment = Alignment.BottomCenter
+        horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        // 시야 원뿔 (Canvas)
+        // 강아지 캐릭터 이미지
+        Image(
+            painter = painterResource(id = R.drawable.normal_face),
+            contentDescription = "강아지 캐릭터",
+            modifier = Modifier.size(screenWidth * 0.14f),
+            contentScale = ContentScale.Fit
+        )
+
+        // 시야 원뿔 (Canvas) - 강아지 턱 바로 아래부터 시작
         androidx.compose.foundation.Canvas(
             modifier = Modifier
                 .width(screenWidth * 0.33f)
                 .height(screenHeight * 0.16f)
-                .align(Alignment.BottomCenter)
+                .offset(y = (-8).dp)
         ) {
             val path = androidx.compose.ui.graphics.Path().apply {
                 moveTo(size.width / 2, 0f)
@@ -379,15 +422,5 @@ private fun MapCharacter(modifier: Modifier = Modifier) {
                 )
             )
         }
-
-        // 강아지 캐릭터 이미지
-        Image(
-            painter = painterResource(id = R.drawable.normal),
-            contentDescription = "강아지 캐릭터",
-            modifier = Modifier
-                .size(screenWidth * 0.22f)
-                .align(Alignment.TopCenter),
-            contentScale = ContentScale.Fit
-        )
     }
 }
