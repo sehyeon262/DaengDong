@@ -24,6 +24,6 @@ public class DogProfileResponse {
         this.birthDate = dog.getBirthDate();
         this.weight = dog.getWeight();
         this.gender = dog.getGender();
-        this.traits = dog.getTraits();
+        this.traits = dog.getTraitNames();
     }
 }
