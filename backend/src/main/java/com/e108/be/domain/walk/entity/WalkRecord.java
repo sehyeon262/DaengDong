@@ -8,9 +8,12 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import org.locationtech.jts.geom.LineString;
 
+import com.e108.be.global.common.converter.StringListConverter;
+
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
+import java.util.List;
 
 /**
  * [walk_records 테이블 매핑]
@@ -64,6 +67,11 @@ public class WalkRecord extends BaseEntity {
     // 소모 칼로리 (단위: kcal)
     @Column(name = "calories", precision = 10, scale = 2)
     private BigDecimal calories;
+
+    // 산책 사진 URL 목록 (JSON)
+    @Convert(converter = StringListConverter.class)
+    @Column(name = "photo_urls", columnDefinition = "json")
+    private List<String> photoUrls;
 
     @Builder
     public WalkRecord(Long dogId, WalkStatus walkStatus, LocalDateTime startTime) {
