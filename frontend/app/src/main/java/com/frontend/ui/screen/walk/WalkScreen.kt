@@ -65,6 +65,10 @@ import com.kakao.vectormap.LatLng
 import com.kakao.vectormap.MapLifeCycleCallback
 import com.kakao.vectormap.MapView
 import com.kakao.vectormap.camera.CameraUpdateFactory
+import com.kakao.vectormap.label.Label
+import com.kakao.vectormap.label.LabelOptions
+import com.kakao.vectormap.label.LabelStyle
+import com.kakao.vectormap.label.LabelStyles
 
 @Composable
 fun WalkScreen(
@@ -78,6 +82,7 @@ fun WalkScreen(
     val screenHeight = configuration.screenHeightDp.dp
 
     var kakaoMap by remember { mutableStateOf<KakaoMap?>(null) }
+    var currentLocationLabel by remember { mutableStateOf<Label?>(null) }
 
     val pagerState = rememberPagerState(
         initialPage = state.selectedRouteIndex,
@@ -200,7 +205,21 @@ fun WalkScreen(
                 icon = Icons.Filled.GpsFixed,
                 contentDescription = "현재 위치",
                 onClick = {
-                    moveToCurrentLocation(context, kakaoMap)
+                    val hasPermission = ActivityCompat.checkSelfPermission(
+                        context, Manifest.permission.ACCESS_FINE_LOCATION
+                    ) == PackageManager.PERMISSION_GRANTED
+                    if (hasPermission) {
+                        moveToCurrentLocation(context, kakaoMap, currentLocationLabel) { label ->
+                            currentLocationLabel = label
+                        }
+                    } else {
+                        locationPermissionLauncher.launch(
+                            arrayOf(
+                                Manifest.permission.ACCESS_FINE_LOCATION,
+                                Manifest.permission.ACCESS_COARSE_LOCATION
+                            )
+                        )
+                    }
                 }
             )
             MapOverlayButton(
@@ -275,8 +294,13 @@ private fun KakaoMapView(
     )
 }
 
-// ── 현재 위치로 카메라 이동 ────────────────────────────────────────────────────
-private fun moveToCurrentLocation(context: android.content.Context, kakaoMap: KakaoMap?) {
+// ── 현재 위치로 카메라 이동 + 마커 표시 ──────────────────────────────────────
+private fun moveToCurrentLocation(
+    context: android.content.Context,
+    kakaoMap: KakaoMap?,
+    currentLabel: Label?,
+    onLabelChanged: (Label?) -> Unit
+) {
     if (kakaoMap == null) return
     if (ActivityCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION)
         != PackageManager.PERMISSION_GRANTED
@@ -286,9 +310,39 @@ private fun moveToCurrentLocation(context: android.content.Context, kakaoMap: Ka
     fusedLocationClient.lastLocation.addOnSuccessListener { location ->
         location?.let {
             val position = LatLng.from(it.latitude, it.longitude)
+
+            // 카메라 이동
             kakaoMap.moveCamera(CameraUpdateFactory.newCenterPosition(position, 15))
+
+            // 기존 마커 제거
+            currentLabel?.remove()
+
+            // 현재 위치 마커 추가 (파란 원형)
+            val bitmap = createCurrentLocationBitmap(context)
+            val styles = LabelStyles.from(LabelStyle.from(bitmap))
+            val options = LabelOptions.from(position).setStyles(styles)
+            val newLabel = kakaoMap.labelManager?.layer?.addLabel(options)
+            onLabelChanged(newLabel)
         }
     }
+}
+
+// ── 현재 위치 마커용 파란 원형 비트맵 생성 ────────────────────────────────────
+private fun createCurrentLocationBitmap(context: android.content.Context): android.graphics.Bitmap {
+    val px = (24 * context.resources.displayMetrics.density).toInt()
+    val bitmap = android.graphics.Bitmap.createBitmap(px, px, android.graphics.Bitmap.Config.ARGB_8888)
+    val canvas = android.graphics.Canvas(bitmap)
+    val paint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG)
+
+    // 흰색 테두리
+    paint.color = android.graphics.Color.WHITE
+    canvas.drawCircle(px / 2f, px / 2f, px / 2f, paint)
+
+    // 파란 원형 내부
+    paint.color = android.graphics.Color.parseColor("#4A90D9")
+    canvas.drawCircle(px / 2f, px / 2f, px / 2f * 0.72f, paint)
+
+    return bitmap
 }
 
 // ── 지도 위 강아지 캐릭터 + 시야 원뿔 ────────────────────────────────────────

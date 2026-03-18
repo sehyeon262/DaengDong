@@ -39,7 +39,7 @@ fun NavGraph() {
     ) { innerPadding ->
         NavHost(
             navController = navController,
-            startDestination = Routes.LOGIN,
+            startDestination = Routes.WALK, // TODO: 테스트용 임시코드 - 배포 전 Routes.LOGIN 으로 되돌릴 것
             modifier = Modifier.padding(innerPadding)
         ) {
             composable(Routes.LOGIN) {
