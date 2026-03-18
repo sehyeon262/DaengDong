@@ -1,7 +1,7 @@
 package com.e108.be.domain.home.service;
 
-import com.e108.be.domain.auth.entity.Member;
-import com.e108.be.domain.auth.repository.MemberRepository;
+import com.e108.be.domain.auth.entity.User;
+import com.e108.be.domain.auth.repository.UserRepository;
 import com.e108.be.domain.dog.entity.Dog;
 import com.e108.be.domain.dog.repository.DogRepository;
 import com.e108.be.domain.home.dto.response.*;
@@ -27,7 +27,7 @@ public class HomeService {
 
     private final WeatherService weatherService;
     private final AirQualityService airQualityService;
-    private final MemberRepository memberRepository;
+    private final UserRepository userRepository;
     private final DogRepository dogRepository;
 
     public HomeResponse getHomeData(Long memberId, double latitude, double longitude) {
@@ -41,13 +41,13 @@ public class HomeService {
         FineDustGrade dustGrade = FineDustGrade.from(airQuality.pm10Value());
         WindGrade windGrade = WindGrade.from(weather.windSpeed());
         WalkStatus walkStatus = WalkStatus.calculate(tempGrade, dustGrade, windGrade, skyStatus);
-        Member member = memberRepository.findById(memberId).orElse(null);
-        Dog dog = dogRepository.findFirstByUserId(memberId).orElse(null);
+        User user = userRepository.findById(memberId).orElse(null);
+        Dog dog = dogRepository.findFirstByUser_Id(memberId).orElse(null);
         String dogName = dog != null ? dog.getName() : "";
 
         // 3. 응답 조합
         return HomeResponse.builder()
-                .user(buildUserInfo(member, dog))
+                .user(buildUserInfo(user, dog))
                 .location(buildLocationInfo(latitude, longitude))
                 .weather(buildWeatherInfo(weather, airQuality, skyStatus, tempGrade, dustGrade, windGrade))
                 .walk(buildWalkInfo(walkStatus, skyStatus, dogName))
@@ -55,9 +55,9 @@ public class HomeService {
                 .build();
     }
 
-    private HomeUserInfo buildUserInfo(Member member, Dog dog) {
+    private HomeUserInfo buildUserInfo(User user, Dog dog) {
         return HomeUserInfo.builder()
-                .nickname(member != null ? member.getNickname() : "")
+                .nickname(user != null ? user.getNickname() : "")
                 .dogName(dog != null ? dog.getName() : "")
                 .dogProfileImageUrl(dog != null ? dog.getProfileImageUrl() : null)
                 .build();
