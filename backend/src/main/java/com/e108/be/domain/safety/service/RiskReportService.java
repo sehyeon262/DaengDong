@@ -4,6 +4,7 @@ import com.e108.be.domain.safety.dto.request.CreateRiskReportRequest;
 import com.e108.be.domain.safety.dto.response.RiskReportResponse;
 import com.e108.be.domain.safety.entity.RiskReport;
 import com.e108.be.domain.safety.exception.InvalidCoordinateException;
+import com.e108.be.domain.safety.exception.InvalidDescriptionException;
 import com.e108.be.domain.safety.exception.UnauthenticatedAccessException;
 import com.e108.be.domain.safety.exception.WalkSessionNotFoundException;
 import com.e108.be.domain.safety.repository.RiskReportRepository;
@@ -52,10 +53,10 @@ public class RiskReportService {
         }
 
         // PostGIS POINT(경도 위도) 형식: Coordinate(x=longitude, y=latitude)
+        // GEOMETRY_FACTORY가 SRID 4326으로 초기화되어 있으므로 setSRID() 불필요
         Point location = GEOMETRY_FACTORY.createPoint(
                 new Coordinate(request.getLongitude(), request.getLatitude())
         );
-        location.setSRID(4326);
 
         RiskReport riskReport = RiskReport.builder()
                 .userId(userId)
@@ -91,7 +92,7 @@ public class RiskReportService {
      */
     private void validateDescription(String description) {
         if (description == null || description.isBlank()) {
-            throw new InvalidCoordinateException("위험 요소 설명은 필수입니다.");
+            throw new InvalidDescriptionException();
         }
     }
 
