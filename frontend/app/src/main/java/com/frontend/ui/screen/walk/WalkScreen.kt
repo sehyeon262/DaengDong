@@ -250,8 +250,8 @@ fun WalkScreen(
         } else {
             // 첫 생성: from(lineWidth, color) 순서 주의
             val style = PolylineStyle.from(
-                15f,                                            // lineWidth
-                android.graphics.Color.argb(220, 76, 175, 80)  // 반투명 녹색
+                15f,                                             // lineWidth
+                android.graphics.Color.argb(220, 240, 216, 80)  // 반투명 #F0D850
             )
             routePolyline = map.shapeManager?.layer?.addPolyline(
                 PolylineOptions.from(mapPoints, style)

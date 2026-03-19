@@ -20,7 +20,7 @@ class WalkRepository @Inject constructor(
         val token = tokenDataStore.getAccessToken().first()
             ?: throw Exception("로그인이 필요합니다")
         val dogId = tokenDataStore.getDogId().first()
-            ?: throw Exception("강아지 정보가 없습니다")
+            ?: 1L // TODO: 로그인 우회 (원래: ?: throw Exception("강아지 정보가 없습니다"))
 
         val response = walkApi.startWalk("Bearer $token", StartWalkRequest(dogId))
         response.data?.walkId
@@ -35,6 +35,7 @@ class WalkRepository @Inject constructor(
         val token = tokenDataStore.getAccessToken().first()
             ?: throw Exception("로그인이 필요합니다")
         val dogId = tokenDataStore.getDogId().first()
+        // TODO: 로그인 우회 (원래: ?: throw Exception("강아지 정보가 없습니다"))
             ?: throw Exception("강아지 정보가 없습니다")
 
         val response = walkApi.startFreeWalk("Bearer $token", StartWalkRequest(dogId))

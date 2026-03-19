@@ -41,6 +41,7 @@ fun NavGraph() {
     ) { innerPadding ->
         NavHost(
             navController = navController,
+            // TODO: 로그인 우회 (원래: Routes.SPLASH)
             startDestination = Routes.SPLASH,
             modifier = Modifier.padding(innerPadding)
         ) {
