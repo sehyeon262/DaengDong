@@ -1,16 +1,17 @@
 package com.e108.be.global.common.util;
 
-import lombok.RequiredArgsConstructor;
+import java.io.IOException;
+import java.util.UUID;
+
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
+
+import lombok.RequiredArgsConstructor;
 import software.amazon.awssdk.core.sync.RequestBody;
 import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.model.DeleteObjectRequest;
 import software.amazon.awssdk.services.s3.model.PutObjectRequest;
-
-import java.io.IOException;
-import java.util.UUID;
 
 /**
  * S3 이미지 업로드 공통 서비스
@@ -35,6 +36,11 @@ public class S3Service {
     private String prefix;
 
     /**
+     * 환경별 prefix 포함하여 S3에 업로드 (환경 분리용)
+     * key: {prefix}/{folder}/{uuid}.{ext}  (예: local/diary/uuid.jpg)
+     *
+     * @param file   업로드할 파일
+     * @param folder S3 내 폴더 (예: "diary", "dogs")
      * 파일을 S3에 업로드하고 공개 URL 반환
      *
      * @param file   업로드할 파일
@@ -80,6 +86,36 @@ public class S3Service {
     private String extractKeyFromUrl(String url) {
         String prefix = String.format("https://%s.s3.%s.amazonaws.com/", bucket, region);
         return url.replace(prefix, "");
+    }
+
+    /**
+     * 환경 무관 고정 경로로 S3에 업로드 (환경 간 공유용)
+     * key: shared/{folder}/{uuid}.{ext}  (예: shared/places/uuid.jpg)
+     *
+     * 장소 이미지처럼 로컬/dev/prod에서 동일한 URL로 접근해야 하는 경우 사용
+     *
+     * @param file   업로드할 파일
+     * @param folder S3 내 폴더 (예: "places")
+     * @return 업로드된 파일의 S3 URL
+     */
+    public String uploadShared(MultipartFile file, String folder) {
+        String ext = extractExtension(file.getOriginalFilename());
+        String uuid = UUID.randomUUID().toString();
+        String key = String.format("shared/%s/%s.%s", folder, uuid, ext);
+
+        PutObjectRequest putRequest = PutObjectRequest.builder()
+                .bucket(bucket)
+                .key(key)
+                .contentType(file.getContentType())
+                .build();
+
+        try {
+            s3Client.putObject(putRequest, RequestBody.fromInputStream(file.getInputStream(), file.getSize()));
+        } catch (IOException e) {
+            throw new RuntimeException("S3 파일 업로드에 실패했습니다.", e);
+        }
+
+        return String.format("https://%s.s3.%s.amazonaws.com/%s", bucket, region, key);
     }
 
     /**
