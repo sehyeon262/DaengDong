@@ -19,7 +19,7 @@ import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.DirectionsWalk
+import androidx.compose.material.icons.automirrored.filled.DirectionsWalk
 import androidx.compose.material.icons.filled.FilterAlt
 import androidx.compose.material.icons.filled.GpsFixed
 import androidx.compose.material.icons.filled.LocalFireDepartment
@@ -241,7 +241,15 @@ fun WalkScreen(
     // 산책 경로 폴리라인 실시간 업데이트
     LaunchedEffect(routePoints, kakaoMap) {
         val map = kakaoMap ?: return@LaunchedEffect
-        if (routePoints.size < 2) return@LaunchedEffect
+
+        // 경로가 없으면 기존 폴리라인 제거 (산책 종료 후 지도 초기화)
+        if (routePoints.size < 2) {
+            routePolyline?.let {
+                map.shapeManager?.layer?.remove(it)
+                routePolyline = null
+            }
+            return@LaunchedEffect
+        }
 
         val mapPoints = MapPoints.fromLatLng(routePoints)
         if (routePolyline != null) {
@@ -523,7 +531,7 @@ private fun WalkSummarySheet(
                 horizontalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 SummaryStatCard(
-                    icon = { Icon(Icons.Filled.DirectionsWalk, null, tint = Color(0xFFE8873A), modifier = Modifier.size(28.dp)) },
+                    icon = { Icon(Icons.AutoMirrored.Filled.DirectionsWalk, null, tint = Color(0xFFE8873A), modifier = Modifier.size(28.dp)) },
                     label = "거리",
                     value = "%.1f".format(distanceKm),
                     unit = "km",
@@ -887,7 +895,7 @@ private fun addDangerZoneMarker(
     )
     val targetWidth = 60
     val targetHeight = (targetWidth * source.height.toFloat() / source.width).toInt()
-    val scaled = android.graphics.Bitmap.createScaledBitmap(source, targetWidth, targetHeight, true)
+    val scaled = source.scale(targetWidth, targetHeight)
     val style = LabelStyle.from(scaled).setAnchorPoint(0.5f, 1.0f)   // 하단 중앙을 좌표에 맞춤
     val styles = LabelStyles.from(style)
     val options = LabelOptions.from(position).setStyles(styles)
