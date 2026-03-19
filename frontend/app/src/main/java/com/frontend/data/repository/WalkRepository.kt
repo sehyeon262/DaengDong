@@ -2,6 +2,8 @@ package com.frontend.data.repository
 
 import com.frontend.data.local.TokenDataStore
 import com.frontend.data.remote.WalkApi
+import com.frontend.domain.model.FeedbackRequest
+import com.frontend.domain.model.MetDogResponse
 import com.frontend.domain.model.SaveLocationRequest
 import com.frontend.domain.model.StartWalkRequest
 import com.frontend.domain.model.WalkDetailResponse
@@ -73,5 +75,20 @@ class WalkRepository @Inject constructor(
             ?: throw Exception("로그인이 필요합니다")
         val response = walkApi.deletePhoto("Bearer $token", walkId, mapOf("photoUrl" to photoUrl))
         response.data ?: throw Exception("사진 삭제 실패")
+    }
+
+    /** 만난 친구 목록 조회 */
+    suspend fun getMetDogs(dogId: Long): Result<List<MetDogResponse>> = runCatching {
+        val token = tokenDataStore.getAccessToken().first()
+            ?: throw Exception("로그인이 필요합니다")
+        val response = walkApi.getMetDogs("Bearer $token", dogId)
+        response.data ?: throw Exception("만난 친구 목록 조회 실패")
+    }
+
+    /** 궁합 피드백 설정/수정 */
+    suspend fun updateFeedback(request: FeedbackRequest): Result<Unit> = runCatching {
+        val token = tokenDataStore.getAccessToken().first()
+            ?: throw Exception("로그인이 필요합니다")
+        walkApi.updateFeedback("Bearer $token", request)
     }
 }

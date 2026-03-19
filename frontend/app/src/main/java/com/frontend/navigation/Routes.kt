@@ -9,6 +9,8 @@ object Routes {
     const val MY_INFO = "myinfo"
     const val DOG_EDIT = "dog_edit"
     const val WALK_DETAIL = "walk_detail/{walkId}"
+    const val MET_DOGS = "met_dogs/{dogId}"
 
     fun walkDetail(walkId: Long) = "walk_detail/$walkId"
+    fun metDogs(dogId: Long) = "met_dogs/$dogId"
 }
