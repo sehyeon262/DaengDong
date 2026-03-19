@@ -1,5 +1,8 @@
 package com.e108.be.domain.walk.service;
 
+import com.e108.be.domain.diary.entity.Diary;
+import com.e108.be.domain.diary.repository.DiaryRepository;
+import com.e108.be.domain.diary.service.DiaryService;
 import com.e108.be.domain.walk.dto.request.StartWalkRequest;
 import com.e108.be.domain.walk.dto.response.EndWalkResponse;
 import com.e108.be.domain.walk.dto.response.StartWalkResponse;
@@ -8,6 +11,9 @@ import com.e108.be.domain.dog.entity.Dog;
 import com.e108.be.domain.dog.repository.DogRepository;
 import com.e108.be.domain.walk.dto.response.CaloriesResponse;
 import com.e108.be.domain.walk.dto.response.DistanceResponse;
+import com.e108.be.domain.walk.dto.response.WalkDetailResponse;
+import com.e108.be.global.common.util.S3Service;
+import org.springframework.web.multipart.MultipartFile;
 import com.e108.be.domain.walk.entity.WalkRecord;
 import com.e108.be.domain.walk.entity.WalkStatus;
 import com.e108.be.domain.walk.exception.WalkAlreadyEndedException;
@@ -36,6 +42,9 @@ public class WalkService {
     private final WalkRecordRepository walkRecordRepository;
     private final DogRepository dogRepository;
     private final RedisTemplate<String, String> redisTemplate;
+    private final DiaryService diaryService;
+    private final DiaryRepository diaryRepository;
+    private final S3Service s3Service;
 
     @Transactional
     public StartWalkResponse startWalk(StartWalkRequest request) {
@@ -94,11 +103,27 @@ public class WalkService {
             throw new WalkAlreadyEndedException();
         }
 
-        // TODO: GPS 연동 완료 후 실제 거리·칼로리를 계산해 전달
-        BigDecimal totalDistance = BigDecimal.ZERO;
+        // Redis GPS 좌표로 실제 거리 계산
+        String redisKey = GPS_KEY_PREFIX + walkId;
+        List<String> points = redisTemplate.opsForList().range(redisKey, 0, -1);
+        double distanceM = calculateTotalDistance(points);
+        BigDecimal totalDistance = BigDecimal.valueOf(distanceM)
+                .setScale(2, RoundingMode.HALF_UP);
+
+        // 칼로리 계산: 체중(kg) × 거리(km) × 0.8
         BigDecimal calories = BigDecimal.ZERO;
+        Dog dog = dogRepository.findById(walkRecord.getDogId()).orElse(null);
+        if (dog != null && dog.getWeight() != null) {
+            double distanceKm = distanceM / 1000.0;
+            calories = BigDecimal.valueOf(dog.getWeight().doubleValue() * distanceKm * CALORIE_FACTOR)
+                    .setScale(1, RoundingMode.HALF_UP);
+        }
 
         walkRecord.end(totalDistance, calories);
+
+        // 일기 생성 트리거 (300m 이상일 때만)
+        diaryService.createDiaryIfEligible(walkId, walkRecord.getDogId(), totalDistance);
+
         return EndWalkResponse.from(walkRecord);
     }
 
@@ -131,6 +156,35 @@ public class WalkService {
                 .doubleValue();
 
         return new CaloriesResponse(calories, false);
+    }
+
+    /**
+     * 산책 상세 조회 (산책 데이터 + 강아지 + 일기)
+     */
+    public WalkDetailResponse getWalkDetail(Long walkId) {
+        WalkRecord walk = walkRecordRepository.findById(walkId)
+                .orElseThrow(WalkNotFoundException::new);
+        Dog dog = dogRepository.findById(walk.getDogId())
+                .orElseThrow(WalkNotFoundException::new);
+        Diary diary = diaryRepository.findByWalkId(walkId).orElse(null);
+
+        return WalkDetailResponse.from(walk, dog, diary);
+    }
+
+    /**
+     * 산책 사진 업로드 (S3) 후 URL 목록 저장
+     */
+    @Transactional
+    public List<String> uploadPhotos(Long walkId, List<MultipartFile> files) {
+        WalkRecord walkRecord = walkRecordRepository.findById(walkId)
+                .orElseThrow(WalkNotFoundException::new);
+
+        List<String> urls = files.stream()
+                .map(file -> s3Service.upload(file, "walks/" + walkId + "/photos"))
+                .toList();
+
+        walkRecord.updatePhotoUrls(urls);
+        return urls;
     }
 
     /**
