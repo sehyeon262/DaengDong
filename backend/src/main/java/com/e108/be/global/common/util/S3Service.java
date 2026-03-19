@@ -36,18 +36,15 @@ public class S3Service {
     private String prefix;
 
     /**
-<<<<<<< HEAD
      * 환경별 prefix 포함하여 S3에 업로드 (환경 분리용)
      * key: {prefix}/{folder}/{uuid}.{ext}  (예: local/diary/uuid.jpg)
      *
      * @param file   업로드할 파일
      * @param folder S3 내 폴더 (예: "diary", "dogs")
-=======
      * 파일을 S3에 업로드하고 공개 URL 반환
      *
      * @param file   업로드할 파일
      * @param folder S3 내 폴더 (예: "places", "dogs")
->>>>>>> 14324f4f00b91ea605f284aae09f075510d2992b
      * @return 업로드된 파일의 S3 URL
      */
     public String upload(MultipartFile file, String folder) {
@@ -92,7 +89,6 @@ public class S3Service {
     }
 
     /**
-<<<<<<< HEAD
      * 환경 무관 고정 경로로 S3에 업로드 (환경 간 공유용)
      * key: shared/{folder}/{uuid}.{ext}  (예: shared/places/uuid.jpg)
      *
@@ -123,8 +119,6 @@ public class S3Service {
     }
 
     /**
-=======
->>>>>>> 14324f4f00b91ea605f284aae09f075510d2992b
      * S3 key 생성: {prefix}/{folder}/{uuid}.{ext}
      */
     private String buildKey(String folder, String originalFilename) {
