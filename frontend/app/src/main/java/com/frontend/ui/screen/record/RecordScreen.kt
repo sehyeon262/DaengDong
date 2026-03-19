@@ -45,6 +45,7 @@ import java.time.LocalDate
 
 @Composable
 fun RecordScreen(
+    onWalkClick: (Long) -> Unit = {},
     viewModel: RecordViewModel = hiltViewModel()
 ) {
     val state by viewModel.state.collectAsState()
@@ -164,7 +165,10 @@ fun RecordScreen(
                     }
                 } else {
                     items(walks, key = { it.recordId }) { walk ->
-                        WalkRecordCard(walk = walk)
+                        WalkRecordCard(
+                            walk = walk,
+                            onClick = { onWalkClick(walk.recordId) }
+                        )
                     }
                 }
 
