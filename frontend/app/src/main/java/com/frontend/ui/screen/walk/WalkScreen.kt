@@ -2,7 +2,6 @@ package com.frontend.ui.screen.walk
 
 import android.Manifest
 import android.content.pm.PackageManager
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -11,7 +10,6 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -26,6 +24,8 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -37,8 +37,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
@@ -58,13 +56,21 @@ import com.frontend.ui.screen.walk.components.WalkRouteCard
 import com.frontend.ui.screen.walk.components.WalkSearchBar
 import com.frontend.ui.theme.PointGreen
 import com.frontend.ui.theme.TextMain
-import com.google.android.gms.location.LocationServices
 import com.kakao.vectormap.KakaoMap
 import com.kakao.vectormap.KakaoMapReadyCallback
 import com.kakao.vectormap.LatLng
 import com.kakao.vectormap.MapLifeCycleCallback
 import com.kakao.vectormap.MapView
+import androidx.core.graphics.scale
 import com.kakao.vectormap.camera.CameraUpdateFactory
+import com.kakao.vectormap.label.Label
+import com.kakao.vectormap.label.LabelOptions
+import com.kakao.vectormap.label.LabelStyle
+import com.kakao.vectormap.label.LabelStyles
+import com.kakao.vectormap.shape.MapPoints
+import com.kakao.vectormap.shape.Polygon
+import com.kakao.vectormap.shape.PolygonOptions
+import com.kakao.vectormap.shape.PolygonStyle
 
 @Composable
 fun WalkScreen(
@@ -77,7 +83,23 @@ fun WalkScreen(
     val screenWidth = configuration.screenWidthDp.dp
     val screenHeight = configuration.screenHeightDp.dp
 
+    val azimuth by viewModel.azimuth.collectAsState()
+
     var kakaoMap by remember { mutableStateOf<KakaoMap?>(null) }
+    var currentLocationLabel by remember { mutableStateOf<Label?>(null) }
+    val currentPosition by viewModel.currentPosition.collectAsState()
+    var fovOverlay by remember { mutableStateOf<Polygon?>(null) }
+
+    // 위치 권한 요청 launcher - 허용 시 위치 트래킹 시작
+    val locationPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestMultiplePermissions()
+    ) { permissions ->
+        val granted = permissions[Manifest.permission.ACCESS_FINE_LOCATION] == true
+                || permissions[Manifest.permission.ACCESS_COARSE_LOCATION] == true
+        if (granted) {
+            viewModel.startLocationTracking()
+        }
+    }
 
     val pagerState = rememberPagerState(
         initialPage = state.selectedRouteIndex,
@@ -89,6 +111,62 @@ fun WalkScreen(
         snapshotFlow { pagerState.currentPage }.collect { page ->
             viewModel.selectRoute(page)
         }
+    }
+
+    // 지도 준비 완료 시 위치 트래킹 시작
+    LaunchedEffect(kakaoMap) {
+        if (kakaoMap == null) return@LaunchedEffect
+        val hasPermission = ActivityCompat.checkSelfPermission(
+            context, Manifest.permission.ACCESS_FINE_LOCATION
+        ) == PackageManager.PERMISSION_GRANTED
+        if (hasPermission) {
+            viewModel.startLocationTracking()
+        } else {
+            locationPermissionLauncher.launch(
+                arrayOf(
+                    Manifest.permission.ACCESS_FINE_LOCATION,
+                    Manifest.permission.ACCESS_COARSE_LOCATION
+                )
+            )
+        }
+    }
+
+    // 위치 변경 시 마커 + FOV cone 갱신
+    LaunchedEffect(currentPosition, kakaoMap) {
+        val pos = currentPosition ?: return@LaunchedEffect
+        val map = kakaoMap ?: return@LaunchedEffect
+
+        if (currentLocationLabel == null) {
+            // 최초: 카메라 이동 + 마커 생성 + TrackingManager 시작
+            map.moveCamera(CameraUpdateFactory.newCenterPosition(pos, 15))
+            val bitmap = rotateBitmap(createDogMarkerBitmap(context), azimuth)
+            val styles = LabelStyles.from(LabelStyle.from(bitmap).setAnchorPoint(0.5f, 0.5f))
+            val label = map.labelManager?.layer?.addLabel(LabelOptions.from(pos).setStyles(styles))
+            currentLocationLabel = label
+            if (label != null) {
+                map.trackingManager?.startTracking(label)
+            }
+        } else {
+            // 이후: moveTo()로 이동 (마커 사라짐 없이)
+            currentLocationLabel?.moveTo(pos)
+        }
+
+        // FOV cone 갱신
+        fovOverlay = updateFovCone(map, pos, azimuth, fovOverlay)
+    }
+
+    // azimuth 변경 시 강아지 마커 회전 + FOV cone 업데이트
+    LaunchedEffect(azimuth) {
+        val pos = currentPosition ?: return@LaunchedEffect
+        val map = kakaoMap ?: return@LaunchedEffect
+
+        // changeStyles()로 비트맵만 교체 (마커 사라짐 없이)
+        val bitmap = rotateBitmap(createDogMarkerBitmap(context), azimuth)
+        val styles = LabelStyles.from(LabelStyle.from(bitmap).setAnchorPoint(0.5f, 0.5f))
+        currentLocationLabel?.changeStyles(styles)
+
+        // FOV cone 업데이트
+        fovOverlay = updateFovCone(map, pos, azimuth, fovOverlay)
     }
 
     // 외부에서 selectedRouteIndex 변경 시 페이저 스크롤
@@ -106,14 +184,7 @@ fun WalkScreen(
             onMapReady = { map -> kakaoMap = map }
         )
 
-        // ── 2. 지도 위 강아지 캐릭터 + 시야 원뿔 ────────────────────
-        MapCharacter(
-            modifier = Modifier
-                .align(Alignment.Center)
-                .offset(y = -(screenHeight * 0.05f))
-        )
-
-        // ── 3. 전체 오버레이 레이아웃 (검색바 + 하단 패널) ───────────
+        // ── 2. 전체 오버레이 레이아웃 (검색바 + 하단 패널) ───────────
         Column(
             modifier = Modifier.fillMaxSize()
         ) {
@@ -200,7 +271,10 @@ fun WalkScreen(
                 icon = Icons.Filled.GpsFixed,
                 contentDescription = "현재 위치",
                 onClick = {
-                    moveToCurrentLocation(context, kakaoMap)
+                    // TrackingManager 재활성화 (수동 이동 후 다시 마커 따라가기)
+                    currentLocationLabel?.let { label ->
+                        kakaoMap?.trackingManager?.startTracking(label)
+                    }
                 }
             )
             MapOverlayButton(
@@ -275,65 +349,75 @@ private fun KakaoMapView(
     )
 }
 
-// ── 현재 위치로 카메라 이동 ────────────────────────────────────────────────────
-private fun moveToCurrentLocation(context: android.content.Context, kakaoMap: KakaoMap?) {
-    if (kakaoMap == null) return
-    if (ActivityCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION)
-        != PackageManager.PERMISSION_GRANTED
-    ) return
 
-    val fusedLocationClient = LocationServices.getFusedLocationProviderClient(context)
-    fusedLocationClient.lastLocation.addOnSuccessListener { location ->
-        location?.let {
-            val position = LatLng.from(it.latitude, it.longitude)
-            kakaoMap.moveCamera(CameraUpdateFactory.newCenterPosition(position, 15))
-        }
+// ── FOV cone 업데이트 (Polygon 부채꼴) ───────────────────────────────────────
+private fun updateFovCone(
+    kakaoMap: KakaoMap,
+    center: LatLng,
+    azimuthDeg: Float,
+    existingPolygon: Polygon?,
+    radiusMeters: Double = 80.0,
+    fovDeg: Float = 60f
+): Polygon? {
+    val points = calculateSectorPoints(center, azimuthDeg, radiusMeters, fovDeg)
+    val mapPoints = MapPoints.fromLatLng(points)
+
+    // 기존 polygon이 있으면 좌표만 갱신 (재생성 없이 → 깜빡임 완전 제거)
+    if (existingPolygon != null) {
+        existingPolygon.changeMapPoints(listOf(mapPoints))
+        return existingPolygon
     }
+
+    // 첫 생성
+    val style = PolygonStyle.from(
+        android.graphics.Color.argb(70, 167, 206, 146),  // 반투명 #A7CE92
+        0f,                                               // 테두리 없음
+        android.graphics.Color.TRANSPARENT
+    )
+    val options = PolygonOptions.from(mapPoints, style)
+    return kakaoMap.shapeManager?.layer?.addPolygon(options)
 }
 
-// ── 지도 위 강아지 캐릭터 + 시야 원뿔 ────────────────────────────────────────
-@Composable
-private fun MapCharacter(modifier: Modifier = Modifier) {
-    val configuration = LocalConfiguration.current
-    val screenWidth = configuration.screenWidthDp.dp
-    val screenHeight = configuration.screenHeightDp.dp
+// ── 부채꼴 꼭짓점 계산 (지구 구면 기반 LatLng 오프셋) ─────────────────────────
+private fun calculateSectorPoints(
+    center: LatLng,
+    azimuthDeg: Float,
+    radiusMeters: Double,
+    fovDeg: Float,
+    steps: Int = 20
+): List<LatLng> {
+    val earthRadius = 6371000.0
+    val centerLatRad = Math.toRadians(center.latitude)
+    val points = mutableListOf<LatLng>()
 
-    Box(
-        modifier = modifier,
-        contentAlignment = Alignment.BottomCenter
-    ) {
-        // 시야 원뿔 (Canvas)
-        androidx.compose.foundation.Canvas(
-            modifier = Modifier
-                .width(screenWidth * 0.33f)
-                .height(screenHeight * 0.16f)
-                .align(Alignment.BottomCenter)
-        ) {
-            val path = androidx.compose.ui.graphics.Path().apply {
-                moveTo(size.width / 2, 0f)
-                lineTo(0f, size.height)
-                lineTo(size.width, size.height)
-                close()
-            }
-            drawPath(
-                path = path,
-                brush = androidx.compose.ui.graphics.Brush.verticalGradient(
-                    colors = listOf(
-                        PointGreen.copy(alpha = 0.45f),
-                        PointGreen.copy(alpha = 0.15f)
-                    )
-                )
-            )
-        }
+    // 중심점 (부채꼴 꼭짓점)
+    points.add(center)
 
-        // 강아지 캐릭터 이미지
-        Image(
-            painter = painterResource(id = R.drawable.normal),
-            contentDescription = "강아지 캐릭터",
-            modifier = Modifier
-                .size(screenWidth * 0.22f)
-                .align(Alignment.TopCenter),
-            contentScale = ContentScale.Fit
-        )
+    // 호 위의 점들
+    val startAngle = azimuthDeg - fovDeg / 2f
+    val endAngle = azimuthDeg + fovDeg / 2f
+    for (i in 0..steps) {
+        val bearing = Math.toRadians((startAngle + (endAngle - startAngle) * i / steps).toDouble())
+        val deltaLat = radiusMeters * Math.cos(bearing) / earthRadius * (180.0 / Math.PI)
+        val deltaLng = radiusMeters * Math.sin(bearing) / (earthRadius * Math.cos(centerLatRad)) * (180.0 / Math.PI)
+        points.add(LatLng.from(center.latitude + deltaLat, center.longitude + deltaLng))
     }
+
+    return points
 }
+
+// ── 비트맵 회전 ───────────────────────────────────────────────────────────────
+private fun rotateBitmap(source: android.graphics.Bitmap, degrees: Float): android.graphics.Bitmap {
+    val matrix = android.graphics.Matrix().apply { postRotate(degrees) }
+    return android.graphics.Bitmap.createBitmap(source, 0, 0, source.width, source.height, matrix, true)
+}
+
+// ── 강아지 마커용 비트맵 생성 ─────────────────────────────────────────────────
+private fun createDogMarkerBitmap(context: android.content.Context): android.graphics.Bitmap {
+    val targetHeight = 80  // Kakao Map은 픽셀 그대로 렌더링 → density 곱하지 않음
+    val source = android.graphics.BitmapFactory.decodeResource(context.resources, R.drawable.normal_face)
+    val aspectRatio = source.width.toFloat() / source.height.toFloat()
+    val targetWidth = (targetHeight * aspectRatio).toInt()
+    return source.scale(targetWidth, targetHeight)
+}
+
