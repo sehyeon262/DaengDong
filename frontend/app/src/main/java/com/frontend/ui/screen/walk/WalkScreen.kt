@@ -37,6 +37,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
@@ -89,6 +91,8 @@ fun WalkScreen(
     var currentLocationLabel by remember { mutableStateOf<Label?>(null) }
     val currentPosition by viewModel.currentPosition.collectAsState()
     var fovOverlay by remember { mutableStateOf<Polygon?>(null) }
+    // GPS 버튼으로 트래킹 활성화 여부 (사용자가 지도를 드래그하면 자동 해제)
+    var isTrackingActive by remember { mutableStateOf(false) }
 
     // 위치 권한 요청 launcher - 허용 시 위치 트래킹 시작
     val locationPermissionLauncher = rememberLauncherForActivityResult(
@@ -137,15 +141,12 @@ fun WalkScreen(
         val map = kakaoMap ?: return@LaunchedEffect
 
         if (currentLocationLabel == null) {
-            // 최초: 카메라 이동 + 마커 생성 + TrackingManager 시작
+            // 최초: 카메라 이동 + 마커 생성 (트래킹은 GPS 버튼으로만 활성화)
             map.moveCamera(CameraUpdateFactory.newCenterPosition(pos, 15))
             val bitmap = rotateBitmap(createDogMarkerBitmap(context), azimuth)
             val styles = LabelStyles.from(LabelStyle.from(bitmap).setAnchorPoint(0.5f, 0.5f))
             val label = map.labelManager?.layer?.addLabel(LabelOptions.from(pos).setStyles(styles))
             currentLocationLabel = label
-            if (label != null) {
-                map.trackingManager?.startTracking(label)
-            }
         } else {
             // 이후: moveTo()로 이동 (마커 사라짐 없이)
             currentLocationLabel?.moveTo(pos)
@@ -176,7 +177,24 @@ fun WalkScreen(
         }
     }
 
-    Box(modifier = Modifier.fillMaxSize()) {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            // 사용자가 지도를 드래그하면 트래킹 중단 (이벤트는 소비하지 않아 지도에 그대로 전달)
+            .pointerInput(isTrackingActive) {
+                if (!isTrackingActive) return@pointerInput
+                awaitPointerEventScope {
+                    while (true) {
+                        val event = awaitPointerEvent(PointerEventPass.Initial)
+                        if (event.changes.any { it.position != it.previousPosition }) {
+                            kakaoMap?.trackingManager?.stopTracking()
+                            isTrackingActive = false
+                            break
+                        }
+                    }
+                }
+            }
+    ) {
 
         // ── 1. 카카오맵 ─────────────────────────────────────────────────
         KakaoMapView(
@@ -271,9 +289,10 @@ fun WalkScreen(
                 icon = Icons.Filled.GpsFixed,
                 contentDescription = "현재 위치",
                 onClick = {
-                    // TrackingManager 재활성화 (수동 이동 후 다시 마커 따라가기)
+                    // TrackingManager 활성화: 마커를 따라 카메라 이동
                     currentLocationLabel?.let { label ->
                         kakaoMap?.trackingManager?.startTracking(label)
+                        isTrackingActive = true
                     }
                 }
             )
