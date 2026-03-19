@@ -16,7 +16,9 @@ import javax.inject.Inject
 data class WalkDetailState(
     val isLoading: Boolean = false,
     val detail: WalkDetailResponse? = null,
-    val error: String? = null
+    val error: String? = null,
+    val isPhotoUploading: Boolean = false,
+    val photoError: String? = null
 )
 
 @HiltViewModel
@@ -65,6 +67,34 @@ class WalkDetailViewModel @Inject constructor(
                         pollingJob?.cancel() // 완성되면 폴링 중단
                     }
                 }
+            }
+        }
+    }
+
+    /** 사진 삭제 */
+    fun deletePhoto(photoUrl: String) {
+        viewModelScope.launch {
+            walkRepository.deletePhoto(walkId, photoUrl).onSuccess { updatedUrls ->
+                _state.update { it.copy(
+                    detail = it.detail?.copy(photoUrls = updatedUrls)
+                )}
+            }.onFailure { e ->
+                _state.update { it.copy(photoError = e.message) }
+            }
+        }
+    }
+
+    /** 사진 업로드 */
+    fun uploadPhotos(parts: List<okhttp3.MultipartBody.Part>) {
+        viewModelScope.launch {
+            _state.update { it.copy(isPhotoUploading = true) }
+            walkRepository.uploadPhotos(walkId, parts).onSuccess { updatedUrls ->
+                _state.update { it.copy(
+                    isPhotoUploading = false,
+                    detail = it.detail?.copy(photoUrls = updatedUrls)
+                )}
+            }.onFailure { e ->
+                _state.update { it.copy(isPhotoUploading = false, photoError = e.message) }
             }
         }
     }

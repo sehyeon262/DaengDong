@@ -13,7 +13,25 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.wrapContentSize
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.ui.platform.LocalContext
+import okhttp3.MediaType.Companion.toMediaTypeOrNull
+import okhttp3.MultipartBody
+import okhttp3.RequestBody.Companion.toRequestBody
 import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.res.painterResource
@@ -152,6 +170,7 @@ fun WalkDetailScreen(
                 state.detail != null -> {
                     WalkDetailContent(
                         detail = state.detail!!,
+                        viewModel = viewModel,
                         modifier = Modifier.fillMaxSize()
                     )
                 }
@@ -163,8 +182,42 @@ fun WalkDetailScreen(
 @Composable
 private fun WalkDetailContent(
     detail: WalkDetailResponse,
+    viewModel: WalkDetailViewModel,
     modifier: Modifier = Modifier
 ) {
+    var showViewer by remember { mutableStateOf(false) }
+    var initialPage by remember { mutableIntStateOf(0) }
+    val context = LocalContext.current
+    val state by viewModel.state.collectAsState()
+
+    // 갤러리 선택 런처
+    val galleryLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetMultipleContents()
+    ) { uris: List<Uri> ->
+        if (uris.isNotEmpty()) {
+            val parts = uris.mapNotNull { uri ->
+                val stream = context.contentResolver.openInputStream(uri) ?: return@mapNotNull null
+                val bytes = stream.readBytes()
+                val mimeType = context.contentResolver.getType(uri) ?: "image/jpeg"
+                val requestBody = bytes.toRequestBody(mimeType.toMediaTypeOrNull())
+                MultipartBody.Part.createFormData("files", "photo_${System.currentTimeMillis()}.jpg", requestBody)
+            }
+            if (parts.isNotEmpty()) viewModel.uploadPhotos(parts)
+        }
+    }
+
+    // 전체화면 뷰어
+    if (showViewer && detail.photoUrls.isNotEmpty()) {
+        PhotoViewerDialog(
+            photoUrls = detail.photoUrls,
+            initialPage = initialPage,
+            isUploading = state.isPhotoUploading,
+            onDismiss = { showViewer = false },
+            onDelete = { url -> viewModel.deletePhoto(url) },
+            onAddPhotos = { galleryLauncher.launch("image/*") }
+        )
+    }
+
     Column(
         modifier = modifier
             .verticalScroll(rememberScrollState())
@@ -174,7 +227,11 @@ private fun WalkDetailContent(
         // 사진 캐러셀
         PhotoCarousel(
             photoUrls = detail.photoUrls,
-            startTime = detail.startTime
+            startTime = detail.startTime,
+            onPhotoClick = { page ->
+                initialPage = page
+                showViewer = true
+            }
         )
 
         // 산책 통계 카드
@@ -193,7 +250,8 @@ private fun WalkDetailContent(
 @Composable
 private fun PhotoCarousel(
     photoUrls: List<String>,
-    startTime: String
+    startTime: String,
+    onPhotoClick: (Int) -> Unit = {}
 ) {
     val photos = photoUrls.ifEmpty { listOf("") } // 사진 없으면 placeholder 1장
     val pagerState = rememberPagerState(pageCount = { photos.size })
@@ -215,7 +273,9 @@ private fun PhotoCarousel(
                     model = url,
                     contentDescription = "산책 사진 ${page + 1}",
                     contentScale = ContentScale.Crop,
-                    modifier = Modifier.fillMaxSize()
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .clickable { onPhotoClick(page) }
                 )
             } else {
                 // 사진 없을 때 플레이스홀더
@@ -245,27 +305,27 @@ private fun PhotoCarousel(
                 )
                 .padding(horizontal = 14.dp, vertical = 12.dp)
         ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(
-                    imageVector = Icons.Default.CalendarToday,
-                    contentDescription = null,
-                    tint = White,
-                    modifier = Modifier.size(14.dp)
-                )
-                Spacer(modifier = Modifier.width(5.dp))
-                Column {
+            Column {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        imageVector = Icons.Default.CalendarToday,
+                        contentDescription = null,
+                        tint = White,
+                        modifier = Modifier.size(13.dp)
+                    )
+                    Spacer(modifier = Modifier.width(4.dp))
                     Text(
                         text = formatDate(startTime),
                         fontSize = 11.sp,
                         color = White.copy(alpha = 0.85f)
                     )
-                    Text(
-                        text = formatTime(startTime),
-                        fontSize = 15.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        color = White
-                    )
                 }
+                Text(
+                    text = formatTime(startTime),
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = White
+                )
             }
         }
 
@@ -411,6 +471,128 @@ private fun StatItem(
 }
 
 private val mansehFont = FontFamily(Font(R.font.yoonchildfundkoreamanseh))
+
+@Composable
+private fun PhotoViewerDialog(
+    photoUrls: List<String>,
+    initialPage: Int,
+    isUploading: Boolean,
+    onDismiss: () -> Unit,
+    onDelete: (String) -> Unit,
+    onAddPhotos: () -> Unit
+) {
+    val pagerState = rememberPagerState(
+        initialPage = initialPage,
+        pageCount = { photoUrls.size }
+    )
+    var showDeleteConfirm by remember { mutableStateOf(false) }
+
+    // 삭제 확인 다이얼로그
+    if (showDeleteConfirm) {
+        AlertDialog(
+            onDismissRequest = { showDeleteConfirm = false },
+            title = { Text("사진 삭제") },
+            text = { Text("이 사진을 삭제할까요?") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        onDelete(photoUrls[pagerState.currentPage])
+                        showDeleteConfirm = false
+                        onDismiss()
+                    },
+                    colors = ButtonDefaults.textButtonColors(contentColor = Color.Red)
+                ) { Text("삭제") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDeleteConfirm = false }) { Text("취소") }
+            }
+        )
+    }
+
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false)
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Color.Black)
+        ) {
+            // 사진 풀스크린 페이저
+            HorizontalPager(
+                state = pagerState,
+                modifier = Modifier.fillMaxSize()
+            ) { page ->
+                AsyncImage(
+                    model = photoUrls[page],
+                    contentDescription = "사진 ${page + 1}",
+                    contentScale = ContentScale.Fit,
+                    modifier = Modifier.fillMaxSize()
+                )
+            }
+
+            // 상단 바 (X | 페이지 수 | 🗑️) 한 줄로
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(Color.Black.copy(alpha = 0.4f))
+                    .padding(horizontal = 8.dp, vertical = 4.dp)
+                    .align(Alignment.TopStart),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                IconButton(onClick = onDismiss) {
+                    Icon(
+                        Icons.Default.Close,
+                        contentDescription = "닫기",
+                        tint = White,
+                        modifier = Modifier.size(28.dp)
+                    )
+                }
+                Text(
+                    "${pagerState.currentPage + 1} / ${photoUrls.size}",
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.Medium,
+                    color = White
+                )
+                IconButton(onClick = { showDeleteConfirm = true }) {
+                    Icon(
+                        Icons.Default.Delete,
+                        contentDescription = "삭제",
+                        tint = White,
+                        modifier = Modifier.size(26.dp)
+                    )
+                }
+            }
+
+            // 하단 추가 버튼
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .align(Alignment.BottomCenter)
+                    .padding(bottom = 48.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                if (isUploading) {
+                    CircularProgressIndicator(color = White)
+                } else {
+                    Row(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(24.dp))
+                            .background(White.copy(alpha = 0.15f))
+                            .clickable { onAddPhotos() }
+                            .padding(horizontal = 24.dp, vertical = 12.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(Icons.Default.Add, contentDescription = null, tint = White, modifier = Modifier.size(20.dp))
+                        Text("사진 추가", color = White, fontSize = 15.sp, fontWeight = FontWeight.Medium)
+                    }
+                }
+            }
+        }
+    }
+}
 
 // 받침 있으면 "이의", 없으면 "의"
 private fun diaryTitle(name: String): String {

@@ -32,7 +32,7 @@ fun NavGraph() {
     val currentRoute = navBackStackEntry?.destination?.route
 
     val showBottomBar = currentRoute in listOf(
-        Routes.HOME, Routes.WALK, Routes.RECORD, Routes.MY_INFO, Routes.WALK_DETAIL
+        Routes.HOME, Routes.WALK, Routes.RECORD, Routes.MY_INFO
     )
 
     Scaffold(

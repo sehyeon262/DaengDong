@@ -55,4 +55,23 @@ class WalkRepository @Inject constructor(
         val response = walkApi.getWalkDetail("Bearer $token", walkId)
         response.data ?: throw Exception("산책 상세 조회 실패")
     }
+
+    /** 사진 업로드 */
+    suspend fun uploadPhotos(
+        walkId: Long,
+        parts: List<okhttp3.MultipartBody.Part>
+    ): Result<List<String>> = runCatching {
+        val token = tokenDataStore.getAccessToken().first()
+            ?: throw Exception("로그인이 필요합니다")
+        val response = walkApi.uploadPhotos("Bearer $token", walkId, parts)
+        response.data ?: throw Exception("사진 업로드 실패")
+    }
+
+    /** 사진 삭제 */
+    suspend fun deletePhoto(walkId: Long, photoUrl: String): Result<List<String>> = runCatching {
+        val token = tokenDataStore.getAccessToken().first()
+            ?: throw Exception("로그인이 필요합니다")
+        val response = walkApi.deletePhoto("Bearer $token", walkId, mapOf("photoUrl" to photoUrl))
+        response.data ?: throw Exception("사진 삭제 실패")
+    }
 }
