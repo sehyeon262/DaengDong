@@ -35,6 +35,10 @@ services:
       - JWT_SECRET=${JWT_SECRET}
       - DB_URL=${DB_URL}
       - DB_PASSWORD=${DB_PASSWORD}
+      - WEATHER_SERVICE_KEY=${WEATHER_SERVICE_KEY}
+      - AIR_QUALITY_SERVICE_KEY=${AIR_QUALITY_SERVICE_KEY}
+      - AWS_ACCESS_KEY=${AWS_ACCESS_KEY}
+      - AWS_SECRET_KEY=${AWS_SECRET_KEY}
     networks:
       - e108-network-prod
 

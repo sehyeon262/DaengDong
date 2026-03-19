@@ -37,3 +37,7 @@ spring:
     properties:
       hibernate:
         format_sql: true
+
+aws:
+  s3:
+    prefix: local
