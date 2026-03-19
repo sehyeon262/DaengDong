@@ -25,18 +25,19 @@ public class MetDog extends BaseEntity {
     @Column(name = "target_dog_id", nullable = false)
     private Long targetDogId;
 
-    // "좋아요" | "보통" | "싫어요" (기본값: "보통")
+    // 좋아요 | 보통 | 싫어요 (기본값: 보통)
+    @Enumerated(EnumType.STRING)
     @Column(name = "feedback", nullable = false, length = 30)
-    private String feedback;
+    private Feedback feedback;
 
     @Builder
-    public MetDog(WalkRecord latestWalkRecord, Long targetDogId, String feedback) {
+    public MetDog(WalkRecord latestWalkRecord, Long targetDogId, Feedback feedback) {
         this.latestWalkRecord = latestWalkRecord;
         this.targetDogId = targetDogId;
         this.feedback = feedback;
     }
 
-    public void updateFeedback(String feedback) {
+    public void updateFeedback(Feedback feedback) {
         this.feedback = feedback;
     }
 

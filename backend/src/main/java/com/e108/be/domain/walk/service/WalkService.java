@@ -3,7 +3,9 @@ package com.e108.be.domain.walk.service;
 import com.e108.be.domain.walk.dto.request.*;
 import com.e108.be.domain.walk.dto.request.StartWalkRequest;
 import com.e108.be.domain.walk.dto.response.*;
+import com.e108.be.domain.walk.entity.Feedback;
 import com.e108.be.domain.walk.entity.MetDog;
+import com.e108.be.domain.walk.entity.ProposalAction;
 import com.e108.be.domain.walk.exception.MetDogNotFoundException;
 import com.e108.be.domain.walk.exception.ProposalNotFoundException;
 import com.e108.be.domain.dog.entity.Dog;
@@ -247,7 +249,7 @@ public class WalkService {
             throw new ProposalNotFoundException();
         }
 
-        if ("ACCEPT".equals(request.getAction())) {
+        if (ProposalAction.ACCEPT == request.getAction()) {
             try {
                 Map<String, Object> data = objectMapper.readValue(
                         raw.toString(),
@@ -321,7 +323,7 @@ public class WalkService {
                         () -> metDogRepository.save(MetDog.builder()
                                 .latestWalkRecord(sourceRecord)
                                 .targetDogId(targetDogId)
-                                .feedback("보통")
+                                .feedback(Feedback.보통)
                                 .build())
                 );
     }
