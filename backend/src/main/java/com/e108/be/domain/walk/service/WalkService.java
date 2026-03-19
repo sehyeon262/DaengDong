@@ -409,6 +409,26 @@ public class WalkService {
                 );
     }
 
+    /**
+     * 만난 친구 목록 조회
+     * GET /walks/met-dogs?dogId=
+     */
+    public List<MetDogResponse> getMetDogs(Long dogId) {
+        List<MetDog> metDogs = metDogRepository.findAllBySourceDogId(dogId);
+
+        // N+1 방지: targetDogId 일괄 조회
+        List<Long> targetDogIds = metDogs.stream()
+                .map(MetDog::getTargetDogId)
+                .toList();
+        Map<Long, Dog> dogMap = dogRepository.findAllById(targetDogIds).stream()
+                .collect(java.util.stream.Collectors.toMap(Dog::getId, d -> d));
+
+        return metDogs.stream()
+                .filter(md -> dogMap.containsKey(md.getTargetDogId()))
+                .map(md -> MetDogResponse.from(md, dogMap.get(md.getTargetDogId())))
+                .toList();
+    }
+
     // ────────────── 내부 유틸 ──────────────
 
     private double calculateTotalDistance(List<String> points) {
