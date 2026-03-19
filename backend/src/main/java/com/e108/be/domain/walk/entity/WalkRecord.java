@@ -115,4 +115,8 @@ public class WalkRecord extends BaseEntity {
     public void updateCalories(BigDecimal calories) {
         this.calories = calories;
     }
+
+    public void updatePhotoUrls(List<String> photoUrls) {
+        this.photoUrls = photoUrls;
+    }
 }

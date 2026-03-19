@@ -6,9 +6,13 @@ import com.e108.be.domain.walk.dto.response.EndWalkResponse;
 import com.e108.be.domain.walk.dto.response.NearbyDogsResponse;
 import com.e108.be.domain.walk.dto.response.ProposalResponse;
 import com.e108.be.domain.walk.dto.response.StartWalkResponse;
+import org.springframework.web.multipart.MultipartFile;
+
+import java.util.List;
 import com.e108.be.domain.walk.dto.response.WalkDurationResponse;
 import com.e108.be.domain.walk.dto.response.CaloriesResponse;
 import com.e108.be.domain.walk.dto.response.DistanceResponse;
+import com.e108.be.domain.walk.dto.response.WalkDetailResponse;
 import com.e108.be.domain.walk.service.WalkService;
 import com.e108.be.global.common.template.ResTemplate;
 import lombok.RequiredArgsConstructor;
@@ -87,6 +91,28 @@ public class WalkController {
             return ResTemplate.success(HttpStatus.OK, "체중을 입력해 주세요", response);
         }
         return ResTemplate.success(HttpStatus.OK, "칼로리 조회 성공", response);
+    }
+
+    /**
+     * 산책 상세 조회 (산책 데이터 + 강아지 + 일기)
+     * GET /api/v1/walks/{walkId}
+     */
+    @GetMapping("/{walkId}")
+    public ResTemplate<WalkDetailResponse> getWalkDetail(@PathVariable Long walkId) {
+        WalkDetailResponse response = walkService.getWalkDetail(walkId);
+        return ResTemplate.success(HttpStatus.OK, "산책 상세 조회 성공", response);
+    }
+
+    /**
+     * 산책 사진 업로드
+     * POST /api/v1/walks/{walkId}/photos
+     */
+    @PostMapping("/{walkId}/photos")
+    public ResTemplate<List<String>> uploadPhotos(
+            @PathVariable Long walkId,
+            @RequestParam("files") List<MultipartFile> files) {
+        List<String> urls = walkService.uploadPhotos(walkId, files);
+        return ResTemplate.success(HttpStatus.OK, "사진 업로드 성공", urls);
     }
 
     /**
