@@ -56,12 +56,12 @@ import com.frontend.ui.screen.walk.components.WalkRouteCard
 import com.frontend.ui.screen.walk.components.WalkSearchBar
 import com.frontend.ui.theme.PointGreen
 import com.frontend.ui.theme.TextMain
-import com.google.android.gms.location.LocationServices
 import com.kakao.vectormap.KakaoMap
 import com.kakao.vectormap.KakaoMapReadyCallback
 import com.kakao.vectormap.LatLng
 import com.kakao.vectormap.MapLifeCycleCallback
 import com.kakao.vectormap.MapView
+import androidx.core.graphics.scale
 import com.kakao.vectormap.camera.CameraUpdateFactory
 import com.kakao.vectormap.label.Label
 import com.kakao.vectormap.label.LabelOptions
@@ -87,21 +87,17 @@ fun WalkScreen(
 
     var kakaoMap by remember { mutableStateOf<KakaoMap?>(null) }
     var currentLocationLabel by remember { mutableStateOf<Label?>(null) }
-    var currentPosition by remember { mutableStateOf<LatLng?>(null) }
+    val currentPosition by viewModel.currentPosition.collectAsState()
     var fovOverlay by remember { mutableStateOf<Polygon?>(null) }
 
-    // 위치 권한 요청 launcher - 허용 시 현재 위치로 이동
+    // 위치 권한 요청 launcher - 허용 시 위치 트래킹 시작
     val locationPermissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestMultiplePermissions()
     ) { permissions ->
         val granted = permissions[Manifest.permission.ACCESS_FINE_LOCATION] == true
                 || permissions[Manifest.permission.ACCESS_COARSE_LOCATION] == true
         if (granted) {
-            moveToCurrentLocation(context, kakaoMap, currentLocationLabel, fovOverlay, azimuth,
-                onLabelChanged = { currentLocationLabel = it },
-                onPositionChanged = { currentPosition = it },
-                onFovChanged = { fovOverlay = it }
-            )
+            viewModel.startLocationTracking()
         }
     }
 
@@ -117,18 +113,14 @@ fun WalkScreen(
         }
     }
 
-    // 지도 준비 완료 시 현재 위치로 자동 이동
+    // 지도 준비 완료 시 위치 트래킹 시작
     LaunchedEffect(kakaoMap) {
         if (kakaoMap == null) return@LaunchedEffect
         val hasPermission = ActivityCompat.checkSelfPermission(
             context, Manifest.permission.ACCESS_FINE_LOCATION
         ) == PackageManager.PERMISSION_GRANTED
         if (hasPermission) {
-            moveToCurrentLocation(context, kakaoMap, currentLocationLabel, fovOverlay, azimuth,
-                onLabelChanged = { currentLocationLabel = it },
-                onPositionChanged = { currentPosition = it },
-                onFovChanged = { fovOverlay = it }
-            )
+            viewModel.startLocationTracking()
         } else {
             locationPermissionLauncher.launch(
                 arrayOf(
@@ -139,20 +131,41 @@ fun WalkScreen(
         }
     }
 
+    // 위치 변경 시 마커 + FOV cone 갱신
+    LaunchedEffect(currentPosition, kakaoMap) {
+        val pos = currentPosition ?: return@LaunchedEffect
+        val map = kakaoMap ?: return@LaunchedEffect
+
+        if (currentLocationLabel == null) {
+            // 최초: 카메라 이동 + 마커 생성 + TrackingManager 시작
+            map.moveCamera(CameraUpdateFactory.newCenterPosition(pos, 15))
+            val bitmap = rotateBitmap(createDogMarkerBitmap(context), azimuth)
+            val styles = LabelStyles.from(LabelStyle.from(bitmap).setAnchorPoint(0.5f, 0.5f))
+            val label = map.labelManager?.layer?.addLabel(LabelOptions.from(pos).setStyles(styles))
+            currentLocationLabel = label
+            if (label != null) {
+                map.trackingManager?.startTracking(label)
+            }
+        } else {
+            // 이후: moveTo()로 이동 (마커 사라짐 없이)
+            currentLocationLabel?.moveTo(pos)
+        }
+
+        // FOV cone 갱신
+        fovOverlay = updateFovCone(map, pos, azimuth, fovOverlay)
+    }
+
     // azimuth 변경 시 강아지 마커 회전 + FOV cone 업데이트
     LaunchedEffect(azimuth) {
         val pos = currentPosition ?: return@LaunchedEffect
         val map = kakaoMap ?: return@LaunchedEffect
 
-        // 강아지 마커 회전 (새 라벨 먼저 추가 후 기존 제거 → 깜빡임 방지)
+        // changeStyles()로 비트맵만 교체 (마커 사라짐 없이)
         val bitmap = rotateBitmap(createDogMarkerBitmap(context), azimuth)
         val styles = LabelStyles.from(LabelStyle.from(bitmap).setAnchorPoint(0.5f, 0.5f))
-        val labelOptions = LabelOptions.from(pos).setStyles(styles)
-        val newLabel = map.labelManager?.layer?.addLabel(labelOptions)
-        currentLocationLabel?.remove()
-        currentLocationLabel = newLabel
+        currentLocationLabel?.changeStyles(styles)
 
-        // FOV cone 업데이트 (기존 polygon 좌표만 갱신 → 깜빡임 없음)
+        // FOV cone 업데이트
         fovOverlay = updateFovCone(map, pos, azimuth, fovOverlay)
     }
 
@@ -258,22 +271,9 @@ fun WalkScreen(
                 icon = Icons.Filled.GpsFixed,
                 contentDescription = "현재 위치",
                 onClick = {
-                    val hasPermission = ActivityCompat.checkSelfPermission(
-                        context, Manifest.permission.ACCESS_FINE_LOCATION
-                    ) == PackageManager.PERMISSION_GRANTED
-                    if (hasPermission) {
-                        moveToCurrentLocation(context, kakaoMap, currentLocationLabel, fovOverlay, azimuth,
-                            onLabelChanged = { currentLocationLabel = it },
-                            onPositionChanged = { currentPosition = it },
-                            onFovChanged = { fovOverlay = it }
-                        )
-                    } else {
-                        locationPermissionLauncher.launch(
-                            arrayOf(
-                                Manifest.permission.ACCESS_FINE_LOCATION,
-                                Manifest.permission.ACCESS_COARSE_LOCATION
-                            )
-                        )
+                    // TrackingManager 재활성화 (수동 이동 후 다시 마커 따라가기)
+                    currentLocationLabel?.let { label ->
+                        kakaoMap?.trackingManager?.startTracking(label)
                     }
                 }
             )
@@ -349,46 +349,6 @@ private fun KakaoMapView(
     )
 }
 
-// ── 현재 위치로 카메라 이동 + 마커 표시 ──────────────────────────────────────
-private fun moveToCurrentLocation(
-    context: android.content.Context,
-    kakaoMap: KakaoMap?,
-    currentLabel: Label?,
-    currentFovOverlay: Polygon?,
-    azimuth: Float,
-    onLabelChanged: (Label?) -> Unit,
-    onPositionChanged: (LatLng) -> Unit,
-    onFovChanged: (Polygon?) -> Unit
-) {
-    if (kakaoMap == null) return
-    if (ActivityCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION)
-        != PackageManager.PERMISSION_GRANTED
-    ) return
-
-    val fusedLocationClient = LocationServices.getFusedLocationProviderClient(context)
-    fusedLocationClient.lastLocation.addOnSuccessListener { location ->
-        location?.let {
-            val position = LatLng.from(it.latitude, it.longitude)
-
-            // 카메라 이동
-            kakaoMap.moveCamera(CameraUpdateFactory.newCenterPosition(position, 15))
-
-            // 현재 위치 저장
-            onPositionChanged(position)
-
-            // 강아지 마커 (새 라벨 먼저 추가 후 기존 제거 → 깜빡임 방지)
-            val bitmap = rotateBitmap(createDogMarkerBitmap(context), azimuth)
-            val styles = LabelStyles.from(LabelStyle.from(bitmap).setAnchorPoint(0.5f, 0.5f))
-            val labelOptions = LabelOptions.from(position).setStyles(styles)
-            val newLabel = kakaoMap.labelManager?.layer?.addLabel(labelOptions)
-            currentLabel?.remove()
-            onLabelChanged(newLabel)
-
-            // FOV cone (기존 polygon 좌표만 갱신 → 깜빡임 없음)
-            onFovChanged(updateFovCone(kakaoMap, position, azimuth, currentFovOverlay))
-        }
-    }
-}
 
 // ── FOV cone 업데이트 (Polygon 부채꼴) ───────────────────────────────────────
 private fun updateFovCone(
@@ -458,6 +418,6 @@ private fun createDogMarkerBitmap(context: android.content.Context): android.gra
     val source = android.graphics.BitmapFactory.decodeResource(context.resources, R.drawable.normal_face)
     val aspectRatio = source.width.toFloat() / source.height.toFloat()
     val targetWidth = (targetHeight * aspectRatio).toInt()
-    return android.graphics.Bitmap.createScaledBitmap(source, targetWidth, targetHeight, true)
+    return source.scale(targetWidth, targetHeight)
 }
 
