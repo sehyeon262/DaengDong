@@ -61,6 +61,7 @@ import com.kakao.vectormap.KakaoMapReadyCallback
 import com.kakao.vectormap.LatLng
 import com.kakao.vectormap.MapLifeCycleCallback
 import com.kakao.vectormap.MapView
+import androidx.core.graphics.scale
 import com.kakao.vectormap.camera.CameraUpdateFactory
 import com.kakao.vectormap.label.Label
 import com.kakao.vectormap.label.LabelOptions
@@ -417,6 +418,6 @@ private fun createDogMarkerBitmap(context: android.content.Context): android.gra
     val source = android.graphics.BitmapFactory.decodeResource(context.resources, R.drawable.normal_face)
     val aspectRatio = source.width.toFloat() / source.height.toFloat()
     val targetWidth = (targetHeight * aspectRatio).toInt()
-    return android.graphics.Bitmap.createScaledBitmap(source, targetWidth, targetHeight, true)
+    return source.scale(targetWidth, targetHeight)
 }
 
