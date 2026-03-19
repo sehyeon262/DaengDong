@@ -13,7 +13,8 @@ SET lock_timeout = 0;
 SET idle_in_transaction_session_timeout = 0;
 SET client_encoding = 'UTF8';
 SET standard_conforming_strings = on;
-SELECT pg_catalog.set_config('search_path', '', false);
+-- 제거: pg_dump가 넣는 search_path 초기화는 HikariCP 커넥션 풀에서 세션이 오염되어 이후 쿼리 실패 유발
+-- SELECT pg_catalog.set_config('search_path', '', false);
 SET check_function_bodies = false;
 SET xmloption = content;
 SET client_min_messages = warning;

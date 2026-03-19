@@ -19,6 +19,7 @@ spring:
   # local 전용 초기 데이터 로딩
   sql:
     init:
+      encoding: UTF-8
       data-locations:
         - classpath:sql/users.sql
         - classpath:sql/init_places.sql
