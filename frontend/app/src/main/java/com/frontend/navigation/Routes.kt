@@ -8,4 +8,7 @@ object Routes {
     const val RECORD = "record"
     const val MY_INFO = "myinfo"
     const val DOG_EDIT = "dog_edit"
+    const val WALK_DETAIL = "walk_detail/{walkId}"
+
+    fun walkDetail(walkId: Long) = "walk_detail/$walkId"
 }
