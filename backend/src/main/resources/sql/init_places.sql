@@ -23990,3 +23990,6 @@ SELECT pg_catalog.setval('public.places_id_seq', 23930, true);
 -- PostgreSQL database dump complete
 --
 
+-- search_path 초기화: pg_dump 스크립트가 search_path='' 로 세션을 변경하므로
+-- 커넥션이 HikariCP 풀에 반환되기 전에 public 으로 복구합니다.
+SELECT pg_catalog.set_config('search_path', 'public', false);

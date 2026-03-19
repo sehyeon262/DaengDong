@@ -41,4 +41,4 @@ out/
 
 .claude
 data.sql
-
+local.properties
