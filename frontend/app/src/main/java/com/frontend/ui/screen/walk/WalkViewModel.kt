@@ -5,8 +5,15 @@ import android.hardware.Sensor
 import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
 import android.hardware.SensorManager
+import android.os.Looper
 import androidx.lifecycle.ViewModel
 import com.frontend.domain.model.WalkRoute
+import com.google.android.gms.location.LocationCallback
+import com.google.android.gms.location.LocationRequest
+import com.google.android.gms.location.LocationResult
+import com.google.android.gms.location.LocationServices
+import com.google.android.gms.location.Priority
+import com.kakao.vectormap.LatLng
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -58,9 +65,39 @@ class WalkViewModel @Inject constructor(
         )
     }
 
+    // ── GPS 위치 트래킹 ────────────────────────────────────────────────────────
+    private val fusedLocationClient = LocationServices.getFusedLocationProviderClient(context)
+
+    private val _currentPosition = MutableStateFlow<LatLng?>(null)
+    val currentPosition = _currentPosition.asStateFlow()
+
+    private val locationCallback = object : LocationCallback() {
+        override fun onLocationResult(result: LocationResult) {
+            result.lastLocation?.let { loc ->
+                _currentPosition.value = LatLng.from(loc.latitude, loc.longitude)
+            }
+        }
+    }
+
+    fun startLocationTracking() {
+        val request = LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, 3000L)
+            .setMinUpdateDistanceMeters(5f)
+            .build()
+        try {
+            fusedLocationClient.requestLocationUpdates(request, locationCallback, Looper.getMainLooper())
+        } catch (_: SecurityException) {
+            // 위치 권한 없음
+        }
+    }
+
+    private fun stopLocationTracking() {
+        fusedLocationClient.removeLocationUpdates(locationCallback)
+    }
+
     override fun onCleared() {
         super.onCleared()
         sensorManager.unregisterListener(sensorListener)
+        stopLocationTracking()
     }
 
     // ── 산책 경로 ──────────────────────────────────────────────────────────────
