@@ -45,15 +45,16 @@ import com.frontend.util.getWalkStatusLabel
 fun CharacterSection(
     characterType: String,
     walkStatus: String,
-    walkMessage: String
+    walkMessage: String,
+    temperature: Int = 20
 ) {
-    val characterRes = getCharacterImage(characterType)
+    val characterRes = getCharacterImage(characterType, temperature)
     val statusColor = getWalkStatusColor(walkStatus)
     val statusLabel = getWalkStatusLabel(walkStatus)
     val sky = characterType.split("_").getOrNull(0) ?: ""
     val showClouds = walkStatus == "GOOD"
     val showBest = walkStatus == "GREAT"
-    val showSun = sky == "SUNNY" && walkStatus == "CAUTION"
+    val showSun = sky == "SUNNY" && walkStatus == "CAUTION" && temperature >= 15
     val showRain = sky in listOf("RAINY", "SNOWY")
 
     // 애니메이션
@@ -114,7 +115,7 @@ fun CharacterSection(
                 .fillMaxWidth()
                 .height(260.dp)
         ) {
-            // 강아지 캐릭터 - 꽉 채우기
+            // 강아지 캐릭터
             Image(
                 painter = painterResource(id = characterRes),
                 contentDescription = "캐릭터",
@@ -166,15 +167,15 @@ fun CharacterSection(
                 )
             }
 
-            // HOT - 태양
+            // HOT - 태양 (왼쪽 상단, 크게)
             if (showSun) {
                 Image(
                     painter = painterResource(id = R.drawable.sun),
                     contentDescription = "태양",
                     modifier = Modifier
-                        .size(60.dp)
-                        .align(Alignment.TopEnd)
-                        .offset(x = (-12).dp, y = (20 + sunOffset).dp),
+                        .size(90.dp)
+                        .align(Alignment.TopStart)
+                        .offset(x = 8.dp, y = (4 + sunOffset).dp),
                     contentScale = ContentScale.Fit
                 )
             }

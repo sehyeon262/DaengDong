@@ -146,7 +146,8 @@ fun HomeScreen(
                     CharacterSection(
                         characterType = data.walk.characterType,
                         walkStatus = data.walk.walkStatus,
-                        walkMessage = data.walk.walkMessage
+                        walkMessage = data.walk.walkMessage,
+                        temperature = data.weather?.temperature ?: 20
                     )
                 }
 
