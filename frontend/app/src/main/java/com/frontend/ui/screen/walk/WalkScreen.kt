@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -18,15 +19,27 @@ import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.DirectionsWalk
 import androidx.compose.material.icons.filled.FilterAlt
 import androidx.compose.material.icons.filled.GpsFixed
+import androidx.compose.material.icons.filled.LocalFireDepartment
+import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.Pets
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Schedule
+import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.filled.Stop
+import androidx.compose.material.icons.outlined.Star
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.Composable
@@ -46,6 +59,8 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -81,10 +96,16 @@ import com.kakao.vectormap.shape.MapPoints
 import com.kakao.vectormap.shape.Polygon
 import com.kakao.vectormap.shape.PolygonOptions
 import com.kakao.vectormap.shape.PolygonStyle
+import com.kakao.vectormap.shape.Polyline
+import com.kakao.vectormap.shape.PolylineOptions
+import com.kakao.vectormap.shape.PolylineStyle
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun WalkScreen(
-    viewModel: WalkViewModel = hiltViewModel()
+    onNavigateToRecord: () -> Unit = {},
+    onNavigateToHome: () -> Unit = {},
+    viewModel: WalkViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsState()
     val routes = viewModel.routes
@@ -99,6 +120,10 @@ fun WalkScreen(
     var currentLocationLabel by remember { mutableStateOf<Label?>(null) }
     val currentPosition by viewModel.currentPosition.collectAsState()
     var fovOverlay by remember { mutableStateOf<Polygon?>(null) }
+
+    // 산책 경로 폴리라인
+    val routePoints by viewModel.routePoints.collectAsState()
+    var routePolyline by remember { mutableStateOf<Polyline?>(null) }
 
     // 위험 구역 마커 목록 (강아지 마커와 분리 관리)
     val dangerZoneLabels = remember { mutableStateListOf<Label>() }
@@ -213,6 +238,27 @@ fun WalkScreen(
         }
     }
 
+    // 산책 경로 폴리라인 실시간 업데이트
+    LaunchedEffect(routePoints, kakaoMap) {
+        val map = kakaoMap ?: return@LaunchedEffect
+        if (routePoints.size < 2) return@LaunchedEffect
+
+        val mapPoints = MapPoints.fromLatLng(routePoints)
+        if (routePolyline != null) {
+            // 기존 폴리라인 좌표만 갱신 (재생성 없이 → 깜빡임 방지)
+            routePolyline?.changeMapPoints(listOf(mapPoints))
+        } else {
+            // 첫 생성: from(lineWidth, color) 순서 주의
+            val style = PolylineStyle.from(
+                15f,                                            // lineWidth
+                android.graphics.Color.argb(220, 76, 175, 80)  // 반투명 녹색
+            )
+            routePolyline = map.shapeManager?.layer?.addPolyline(
+                PolylineOptions.from(mapPoints, style)
+            )
+        }
+    }
+
     Box(modifier = Modifier.fillMaxSize()) {
 
         // ── 1. 카카오맵 ─────────────────────────────────────────────────
@@ -274,6 +320,20 @@ fun WalkScreen(
                         .fillMaxWidth()
                         .padding(horizontal = 20.dp, vertical = 16.dp)
                 )
+            } else if (state.isWalking) {
+                // 산책 중 모드: 통계 패널 + 일시정지/종료 버튼
+                WalkingStatsPanel(
+                    elapsedSeconds = state.elapsedSeconds,
+                    distanceMeters = state.distanceMeters,
+                    isPaused = state.isPaused,
+                    onPauseResume = {
+                        if (state.isPaused) viewModel.resumeWalk() else viewModel.pauseWalk()
+                    },
+                    onEndWalk = { viewModel.endWalk() },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 12.dp)
+                )
             } else {
                 // 일반 모드: 경로 추천 + 산책 시작 패널
                 Column(
@@ -309,7 +369,7 @@ fun WalkScreen(
 
                     // 산책 시작 버튼
                     Button(
-                        onClick = {},
+                        onClick = { viewModel.startFreeWalk() },
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(screenHeight * 0.067f)
@@ -391,6 +451,202 @@ fun WalkScreen(
                 onDismiss = { viewModel.closeDangerReportDialog() }
             )
         }
+
+        // ── 7. 산책 요약 바텀시트 ────────────────────────────────────
+        if (state.isWalkSummaryVisible) {
+            WalkSummarySheet(
+                state = state,
+                onRating = { viewModel.setWalkRating(it) },
+                onNavigateToRecord = {
+                    viewModel.dismissWalkSummary()
+                    onNavigateToRecord()
+                },
+                onNavigateToHome = {
+                    viewModel.dismissWalkSummary()
+                    onNavigateToHome()
+                },
+                onDismiss = { viewModel.dismissWalkSummary() }
+            )
+        }
+    }
+}
+
+// ── 산책 요약 바텀시트 ─────────────────────────────────────────────────────────
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun WalkSummarySheet(
+    state: WalkState,
+    onRating: (Int) -> Unit,
+    onNavigateToRecord: () -> Unit,
+    onNavigateToHome: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+
+    val minutes = state.summaryElapsedSeconds / 60
+    val seconds = state.summaryElapsedSeconds % 60
+    val distanceKm = state.summaryDistanceMeters / 1000.0
+    val calories = (distanceKm * 65).toInt()
+
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = sheetState,
+        containerColor = Color.White,
+        shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 24.dp)
+                .padding(bottom = 32.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            // 제목
+            Text(
+                text = "오늘의 산책 완료!",
+                fontSize = 22.sp,
+                fontWeight = FontWeight.Bold,
+                color = TextMain,
+            )
+            Spacer(modifier = Modifier.height(6.dp))
+            Text(
+                text = "우리 강아지와 함께한 즐거운 시간",
+                fontSize = 14.sp,
+                color = Color.Gray,
+            )
+
+            Spacer(modifier = Modifier.height(20.dp))
+
+            // 통계 카드 3개
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                SummaryStatCard(
+                    icon = { Icon(Icons.Filled.DirectionsWalk, null, tint = Color(0xFFE8873A), modifier = Modifier.size(28.dp)) },
+                    label = "거리",
+                    value = "%.1f".format(distanceKm),
+                    unit = "km",
+                    modifier = Modifier.weight(1f)
+                )
+                SummaryStatCard(
+                    icon = { Icon(Icons.Filled.Schedule, null, tint = Color(0xFFE8873A), modifier = Modifier.size(28.dp)) },
+                    label = "시간",
+                    value = "${minutes}분 ${seconds}",
+                    unit = "초",
+                    modifier = Modifier.weight(1f)
+                )
+                SummaryStatCard(
+                    icon = { Icon(Icons.Filled.LocalFireDepartment, null, tint = Color(0xFFE8873A), modifier = Modifier.size(28.dp)) },
+                    label = "칼로리",
+                    value = "$calories",
+                    unit = "kcal",
+                    modifier = Modifier.weight(1f)
+                )
+            }
+
+            Spacer(modifier = Modifier.height(20.dp))
+
+            // 산책 코스
+            if (state.summaryRouteName.isNotBlank()) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Text("산책 코스  ", fontSize = 14.sp, color = Color.Gray)
+                    Text(state.summaryRouteName, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = TextMain)
+                }
+                Spacer(modifier = Modifier.height(16.dp))
+            }
+
+            // 별점
+            Text(
+                text = "만족하셨나요?",
+                fontSize = 14.sp,
+                fontWeight = FontWeight.Medium,
+                color = TextMain,
+                modifier = Modifier.align(Alignment.Start)
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            Row(
+                modifier = Modifier.align(Alignment.Start),
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                repeat(5) { index ->
+                    Icon(
+                        imageVector = if (index < state.summaryRating) Icons.Filled.Star else Icons.Outlined.Star,
+                        contentDescription = "${index + 1}점",
+                        tint = if (index < state.summaryRating) Color(0xFFFFA726) else Color(0xFFCCCCCC),
+                        modifier = Modifier
+                            .size(32.dp)
+                            .clickable(
+                                indication = null,
+                                interactionSource = remember { MutableInteractionSource() }
+                            ) { onRating(index + 1) }
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(24.dp))
+
+            // 일기 보러가기 버튼
+            Button(
+                onClick = onNavigateToRecord,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(52.dp),
+                shape = RoundedCornerShape(14.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = PointGreen)
+            ) {
+                Icon(Icons.Filled.Pets, null, modifier = Modifier.size(18.dp))
+                Spacer(modifier = Modifier.width(8.dp))
+                Text("일기 보러가기", fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+            }
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            // 홈으로 돌아가기 버튼
+            OutlinedButton(
+                onClick = onNavigateToHome,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(52.dp),
+                shape = RoundedCornerShape(14.dp),
+                colors = ButtonDefaults.outlinedButtonColors(contentColor = TextMain)
+            ) {
+                Text("홈으로 돌아가기", fontSize = 16.sp, fontWeight = FontWeight.Medium)
+            }
+        }
+    }
+}
+
+@Composable
+private fun SummaryStatCard(
+    icon: @Composable () -> Unit,
+    label: String,
+    value: String,
+    unit: String,
+    modifier: Modifier = Modifier,
+) {
+    Card(
+        modifier = modifier,
+        shape = RoundedCornerShape(14.dp),
+        colors = CardDefaults.cardColors(containerColor = Color(0xFFFFF8F0)),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 14.dp, horizontal = 8.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            icon()
+            Text(label, fontSize = 11.sp, color = Color.Gray)
+            Row(verticalAlignment = Alignment.Bottom) {
+                Text(value, fontSize = 18.sp, fontWeight = FontWeight.Bold, color = TextMain)
+                Text(unit, fontSize = 12.sp, color = TextMain, modifier = Modifier.padding(bottom = 2.dp))
+            }
+        }
     }
 }
 
@@ -409,6 +665,123 @@ private fun DangerZoneSelectionBanner(modifier: Modifier = Modifier) {
             fontSize = 14.sp,
             fontWeight = FontWeight.SemiBold,
             modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+        )
+    }
+}
+
+// ── 산책 중 통계 패널 (시간 / 거리 / 칼로리 + 버튼) ─────────────────────────
+@Composable
+private fun WalkingStatsPanel(
+    elapsedSeconds: Int,
+    distanceMeters: Double,
+    isPaused: Boolean,
+    onPauseResume: () -> Unit,
+    onEndWalk: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val minutes = elapsedSeconds / 60
+    val seconds = elapsedSeconds % 60
+    val timeText = "%02d:%02d".format(minutes, seconds)
+
+    val distanceKm = distanceMeters / 1000.0
+    val distanceText = "%.2fkm".format(distanceKm)
+
+    // 칼로리 추정: 체중 미입력 시 평균 65kcal/km
+    val calories = (distanceKm * 65).toInt()
+
+    Card(
+        modifier = modifier,
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(containerColor = Color.White),
+        elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp, vertical = 16.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp)
+        ) {
+            // 통계 행
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceEvenly
+            ) {
+                WalkStatItem(label = "시간", value = timeText)
+                WalkStatItem(label = "거리", value = distanceText)
+                WalkStatItem(label = "칼로리", value = "$calories")
+            }
+
+            // 버튼 행
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                // 일시정지 / 재개
+                Button(
+                    onClick = onPauseResume,
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(48.dp),
+                    shape = RoundedCornerShape(14.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = PointGreen)
+                ) {
+                    Icon(
+                        imageVector = if (isPaused) Icons.Filled.PlayArrow else Icons.Filled.Pause,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = if (isPaused) "재개" else "일시정지",
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                }
+
+                // 산책 종료
+                Button(
+                    onClick = onEndWalk,
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(48.dp),
+                    shape = RoundedCornerShape(14.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = Color(0xFFF0F0F0),
+                        contentColor = TextMain
+                    )
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.Stop,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = "산책 종료",
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun WalkStatItem(label: String, value: String) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Text(
+            text = label,
+            fontSize = 12.sp,
+            color = Color.Gray,
+            fontWeight = FontWeight.Normal
+        )
+        Spacer(modifier = Modifier.height(2.dp))
+        Text(
+            text = value,
+            fontSize = 18.sp,
+            fontWeight = FontWeight.Bold,
+            color = TextMain
         )
     }
 }
@@ -450,11 +823,15 @@ private fun KakaoMapView(
     val lifecycleOwner = LocalLifecycleOwner.current
     val mapView = remember { MapView(context) }
 
+    // MapView.start() 성공 여부 추적 (실패 시 resume/pause NPE 방지)
+    var mapStarted by remember { mutableStateOf(false) }
+
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
+            if (!mapStarted) return@LifecycleEventObserver
             when (event) {
-                Lifecycle.Event.ON_RESUME -> mapView.resume()
-                Lifecycle.Event.ON_PAUSE -> mapView.pause()
+                Lifecycle.Event.ON_RESUME -> runCatching { mapView.resume() }
+                Lifecycle.Event.ON_PAUSE  -> runCatching { mapView.pause() }
                 else -> {}
             }
         }
@@ -462,30 +839,35 @@ private fun KakaoMapView(
 
         onDispose {
             lifecycleOwner.lifecycle.removeObserver(observer)
-            mapView.finish()
+            runCatching { mapView.finish() }
         }
     }
 
     AndroidView(
         factory = { _ ->
             mapView.apply {
-                start(
-                    object : MapLifeCycleCallback() {
-                        override fun onMapDestroy() {}
-                        override fun onMapError(error: Exception) {
-                            android.util.Log.e("KakaoMap", "onMapError: ${error.message}", error)
+                runCatching {
+                    start(
+                        object : MapLifeCycleCallback() {
+                            override fun onMapDestroy() {}
+                            override fun onMapError(error: Exception) {
+                                android.util.Log.e("KakaoMap", "onMapError: ${error.message}", error)
+                            }
+                        },
+                        object : KakaoMapReadyCallback() {
+                            override fun onMapReady(kakaoMap: KakaoMap) {
+                                android.util.Log.d("KakaoMap", "onMapReady 성공!")
+                                mapStarted = true
+                                onMapReady(kakaoMap)
+                            }
                         }
-                    },
-                    object : KakaoMapReadyCallback() {
-                        override fun onMapReady(kakaoMap: KakaoMap) {
-                            android.util.Log.d("KakaoMap", "onMapReady 성공!")
-                            onMapReady(kakaoMap)
-                        }
-                    }
-                )
+                    )
+                }.onFailure { e ->
+                    android.util.Log.e("KakaoMap", "MapView.start() 실패: ${e.message}", e)
+                }
                 // start() 이후 이미 RESUMED 상태이면 resume() 호출
-                if (lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) {
-                    resume()
+                if (mapStarted && lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) {
+                    runCatching { resume() }
                 }
             }
         },

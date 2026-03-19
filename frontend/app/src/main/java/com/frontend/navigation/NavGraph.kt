@@ -41,7 +41,7 @@ fun NavGraph() {
     ) { innerPadding ->
         NavHost(
             navController = navController,
-            startDestination = Routes.LOGIN,
+            startDestination = Routes.SPLASH,
             modifier = Modifier.padding(innerPadding)
         ) {
             composable(Routes.SPLASH) {
@@ -54,7 +54,18 @@ fun NavGraph() {
                 HomeScreen()
             }
             composable(Routes.WALK) {
-                WalkScreen()
+                WalkScreen(
+                    onNavigateToRecord = {
+                        navController.navigate(Routes.RECORD) {
+                            popUpTo(Routes.WALK) { inclusive = false }
+                        }
+                    },
+                    onNavigateToHome = {
+                        navController.navigate(Routes.HOME) {
+                            popUpTo(Routes.WALK) { inclusive = false }
+                        }
+                    }
+                )
             }
             composable(Routes.RECORD) {
                 RecordScreen()

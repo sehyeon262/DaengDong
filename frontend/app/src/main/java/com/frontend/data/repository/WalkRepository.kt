@@ -2,7 +2,7 @@ package com.frontend.data.repository
 
 import com.frontend.data.local.TokenDataStore
 import com.frontend.data.remote.WalkApi
-import com.frontend.domain.model.SaveLocationRequest
+import com.frontend.domain.model.LocationBatchRequest
 import com.frontend.domain.model.StartWalkRequest
 import kotlinx.coroutines.flow.first
 import javax.inject.Inject
@@ -13,9 +13,8 @@ class WalkRepository @Inject constructor(
 ) {
 
     /**
-     * 산책 시작 API 호출.
-     * TokenDataStore에서 accessToken·dogId를 직접 조회하므로 외부 주입 불필요.
-     * @return Result<Long> — 성공 시 서버가 발급한 walkId, 실패 시 예외를 래핑
+     * W1-01: 산책 시작 API 호출 (추천 코스용)
+     * @return Result<Long> — 성공 시 walkId
      */
     suspend fun startWalk(): Result<Long> = runCatching {
         val token = tokenDataStore.getAccessToken().first()
@@ -29,21 +28,49 @@ class WalkRepository @Inject constructor(
     }
 
     /**
-     * GPS 좌표 저장 API 호출.
-     * 실패해도 산책을 중단하지 않으므로 Result로 반환.
+     * R1-03: 자유 산책 시작 API 호출
+     * @return Result<Long> — 성공 시 walkId
      */
-    suspend fun saveLocation(
+    suspend fun startFreeWalk(): Result<Long> = runCatching {
+        val token = tokenDataStore.getAccessToken().first()
+            ?: throw Exception("로그인이 필요합니다")
+        val dogId = tokenDataStore.getDogId().first()
+            ?: throw Exception("강아지 정보가 없습니다")
+
+        val response = walkApi.startFreeWalk("Bearer $token", StartWalkRequest(dogId))
+        response.data?.walkId
+            ?: throw Exception("자유 산책 시작 실패: walkId가 없습니다")
+    }
+
+    /**
+     * W1-02: GPS 좌표 배치 저장 API 호출
+     * 실패해도 산책을 중단하지 않으므로 Result로 반환
+     */
+    suspend fun saveLocations(
         walkId: Long,
-        latitude: Double,
-        longitude: Double,
+        points: List<LocationBatchRequest.LocationPoint>,
     ): Result<Unit> = runCatching {
         val token = tokenDataStore.getAccessToken().first()
             ?: throw Exception("로그인이 필요합니다")
 
-        walkApi.saveLocation(
+        walkApi.saveLocations(
             authorization = "Bearer $token",
             walkId = walkId,
-            request = SaveLocationRequest(latitude, longitude),
+            request = LocationBatchRequest(points),
+        )
+    }
+
+    /**
+     * W1-06: 산책 종료 API 호출
+     * @return Result<Unit>
+     */
+    suspend fun endWalk(walkId: Long): Result<Unit> = runCatching {
+        val token = tokenDataStore.getAccessToken().first()
+            ?: throw Exception("로그인이 필요합니다")
+
+        walkApi.endWalk(
+            authorization = "Bearer $token",
+            walkId = walkId,
         )
     }
 }

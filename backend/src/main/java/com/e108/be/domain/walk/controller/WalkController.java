@@ -38,16 +38,21 @@ public class WalkController {
     /**
      * W1-01 산책 시작
      * POST /api/v1/walks
-     * 누적 거리 조회
-     * GET /api/v1/walks/{walkId}/distance
-     *
-     * 응답:
-     * { "code": 200, "message": "거리 조회 성공", "data": {"distanceM": 1234.56, "distanceKm": 1.23} }
      */
     @PostMapping
     public ResTemplate<StartWalkResponse> startWalk(@RequestBody StartWalkRequest request) {
         StartWalkResponse response = walkService.startWalk(request);
         return ResTemplate.success(HttpStatus.OK, "산책이 시작되었습니다.", response);
+    }
+
+    /**
+     * R1-03 자유 산책 시작
+     * POST /api/v1/walks/free-start
+     */
+    @PostMapping("/free-start")
+    public ResTemplate<StartWalkResponse> startFreeWalk(@RequestBody StartWalkRequest request) {
+        StartWalkResponse response = walkService.startFreeWalk(request);
+        return ResTemplate.success(HttpStatus.OK, "자유 산책이 시작되었습니다.", response);
     }
 
     @GetMapping("/{walkId}/distance")

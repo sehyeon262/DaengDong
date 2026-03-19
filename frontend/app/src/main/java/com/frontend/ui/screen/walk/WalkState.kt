@@ -9,6 +9,20 @@ data class WalkState(
     val showFilterSheet: Boolean = false,
     val selectedFilter: WalkFilterType = WalkFilterType.PLACE,
 
+    // ── 자유 산책 ──────────────────────────────────────────────────────────────
+    val isWalking: Boolean = false,       // 산책 진행 중 여부
+    val isPaused: Boolean = false,        // 일시정지 여부
+    val elapsedSeconds: Int = 0,          // 경과 시간 (초)
+    val distanceMeters: Double = 0.0,     // 누적 이동 거리 (미터)
+    val walkError: String? = null,        // 산책 시작/종료 에러 메시지
+
+    // ── 산책 요약 (종료 후 표시) ──────────────────────────────────────────────
+    val isWalkSummaryVisible: Boolean = false,
+    val summaryElapsedSeconds: Int = 0,
+    val summaryDistanceMeters: Double = 0.0,
+    val summaryRouteName: String = "",
+    val summaryRating: Int = 0,           // 0 = 미평가, 1~5 = 별점
+
     // ── 위험 구역 신고 ────────────────────────────────────────────────────────
     val isSelectingDangerZone: Boolean = false,       // 위치 선택 모드 여부
     val selectedLocation: DangerLocation? = null,     // 선택된 좌표 (지도 중심)
