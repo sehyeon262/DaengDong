@@ -4,8 +4,17 @@ import com.e108.be.domain.walk.entity.WalkRecord;
 import com.e108.be.domain.walk.entity.WalkStatus;
 import org.springframework.data.jpa.repository.JpaRepository;
 
+import java.time.LocalDateTime;
+import java.util.List;
 import java.util.Optional;
 
 public interface WalkRecordRepository extends JpaRepository<WalkRecord, Long> {
     Optional<WalkRecord> findByDogIdAndWalkStatus(Long dogId, WalkStatus walkStatus);
+
+    List<WalkRecord> findByDogIdAndWalkStatusAndStartTimeBetween(
+            Long dogId, WalkStatus walkStatus,
+            LocalDateTime start, LocalDateTime end
+    );
+
+    List<WalkRecord> findAllByWalkStatus(WalkStatus walkStatus);
 }

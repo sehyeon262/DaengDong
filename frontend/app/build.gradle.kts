@@ -17,6 +17,7 @@ val localProperties = Properties().apply {
 }
 
 val kakaoMapApiKey: String = localProperties.getProperty("KAKAO_MAP_API_KEY", "")
+val baseUrl: String = localProperties.getProperty("BASE_URL", "http://10.0.2.2:8080/api/v1/")  // ← 추가
 
 android {
     namespace = "com.frontend"
@@ -33,6 +34,7 @@ android {
 
         manifestPlaceholders["kakaoMapApiKey"] = kakaoMapApiKey
         buildConfigField("String", "KAKAO_MAP_API_KEY", "\"$kakaoMapApiKey\"")
+        buildConfigField("String", "BASE_URL", "\"$baseUrl\"")  // ← 추가
     }
 
     buildTypes {

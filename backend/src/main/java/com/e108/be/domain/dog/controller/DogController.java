@@ -47,6 +47,14 @@ public class DogController {
         return ResTemplate.success(HttpStatus.OK, "반려견 프로필 조회 성공", response);
     }
 
+    // S14P21E108-169: 반려견 공개 프로필 조회 - GET /api/v1/dogs/{dogId}/public
+    @GetMapping("/{dogId}/public")
+    public ResTemplate<DogProfileResponse> getPublicDog(
+            @PathVariable Long dogId) {
+        DogProfileResponse response = dogService.getPublicDog(dogId);
+        return ResTemplate.success(HttpStatus.OK, "반려견 공개 프로필 조회 성공", response);
+    }
+
     // P1-03: 반려견 프로필 수정 - PATCH /api/v1/dogs/{dogId}
     @PatchMapping("/{dogId}")
     public ResTemplate<UpdateDogResponse> updateDog(

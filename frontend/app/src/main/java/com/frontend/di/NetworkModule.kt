@@ -1,8 +1,11 @@
 package com.frontend.di
 
 import com.frontend.data.remote.AuthApi
+import com.frontend.data.remote.DangerZoneApi
 import com.frontend.data.remote.DogApi
 import com.frontend.data.remote.HomeApi
+import com.frontend.data.remote.RecordApi
+import com.frontend.data.remote.WalkApi
 import com.frontend.util.Constants
 import dagger.Module
 import dagger.Provides
@@ -54,5 +57,23 @@ object NetworkModule {
     @Singleton
     fun provideDogApi(retrofit: Retrofit): DogApi {
         return retrofit.create(DogApi::class.java)
+    }
+
+    @Provides
+    @Singleton
+    fun provideRecordApi(retrofit: Retrofit): RecordApi {
+        return retrofit.create(RecordApi::class.java)
+    }
+
+    @Provides
+    @Singleton
+    fun provideWalkApi(retrofit: Retrofit): WalkApi {
+        return retrofit.create(WalkApi::class.java)
+    }
+
+    @Provides
+    @Singleton
+    fun provideDangerZoneApi(retrofit: Retrofit): DangerZoneApi {
+        return retrofit.create(DangerZoneApi::class.java)
     }
 }

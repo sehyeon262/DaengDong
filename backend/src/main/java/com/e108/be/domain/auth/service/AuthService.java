@@ -13,10 +13,10 @@ import com.e108.be.domain.auth.dto.request.RegisterRequest;
 import com.e108.be.domain.auth.dto.response.LoginResponse;
 import com.e108.be.domain.auth.dto.response.RegisterResponse;
 import com.e108.be.domain.auth.dto.response.ValidateTokenResponse;
-import com.e108.be.domain.auth.entity.Member;
+import com.e108.be.domain.auth.entity.User;
 import com.e108.be.domain.auth.exception.AuthException;
 import com.e108.be.domain.auth.exception.EmailDuplicateException;
-import com.e108.be.domain.auth.repository.MemberRepository;
+import com.e108.be.domain.auth.repository.UserRepository;
 import com.e108.be.domain.dog.repository.DogRepository;
 import com.e108.be.global.jwt.JwtTokenProvider;
 import lombok.RequiredArgsConstructor;
@@ -24,12 +24,12 @@ import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-@Service // 이 클래스가 서비스 계층이라는 뜻 (스프링이 자동으로 Bean 등록)
-@RequiredArgsConstructor // final 필드를 자동으로 생성자 주입
-@Transactional(readOnly = true) // 기본적으로 읽기 전용 트랜잭션
+@Service //
+@RequiredArgsConstructor
+@Transactional(readOnly = true)
 public class AuthService {
 
-    private final MemberRepository memberRepository;
+    private final UserRepository userRepository;
     private final BCryptPasswordEncoder passwordEncoder;
     private final JwtTokenProvider jwtTokenProvider;
     private final DogRepository dogRepository;
@@ -42,20 +42,20 @@ public class AuthService {
      */
     @Transactional
     public RegisterResponse register(RegisterRequest request) {
-        if (memberRepository.existsByEmail(request.getEmail())) {
+        if (userRepository.existsByEmail(request.getEmail())) {
             throw new EmailDuplicateException();
         }
 
         String encodedPassword = passwordEncoder.encode(request.getPassword());
 
-        Member member = Member.builder()
+        User user = User.builder()
                 .email(request.getEmail())
                 .password(encodedPassword)
                 .nickname(request.getNickname())
                 .phone(request.getPhone())
                 .build();
 
-        Member saved = memberRepository.save(member);
+        User saved = userRepository.save(user);
 
         return RegisterResponse.builder()
                 .userId(saved.getId())
@@ -72,20 +72,20 @@ public class AuthService {
      */
     public LoginResponse login(LoginRequest request) {
         // 1) 이메일로 회원 찾기
-        Member member = memberRepository.findByEmail(request.getEmail())
+        User user = userRepository.findByEmail(request.getEmail())
                 .orElseThrow(() -> new AuthException("존재하지 않는 이메일입니다."));
 
         // 2) 비밀번호 확인 (입력값 vs DB에 저장된 암호화된 비밀번호)
-        if (!passwordEncoder.matches(request.getPassword(), member.getPassword())) {
+        if (!passwordEncoder.matches(request.getPassword(), user.getPassword())) {
             throw new AuthException("비밀번호가 일치하지 않습니다.");
         }
 
         // 3) JWT 토큰 생성
-        String token = jwtTokenProvider.createToken(member.getId(), member.getEmail());
-        String refreshToken = jwtTokenProvider.createRefreshToken(member.getId(), member.getEmail());
+        String token = jwtTokenProvider.createToken(user.getId(), user.getEmail());
+        String refreshToken = jwtTokenProvider.createRefreshToken(user.getId(), user.getEmail());
 
         // 4) 해당 유저의 반려견 ID 조회 (없으면 null)
-        Long dogId = dogRepository.findFirstByUserId(member.getId())
+        Long dogId = dogRepository.findFirstByUser_Id(user.getId())
                 .map(dog -> dog.getId())
                 .orElse(null);
 
@@ -93,7 +93,7 @@ public class AuthService {
         return LoginResponse.builder()
                 .accessToken(token)
                 .refreshToken(refreshToken)
-                .userId(member.getId())
+                .userId(user.getId())
                 .dogId(dogId)
                 .build();
     }

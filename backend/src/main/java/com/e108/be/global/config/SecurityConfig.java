@@ -40,6 +40,8 @@ public class SecurityConfig {
                         .requestMatchers("/auth/**").permitAll()
 
                         .requestMatchers("/walks/**").permitAll() // 테스트용 임시 허용
+                        .requestMatchers("/records/**").permitAll() // 테스트용 임시 허용
+                        .requestMatchers("/diaries/**").permitAll() // 테스트용 임시 허용
                         .requestMatchers("/error").permitAll()   // Spring 오류 포워딩 허용
 
                         // TODO: 개발 테스트용 임시 허용 - 로그인 구현 완료 후 아래 줄 제거

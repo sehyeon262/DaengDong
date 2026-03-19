@@ -1,15 +1,26 @@
 package com.e108.be.domain.home.service;
 
-import com.e108.be.domain.auth.entity.Member;
-import com.e108.be.domain.auth.repository.MemberRepository;
+import com.e108.be.domain.auth.entity.User;
+import com.e108.be.domain.auth.repository.UserRepository;
 import com.e108.be.domain.dog.entity.Dog;
 import com.e108.be.domain.dog.repository.DogRepository;
 import com.e108.be.domain.home.dto.response.*;
 import com.e108.be.domain.home.enums.*;
+import com.e108.be.domain.walk.entity.WalkRecord;
+import com.e108.be.domain.walk.repository.WalkRecordRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+
+import java.math.BigDecimal;
+import java.time.DayOfWeek;
+import java.time.LocalDateTime;
+import java.time.LocalTime;
+import java.time.temporal.TemporalAdjusters;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
 
 /**
  * 홈 화면 통합 서비스
@@ -27,8 +38,9 @@ public class HomeService {
 
     private final WeatherService weatherService;
     private final AirQualityService airQualityService;
-    private final MemberRepository memberRepository;
+    private final UserRepository userRepository;
     private final DogRepository dogRepository;
+    private final WalkRecordRepository walkRecordRepository;
 
     public HomeResponse getHomeData(Long memberId, double latitude, double longitude) {
         // 1. 외부 API 호출 (실패 시 기본값 반환)
@@ -41,23 +53,23 @@ public class HomeService {
         FineDustGrade dustGrade = FineDustGrade.from(airQuality.pm10Value());
         WindGrade windGrade = WindGrade.from(weather.windSpeed());
         WalkStatus walkStatus = WalkStatus.calculate(tempGrade, dustGrade, windGrade, skyStatus);
-        Member member = memberRepository.findById(memberId).orElse(null);
-        Dog dog = dogRepository.findFirstByUserId(memberId).orElse(null);
+        User user = userRepository.findById(memberId).orElse(null);
+        Dog dog = dogRepository.findFirstByUser_Id(memberId).orElse(null);
         String dogName = dog != null ? dog.getName() : "";
 
         // 3. 응답 조합
         return HomeResponse.builder()
-                .user(buildUserInfo(member, dog))
+                .user(buildUserInfo(user, dog))
                 .location(buildLocationInfo(latitude, longitude))
                 .weather(buildWeatherInfo(weather, airQuality, skyStatus, tempGrade, dustGrade, windGrade))
                 .walk(buildWalkInfo(walkStatus, skyStatus, dogName))
-                .weeklySummary(null) // TODO: 산책 기록 구현 후 연동
+                .weeklySummary(dog != null ? buildWeeklySummary(dog.getId()) : null)
                 .build();
     }
 
-    private HomeUserInfo buildUserInfo(Member member, Dog dog) {
+    private HomeUserInfo buildUserInfo(User user, Dog dog) {
         return HomeUserInfo.builder()
-                .nickname(member != null ? member.getNickname() : "")
+                .nickname(user != null ? user.getNickname() : "")
                 .dogName(dog != null ? dog.getName() : "")
                 .dogProfileImageUrl(dog != null ? dog.getProfileImageUrl() : null)
                 .build();
@@ -138,6 +150,79 @@ public class HomeService {
      */
     private String generateCharacterType(SkyStatus skyStatus, WalkStatus walkStatus) {
         return skyStatus.name() + "_" + walkStatus.name();
+    }
+
+    private HomeWeeklySummary buildWeeklySummary(Long dogId) {
+        LocalDateTime now = LocalDateTime.now();
+        LocalDateTime thisWeekStart = now.with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY))
+                .with(LocalTime.MIN);
+        LocalDateTime thisWeekEnd = now.with(TemporalAdjusters.nextOrSame(DayOfWeek.SUNDAY))
+                .with(LocalTime.MAX);
+        LocalDateTime lastWeekStart = thisWeekStart.minusWeeks(1);
+        LocalDateTime lastWeekEnd = thisWeekStart.minusNanos(1);
+
+        List<WalkRecord> thisWeekRecords = walkRecordRepository
+                .findByDogIdAndWalkStatusAndStartTimeBetween(
+                        dogId, com.e108.be.domain.walk.entity.WalkStatus.COMPLETED,
+                        thisWeekStart, thisWeekEnd);
+        List<WalkRecord> lastWeekRecords = walkRecordRepository
+                .findByDogIdAndWalkStatusAndStartTimeBetween(
+                        dogId, com.e108.be.domain.walk.entity.WalkStatus.COMPLETED,
+                        lastWeekStart, lastWeekEnd);
+
+        if (thisWeekRecords.isEmpty() && lastWeekRecords.isEmpty()) {
+            return null;
+        }
+
+        List<DailyWalkStat> weeklyStats = buildDailyStats(thisWeekRecords);
+
+        int thisWeekTotal = thisWeekRecords.stream()
+                .map(WalkRecord::getTotalDistance)
+                .filter(d -> d != null)
+                .mapToInt(BigDecimal::intValue)
+                .sum();
+        int lastWeekTotal = lastWeekRecords.stream()
+                .map(WalkRecord::getTotalDistance)
+                .filter(d -> d != null)
+                .mapToInt(BigDecimal::intValue)
+                .sum();
+        int diff = thisWeekTotal - lastWeekTotal;
+
+        String diffMessage = diff >= 0
+                ? "지난주보다 " + diff + "m 더 걸었어요!"
+                : "지난주보다 " + Math.abs(diff) + "m 덜 걸었어요";
+
+        return HomeWeeklySummary.builder()
+                .thisWeekTotalDistance(thisWeekTotal)
+                .lastWeekTotalDistance(lastWeekTotal)
+                .diffDistance(diff)
+                .diffMessage(diffMessage)
+                .weeklyStats(weeklyStats)
+                .build();
+    }
+
+    private List<DailyWalkStat> buildDailyStats(List<WalkRecord> records) {
+        String[] dayLabels = {"월", "화", "수", "목", "금", "토", "일"};
+        Map<DayOfWeek, Integer> distanceByDay = new LinkedHashMap<>();
+        for (DayOfWeek dow : DayOfWeek.values()) {
+            distanceByDay.put(dow, 0);
+        }
+
+        for (WalkRecord record : records) {
+            if (record.getStartTime() == null || record.getTotalDistance() == null) continue;
+            DayOfWeek dow = record.getStartTime().getDayOfWeek();
+            distanceByDay.merge(dow, record.getTotalDistance().intValue(), Integer::sum);
+        }
+
+        return List.of(
+                DailyWalkStat.builder().day(dayLabels[0]).distance(distanceByDay.get(DayOfWeek.MONDAY)).build(),
+                DailyWalkStat.builder().day(dayLabels[1]).distance(distanceByDay.get(DayOfWeek.TUESDAY)).build(),
+                DailyWalkStat.builder().day(dayLabels[2]).distance(distanceByDay.get(DayOfWeek.WEDNESDAY)).build(),
+                DailyWalkStat.builder().day(dayLabels[3]).distance(distanceByDay.get(DayOfWeek.THURSDAY)).build(),
+                DailyWalkStat.builder().day(dayLabels[4]).distance(distanceByDay.get(DayOfWeek.FRIDAY)).build(),
+                DailyWalkStat.builder().day(dayLabels[5]).distance(distanceByDay.get(DayOfWeek.SATURDAY)).build(),
+                DailyWalkStat.builder().day(dayLabels[6]).distance(distanceByDay.get(DayOfWeek.SUNDAY)).build()
+        );
     }
 
     /**

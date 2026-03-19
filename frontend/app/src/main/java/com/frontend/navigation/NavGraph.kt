@@ -18,6 +18,8 @@ import com.frontend.ui.screen.dog.DogEditScreen
 import com.frontend.ui.screen.dog.DogProfileScreen
 import com.frontend.ui.screen.home.HomeScreen
 import com.frontend.ui.screen.login.LoginScreen
+import com.frontend.ui.screen.record.RecordScreen
+import com.frontend.ui.screen.splash.SplashScreen
 import com.frontend.ui.screen.walk.WalkScreen
 
 @Composable
@@ -42,6 +44,9 @@ fun NavGraph() {
             startDestination = Routes.LOGIN,
             modifier = Modifier.padding(innerPadding)
         ) {
+            composable(Routes.SPLASH) {
+                SplashScreen(navController = navController)
+            }
             composable(Routes.LOGIN) {
                 LoginScreen(navController = navController)
             }
@@ -52,7 +57,7 @@ fun NavGraph() {
                 WalkScreen()
             }
             composable(Routes.RECORD) {
-                PlaceholderScreen("기록")
+                RecordScreen()
             }
             composable(Routes.MY_INFO) {
                 DogProfileScreen(navController = navController)

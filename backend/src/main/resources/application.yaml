@@ -15,6 +15,12 @@ spring:
     init:
       mode: always
 
+  # 파일 업로드 크기 설정
+  servlet:
+    multipart:
+      max-file-size: 10MB
+      max-request-size: 50MB
+
   # 공통 JPA 설정
   jpa:
     properties:
@@ -32,3 +38,16 @@ api:
     service-key: ${WEATHER_SERVICE_KEY}
   air-quality:
     service-key: ${AIR_QUALITY_SERVICE_KEY}
+  gms:
+    api-key: ${GMS_KEY}
+    model: gpt-5-mini
+    base-url: https://gms.ssafy.io/gmsapi/api.openai.com/v1
+
+# S3 설정
+aws:
+  s3:
+    bucket: ssafy-e108-uploads-216203894753-ap-northeast-2-an
+    region: ap-northeast-2
+  credentials:
+    access-key: ${AWS_ACCESS_KEY}
+    secret-key: ${AWS_SECRET_KEY}
