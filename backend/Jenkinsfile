@@ -13,6 +13,10 @@ checkHealth = { containerName, port ->
     } catch (e) { return "FAILURE" }
 }
 
+def isManualBuild() {
+    return currentBuild.getBuildCauses('hudson.model.Cause$UserIdCause').size() > 0
+}
+
 pipeline {
     agent any 
     tools { jdk 'jdk17' }
@@ -28,7 +32,10 @@ pipeline {
 
         stage('Spring Boot Build') {
             when {
-                changeset "backend/**"
+                anyOf {
+                    changeset "backend/**"
+                    expression { return isManualBuild() }
+                }
             }
             steps {
                 dir('backend') {
@@ -47,6 +54,7 @@ pipeline {
                     changeset "backend/**"
                     changeset "docker-compose-dev.yaml"
                     changeset "docker-compose-prod.yaml"
+                    expression { return isManualBuild() }
                 }
             }
             steps {
@@ -65,6 +73,7 @@ pipeline {
                     anyOf {
                         changeset "backend/**"
                         changeset "docker-compose-dev.yaml"
+                        expression { return isManualBuild() }
                     }
                     anyOf {
                         branch 'develop'
@@ -74,8 +83,9 @@ pipeline {
             } 
             steps {
                 withCredentials([file(credentialsId: 'be-dev-env', variable: 'TEMP_ENV')]) {
-                    sh "docker compose -f ./docker-compose-dev.yaml down || true"
-                    sh "docker compose -f ./docker-compose-dev.yaml --env-file ${TEMP_ENV} up -d --build app"
+                    sh "docker rm -f be-app-dev || true"
+                    sh "docker compose -f ./docker-compose-dev.yaml --env-file ${TEMP_ENV} up -d --build --no-deps app"
+                    sh "docker network connect ssafy-network be-app-dev || true"
                     script { env.SERVER_STATUS = checkHealth("be-app-dev", "8080") } 
                 }
             }
@@ -87,6 +97,7 @@ pipeline {
                     anyOf {
                         changeset "backend/**"
                         changeset "docker-compose-prod.yaml"
+                        expression { return isManualBuild() }
                     }
                     anyOf {
                         branch 'main'
@@ -96,8 +107,9 @@ pipeline {
             }
             steps {
                 withCredentials([file(credentialsId: 'be-prod-env', variable: 'TEMP_ENV')]) {
-                    sh "docker compose -f ./docker-compose-prod.yaml down || true"
-                    sh "docker compose -f ./docker-compose-prod.yaml --env-file ${TEMP_ENV} up -d --build app"
+                    sh "docker rm -f be-app-prod || true"
+                    sh "docker compose -f ./docker-compose-prod.yaml --env-file ${TEMP_ENV} up -d --build --no-deps app"
+                    sh "docker network connect ssafy-network be-app-prod || true"
                     script { env.SERVER_STATUS = checkHealth("be-app-prod", "8080") }
                 }
             }
