@@ -9,6 +9,5 @@ import java.util.List;
 @AllArgsConstructor
 public class NearbyDogsResponse {
     private List<NearbyDogResponse> nearbyDogs;
-    // 172번 (산책 제안) 작업 시 채워질 필드. 현재는 빈 리스트 반환.
-    private List<Object> pendingProposals;
+    private List<PendingProposalResponse> pendingProposals;
 }
