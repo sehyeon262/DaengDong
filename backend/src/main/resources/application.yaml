@@ -32,3 +32,12 @@ api:
     service-key: ${WEATHER_SERVICE_KEY}
   air-quality:
     service-key: ${AIR_QUALITY_SERVICE_KEY}
+
+# S3 설정
+aws:
+  s3:
+    bucket: ssafy-e108-uploads
+    region: ap-northeast-2
+  credentials:
+    access-key: ${AWS_ACCESS_KEY}
+    secret-key: ${AWS_SECRET_KEY}
