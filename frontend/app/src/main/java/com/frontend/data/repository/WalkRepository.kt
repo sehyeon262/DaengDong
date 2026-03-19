@@ -4,6 +4,7 @@ import com.frontend.data.local.TokenDataStore
 import com.frontend.data.remote.WalkApi
 import com.frontend.domain.model.FeedbackRequest
 import com.frontend.domain.model.MetDogResponse
+import com.frontend.domain.model.NearbyDogResponse
 import com.frontend.domain.model.SaveLocationRequest
 import com.frontend.domain.model.LocationBatchRequest
 import com.frontend.domain.model.StartWalkRequest
@@ -121,5 +122,29 @@ class WalkRepository @Inject constructor(
         val token = tokenDataStore.getAccessToken().first()
             ?: throw Exception("로그인이 필요합니다")
         walkApi.updateFeedback("Bearer $token", request)
+    }
+
+    /**
+     * 주변 강아지 조회 API 호출.
+     * @return Result<List<NearbyDogResponse>>
+     */
+    suspend fun fetchNearbyDogs(
+        lat: Double,
+        lon: Double,
+        myWalkRecordId: Long,
+    ): Result<List<NearbyDogResponse>> = runCatching {
+        val token = tokenDataStore.getAccessToken().first()
+            ?: throw Exception("로그인이 필요합니다")
+        val dogId = tokenDataStore.getDogId().first()
+            ?: throw Exception("강아지 정보가 없습니다")
+
+        val response = walkApi.getNearbyDogs(
+            authorization = "Bearer $token",
+            lat = lat,
+            lon = lon,
+            myDogId = dogId,
+            myWalkRecordId = myWalkRecordId,
+        )
+        response.data?.nearbyDogs ?: emptyList()
     }
 }

@@ -8,6 +8,7 @@ import android.hardware.SensorManager
 import android.os.Looper
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.frontend.data.local.TokenDataStore
 import com.frontend.data.repository.WalkRepository
 import com.frontend.domain.model.DangerLocation
 import com.frontend.domain.model.DangerReason
@@ -27,6 +28,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import javax.inject.Inject
@@ -42,10 +44,14 @@ class WalkViewModel @Inject constructor(
     private val reportDangerZoneUseCase: ReportDangerZoneUseCase,
     private val getPlacesUseCase: GetPlacesUseCase,
     private val walkRepository: WalkRepository,
+    private val tokenDataStore: TokenDataStore,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(WalkState())
     val state = _state.asStateFlow()
+
+    // ── 주변 강아지 폴링 Job ───────────────────────────────────────────────────
+    private var nearbyDogsJob: Job? = null
 
     // ── 현재 산책 ID (산책 시작 후 서버에서 발급) ──────────────────────────────
     private var currentWalkId: Long? = null
@@ -83,6 +89,12 @@ class WalkViewModel @Inject constructor(
             rotationVectorSensor,
             SensorManager.SENSOR_DELAY_UI
         )
+        // DataStore에서 myDogId 초기 로드
+        viewModelScope.launch {
+            tokenDataStore.getDogId().first()?.let { dogId ->
+                _state.update { it.copy(myDogId = dogId) }
+            }
+        }
     }
 
     // ── GPS 위치 트래킹 ────────────────────────────────────────────────────────
@@ -216,6 +228,13 @@ class WalkViewModel @Inject constructor(
             _state.update { it.copy(places = emptyList()) }
         }
         // 장소 필터 ON 시 로드는 WalkScreen의 LaunchedEffect(activeFilters)에서 지도 중심으로 처리
+
+        // 주변 강아지 필터 ON/OFF → 폴링 제어
+        if (WalkFilterType.NEARBY_DOG in pending && _state.value.isWalking) {
+            startNearbyDogsPolling()
+        } else {
+            stopNearbyDogsPolling()
+        }
     }
 
     /** 지정 좌표 기반 주변 장소 로드 */
@@ -261,10 +280,10 @@ class WalkViewModel @Inject constructor(
             walkRepository.startFreeWalk()
                 .onSuccess { walkId ->
                     currentWalkId = walkId
+                    _state.update { it.copy(currentWalkId = walkId) }
                     startBatchSending(walkId)
                 }
                 .onFailure { e ->
-                    // 서버 실패해도 UI는 산책 중 상태 유지 (GPS 배치만 못 보냄)
                     android.util.Log.w("WalkViewModel", "산책 시작 API 실패: ${e.message}")
                     _state.update { it.copy(walkError = e.message) }
                 }
@@ -280,15 +299,14 @@ class WalkViewModel @Inject constructor(
     fun endWalk() {
         timerJob?.cancel()
         timerJob = null
+        stopNearbyDogsPolling()
 
-        // 요약 데이터 캡처 (상태 초기화 전)
         val summarySeconds = _state.value.elapsedSeconds
         val summaryDistance = _state.value.distanceMeters
         val summaryRoute = routes.getOrNull(_state.value.selectedRouteIndex)?.title ?: "자유 산책"
 
         val walkId = currentWalkId
         if (walkId == null) {
-            // 서버 walkId 없이 종료 (API 실패 케이스)
             batchSendJob?.cancel()
             pendingPoints.clear()
             _state.update {
@@ -298,6 +316,8 @@ class WalkViewModel @Inject constructor(
                     elapsedSeconds = 0,
                     distanceMeters = 0.0,
                     walkError = null,
+                    currentWalkId = null,
+                    nearbyDogs = emptyList(),
                     isWalkSummaryVisible = true,
                     summaryElapsedSeconds = summarySeconds,
                     summaryDistanceMeters = summaryDistance,
@@ -310,8 +330,6 @@ class WalkViewModel @Inject constructor(
 
         viewModelScope.launch {
             batchSendJob?.cancel()
-
-            // 남은 포인트 전송 (2개 미만이면 건너뜀 - 백엔드 LINESTRING 최소 2점 필요)
             val remaining = pendingPoints.toList()
             pendingPoints.clear()
             if (remaining.size >= 2) {
@@ -321,7 +339,6 @@ class WalkViewModel @Inject constructor(
             walkRepository.endWalk(walkId)
                 .onSuccess {
                     currentWalkId = null
-                    // routePoints는 유지 → 요약 화면 배경 지도에 경로 표시
                     _state.update {
                         it.copy(
                             isWalking = false,
@@ -329,6 +346,8 @@ class WalkViewModel @Inject constructor(
                             elapsedSeconds = 0,
                             distanceMeters = 0.0,
                             walkError = null,
+                            currentWalkId = null,
+                            nearbyDogs = emptyList(),
                             isWalkSummaryVisible = true,
                             summaryElapsedSeconds = summarySeconds,
                             summaryDistanceMeters = summaryDistance,
@@ -387,7 +406,6 @@ class WalkViewModel @Inject constructor(
 
     /**
      * 10초마다 pending 포인트를 서버로 배치 전송
-     * - 2개 미만이면 건너뜀 (LINESTRING 최소 2점 필요)
      */
     private fun startBatchSending(walkId: Long) {
         batchSendJob?.cancel()
@@ -413,6 +431,40 @@ class WalkViewModel @Inject constructor(
         val a = sin(Δφ / 2) * sin(Δφ / 2) + cos(φ1) * cos(φ2) * sin(Δλ / 2) * sin(Δλ / 2)
         val c = 2 * atan2(sqrt(a), sqrt(1 - a))
         return R * c
+    }
+
+    // ── 소셜 산책 — 주변 강아지 ───────────────────────────────────────────────
+
+    /** 주변 강아지 단건 조회 */
+    private fun loadNearbyDogs() {
+        val walkId = currentWalkId ?: return
+        val pos = _currentPosition.value ?: return
+        viewModelScope.launch {
+            walkRepository.fetchNearbyDogs(
+                lat = pos.latitude,
+                lon = pos.longitude,
+                myWalkRecordId = walkId,
+            ).onSuccess { dogs ->
+                _state.update { it.copy(nearbyDogs = dogs) }
+            }
+        }
+    }
+
+    /** 5초 간격 폴링 시작 */
+    private fun startNearbyDogsPolling() {
+        nearbyDogsJob?.cancel()
+        nearbyDogsJob = viewModelScope.launch {
+            while (true) {
+                loadNearbyDogs()
+                delay(5_000L)
+            }
+        }
+    }
+
+    /** 폴링 중단 */
+    private fun stopNearbyDogsPolling() {
+        nearbyDogsJob?.cancel()
+        nearbyDogsJob = null
     }
 
     // ── 위험 구역 신고 ─────────────────────────────────────────────────────────
