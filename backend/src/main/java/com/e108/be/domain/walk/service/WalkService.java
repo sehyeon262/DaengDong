@@ -1,11 +1,11 @@
 package com.e108.be.domain.walk.service;
 
+import com.e108.be.domain.walk.dto.request.*;
 import com.e108.be.domain.walk.dto.request.StartWalkRequest;
-import com.e108.be.domain.walk.dto.response.EndWalkResponse;
-import com.e108.be.domain.walk.dto.response.NearbyDogResponse;
-import com.e108.be.domain.walk.dto.response.NearbyDogsResponse;
-import com.e108.be.domain.walk.dto.response.StartWalkResponse;
-import com.e108.be.domain.walk.dto.response.WalkDurationResponse;
+import com.e108.be.domain.walk.dto.response.*;
+import com.e108.be.domain.walk.entity.MetDog;
+import com.e108.be.domain.walk.exception.MetDogNotFoundException;
+import com.e108.be.domain.walk.exception.ProposalNotFoundException;
 import com.e108.be.domain.dog.entity.Dog;
 import com.e108.be.domain.dog.repository.DogRepository;
 import com.e108.be.domain.walk.dto.response.CaloriesResponse;
@@ -15,7 +15,10 @@ import com.e108.be.domain.walk.entity.WalkStatus;
 import com.e108.be.domain.walk.exception.WalkAlreadyEndedException;
 import com.e108.be.domain.walk.exception.WalkAlreadyInProgressException;
 import com.e108.be.domain.walk.exception.WalkNotFoundException;
+import com.e108.be.domain.walk.repository.MetDogRepository;
 import com.e108.be.domain.walk.repository.WalkRecordRepository;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
@@ -23,28 +26,29 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.List;
-import java.util.Optional;
+import java.time.Instant;
+import java.util.*;
 import java.time.LocalDateTime;
+import java.util.concurrent.TimeUnit;
 
 @Service
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
 public class WalkService {
 
-    private static final String GPS_KEY_PREFIX = "walk:gps:"; // Redis 키 형식
-    private static final double EARTH_RADIUS_M = 6_371_000.0; // 지구 반지름(m)
-    private static final double CALORIE_FACTOR = 0.8;         // 칼로리 계산 계수
+    private static final String GPS_KEY_PREFIX      = "walk:gps:";
+    private static final String PROPOSAL_KEY_PREFIX = "walk:proposals:";
+    private static final double EARTH_RADIUS_M      = 6_371_000.0;
+    private static final double CALORIE_FACTOR      = 0.8;
 
     private final WalkRecordRepository walkRecordRepository;
     private final DogRepository dogRepository;
+    private final MetDogRepository metDogRepository;
     private final RedisTemplate<String, String> redisTemplate;
+    private final ObjectMapper objectMapper;
 
     @Transactional
     public StartWalkResponse startWalk(StartWalkRequest request) {
-        // 이미 진행 중인 산책이 있는지 확인
         walkRecordRepository.findByDogIdAndWalkStatus(request.getDogId(), WalkStatus.IN_PROGRESS)
                 .ifPresent(w -> { throw new WalkAlreadyInProgressException(); });
 
@@ -61,10 +65,6 @@ public class WalkService {
     /**
      * 누적 거리 조회
      * GET /walks/{walkId}/distance
-     *
-     * Redis에 쌓인 좌표들을 순서대로 읽어서 인접 좌표 간 Haversine 거리를 합산
-     * W1-03 산책 시간 조회
-     * GET /api/v1/walks/{walkId}/duration
      */
     public DistanceResponse getDistance(Long walkId) {
         walkRecordRepository.findById(walkId)
@@ -86,20 +86,18 @@ public class WalkService {
     }
 
     /**
-     * W1-06 산책 종료
-     * POST /api/v1/walks/{walkId}/end
+     * 산책 종료
+     * POST /walks/{walkId}/end
      */
     @Transactional
     public EndWalkResponse endWalk(Long walkId) {
         WalkRecord walkRecord = walkRecordRepository.findById(walkId)
                 .orElseThrow(WalkNotFoundException::new);
 
-        // 이미 종료된 산책인지 확인
         if (walkRecord.getWalkStatus() != WalkStatus.IN_PROGRESS) {
             throw new WalkAlreadyEndedException();
         }
 
-        // TODO: GPS 연동 완료 후 실제 거리·칼로리를 계산해 전달
         BigDecimal totalDistance = BigDecimal.ZERO;
         BigDecimal calories = BigDecimal.ZERO;
 
@@ -110,18 +108,14 @@ public class WalkService {
     /**
      * 소모 칼로리 조회
      * GET /walks/{walkId}/calories
-     *
-     * 칼로리 = 체중(kg) × 거리(km) × 0.8
-     * 체중 미입력 시 requiresWeight = true 반환 → FE에서 입력 유도 UI 표시
      */
     public CaloriesResponse getCalories(Long walkId) {
         WalkRecord walk = walkRecordRepository.findById(walkId)
                 .orElseThrow(WalkNotFoundException::new);
 
         Dog dog = dogRepository.findById(walk.getDogId())
-                .orElseThrow(() -> new WalkNotFoundException());
+                .orElseThrow(WalkNotFoundException::new);
 
-        // 체중 미입력 시
         if (dog.getWeight() == null) {
             return new CaloriesResponse(null, true);
         }
@@ -142,20 +136,16 @@ public class WalkService {
      * S14P21E108-165: 주변 산책 중 강아지 조회
      * GET /api/v1/walks/nearby-dogs
      *
-     * 1. IN_PROGRESS 상태인 모든 산책 조회
-     * 2. 각 walkId의 Redis에서 마지막 GPS 좌표 추출
-     * 3. Haversine으로 거리 계산 → radius 이내만 포함
-     * 4. 본인 dogId 제외
+     * myWalkRecordId 전달 시 내게 온 pendingProposals도 함께 반환
      */
-    public NearbyDogsResponse getNearbyDogs(double lat, double lon, double radius, Long myDogId) {
+    public NearbyDogsResponse getNearbyDogs(double lat, double lon, double radius,
+                                             Long myDogId, Long myWalkRecordId) {
         List<WalkRecord> inProgressWalks = walkRecordRepository.findAllByWalkStatus(WalkStatus.IN_PROGRESS);
         List<NearbyDogResponse> nearbyDogs = new ArrayList<>();
 
         for (WalkRecord walk : inProgressWalks) {
-            // 본인 강아지 제외
             if (walk.getDogId().equals(myDogId)) continue;
 
-            // Redis에서 마지막 GPS 좌표 조회
             String redisKey = GPS_KEY_PREFIX + walk.getId();
             String lastPoint = redisTemplate.opsForList().index(redisKey, -1);
             if (lastPoint == null) continue;
@@ -164,11 +154,9 @@ public class WalkService {
             double dogLat = coords[0];
             double dogLon = coords[1];
 
-            // 거리 계산 및 필터링
             double distance = haversine(lat, lon, dogLat, dogLon);
             if (distance > radius) continue;
 
-            // 강아지 정보 조회
             Optional<Dog> dogOpt = dogRepository.findById(walk.getDogId());
             if (dogOpt.isEmpty()) continue;
             Dog dog = dogOpt.get();
@@ -185,15 +173,161 @@ public class WalkService {
             ));
         }
 
-        // pendingProposals는 172번 (산책 제안) 작업 시 채워짐
-        return new NearbyDogsResponse(nearbyDogs, Collections.emptyList());
+        // 내게 온 pending proposals 조회
+        List<PendingProposalResponse> pendingProposals = new ArrayList<>();
+        if (myWalkRecordId != null) {
+            String hashKey = PROPOSAL_KEY_PREFIX + myWalkRecordId;
+            Map<Object, Object> entries = redisTemplate.opsForHash().entries(hashKey);
+            for (Map.Entry<Object, Object> entry : entries.entrySet()) {
+                try {
+                    String proposalId = entry.getKey().toString();
+                    Map<String, Object> data = objectMapper.readValue(
+                            entry.getValue().toString(),
+                            new TypeReference<Map<String, Object>>() {}
+                    );
+                    Long fromWalkRecordId = Long.valueOf(data.get("fromWalkRecordId").toString());
+
+                    WalkRecord fromRecord = walkRecordRepository.findById(fromWalkRecordId).orElse(null);
+                    if (fromRecord == null) continue;
+
+                    dogRepository.findById(fromRecord.getDogId()).ifPresent(dog ->
+                            pendingProposals.add(new PendingProposalResponse(
+                                    proposalId,
+                                    fromWalkRecordId,
+                                    dog.getId(),
+                                    dog.getName(),
+                                    dog.getBreed(),
+                                    dog.getProfileImageUrl()
+                            ))
+                    );
+                } catch (Exception ignored) {}
+            }
+        }
+
+        return new NearbyDogsResponse(nearbyDogs, pendingProposals);
     }
 
     /**
-     * Haversine 공식으로 좌표 목록의 총 거리(m) 계산
-     *
-     * 저장 형식 "위도,경도,타임스탬프"에서 위도/경도만 파싱해서 계산
+     * S14P21E108-172: 산책 제안 전송
+     * POST /walks/proposals
      */
+    @Transactional
+    public ProposalResponse sendProposal(ProposalRequest request) {
+        walkRecordRepository.findById(request.getFromWalkRecordId())
+                .orElseThrow(WalkNotFoundException::new);
+        walkRecordRepository.findById(request.getToWalkRecordId())
+                .orElseThrow(WalkNotFoundException::new);
+
+        String proposalId = UUID.randomUUID().toString();
+        String hashKey = PROPOSAL_KEY_PREFIX + request.getToWalkRecordId();
+
+        try {
+            String value = objectMapper.writeValueAsString(Map.of(
+                    "fromWalkRecordId", request.getFromWalkRecordId(),
+                    "timestamp", Instant.now().toString()
+            ));
+            redisTemplate.opsForHash().put(hashKey, proposalId, value);
+            redisTemplate.expire(hashKey, 4, TimeUnit.HOURS);
+        } catch (Exception e) {
+            throw new RuntimeException("제안 저장 실패", e);
+        }
+
+        return new ProposalResponse(proposalId);
+    }
+
+    /**
+     * S14P21E108-172: 산책 제안 수락/거절
+     * PATCH /walks/proposals/{proposalId}
+     */
+    @Transactional
+    public void respondToProposal(String proposalId, ProposalRespondRequest request) {
+        String hashKey = PROPOSAL_KEY_PREFIX + request.getMyWalkRecordId();
+        Object raw = redisTemplate.opsForHash().get(hashKey, proposalId);
+        if (raw == null) {
+            throw new ProposalNotFoundException();
+        }
+
+        if ("ACCEPT".equals(request.getAction())) {
+            try {
+                Map<String, Object> data = objectMapper.readValue(
+                        raw.toString(),
+                        new TypeReference<Map<String, Object>>() {}
+                );
+                Long fromWalkRecordId = Long.valueOf(data.get("fromWalkRecordId").toString());
+
+                WalkRecord myRecord = walkRecordRepository.findById(request.getMyWalkRecordId())
+                        .orElseThrow(WalkNotFoundException::new);
+                WalkRecord fromRecord = walkRecordRepository.findById(fromWalkRecordId)
+                        .orElseThrow(WalkNotFoundException::new);
+
+                // 양방향 met_dogs upsert
+                upsertMetDog(myRecord, fromRecord.getDogId());
+                upsertMetDog(fromRecord, myRecord.getDogId());
+            } catch (ProposalNotFoundException | WalkNotFoundException e) {
+                throw e;
+            } catch (Exception e) {
+                throw new RuntimeException("제안 수락 처리 실패", e);
+            }
+        }
+
+        // ACCEPT / REJECT 모두 Redis에서 삭제
+        redisTemplate.opsForHash().delete(hashKey, proposalId);
+    }
+
+    /**
+     * S14P21E108-172: 산책 종료 시 2m 만남 일괄 기록 (프론트에서 목록 전달)
+     * POST /walks/{walkRecordId}/encounters
+     */
+    @Transactional
+    public void recordEncounters(Long walkRecordId, EncounterRequest request) {
+        WalkRecord myRecord = walkRecordRepository.findById(walkRecordId)
+                .orElseThrow(WalkNotFoundException::new);
+
+        for (EncounterRequest.EncounterItem item : request.getEncounters()) {
+            WalkRecord targetRecord = walkRecordRepository.findById(item.getTargetWalkRecordId())
+                    .orElseThrow(WalkNotFoundException::new);
+
+            // 양방향 met_dogs upsert
+            upsertMetDog(myRecord, targetRecord.getDogId());
+            upsertMetDog(targetRecord, myRecord.getDogId());
+        }
+    }
+
+    /**
+     * S14P21E108-172: 피드백 설정/수정
+     * PATCH /walks/met-dogs/feedback
+     */
+    @Transactional
+    public void updateFeedback(FeedbackRequest request) {
+        WalkRecord myRecord = walkRecordRepository.findById(request.getMyWalkRecordId())
+                .orElseThrow(WalkNotFoundException::new);
+
+        MetDog metDog = metDogRepository
+                .findBySourceDogIdAndTargetDogId(myRecord.getDogId(), request.getTargetDogId())
+                .orElseThrow(MetDogNotFoundException::new);
+
+        metDog.updateFeedback(request.getFeedback());
+    }
+
+    /**
+     * met_dogs upsert 헬퍼.
+     * (sourceDog, targetDog) 조합이 이미 있으면 latest_walk_record 업데이트,
+     * 없으면 feedback="보통"으로 신규 insert.
+     */
+    private void upsertMetDog(WalkRecord sourceRecord, Long targetDogId) {
+        metDogRepository.findBySourceDogIdAndTargetDogId(sourceRecord.getDogId(), targetDogId)
+                .ifPresentOrElse(
+                        existing -> existing.updateLatestWalkRecord(sourceRecord),
+                        () -> metDogRepository.save(MetDog.builder()
+                                .latestWalkRecord(sourceRecord)
+                                .targetDogId(targetDogId)
+                                .feedback("보통")
+                                .build())
+                );
+    }
+
+    // ────────────── 내부 유틸 ──────────────
+
     private double calculateTotalDistance(List<String> points) {
         if (points == null || points.size() < 2) return 0.0;
 
@@ -213,9 +347,6 @@ public class WalkService {
         return new double[]{Double.parseDouble(parts[0]), Double.parseDouble(parts[1])};
     }
 
-    /**
-     * Haversine 공식: 두 위경도 사이의 거리(m) 계산
-     */
     private double haversine(double lat1, double lon1, double lat2, double lon2) {
         double dLat = Math.toRadians(lat2 - lat1);
         double dLon = Math.toRadians(lon2 - lon1);
