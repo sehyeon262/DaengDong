@@ -11,3 +11,8 @@ spring:
     hibernate:
       ddl-auto: none
     show-sql: false
+
+
+aws:
+  s3:
+    prefix: prod
