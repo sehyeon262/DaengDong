@@ -1,19 +1,69 @@
 package com.frontend.ui.screen.walk
 
+import android.content.Context
+import android.hardware.Sensor
+import android.hardware.SensorEvent
+import android.hardware.SensorEventListener
+import android.hardware.SensorManager
 import androidx.lifecycle.ViewModel
 import com.frontend.domain.model.WalkRoute
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import javax.inject.Inject
+import kotlin.math.abs
 
 @HiltViewModel
-class WalkViewModel @Inject constructor() : ViewModel() {
+class WalkViewModel @Inject constructor(
+    @ApplicationContext private val context: Context
+) : ViewModel() {
 
     private val _state = MutableStateFlow(WalkState())
     val state = _state.asStateFlow()
 
+    // ── 나침반 (방향 센서) ─────────────────────────────────────────────────────
+    private val sensorManager = context.getSystemService(Context.SENSOR_SERVICE) as SensorManager
+    private val rotationVectorSensor: Sensor? = sensorManager.getDefaultSensor(Sensor.TYPE_ROTATION_VECTOR)
+
+    private val _azimuth = MutableStateFlow(0f)
+    val azimuth = _azimuth.asStateFlow()
+
+    private val rotationMatrix = FloatArray(9)
+    private val orientationAngles = FloatArray(3)
+
+    private val sensorListener = object : SensorEventListener {
+        override fun onSensorChanged(event: SensorEvent) {
+            SensorManager.getRotationMatrixFromVector(rotationMatrix, event.values)
+            SensorManager.getOrientation(rotationMatrix, orientationAngles)
+            val newAzimuth = (Math.toDegrees(orientationAngles[0].toDouble()).toFloat() + 360) % 360
+            val current = _azimuth.value
+            val diff = abs(newAzimuth - current)
+            val normalizedDiff = if (diff > 180f) 360f - diff else diff
+            // 5도 이상 변경 시에만 업데이트 (성능 최적화)
+            if (normalizedDiff >= 5f) {
+                _azimuth.value = newAzimuth
+            }
+        }
+
+        override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {}
+    }
+
+    init {
+        sensorManager.registerListener(
+            sensorListener,
+            rotationVectorSensor,
+            SensorManager.SENSOR_DELAY_UI
+        )
+    }
+
+    override fun onCleared() {
+        super.onCleared()
+        sensorManager.unregisterListener(sensorListener)
+    }
+
+    // ── 산책 경로 ──────────────────────────────────────────────────────────────
     val routes = listOf(
         WalkRoute(
             title = "자유 산책",
