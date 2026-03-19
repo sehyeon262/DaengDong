@@ -39,8 +39,10 @@ public class DiaryGenerationWorker {
     @Transactional
     public void generate(Long diaryId, Long walkId, Long dogId) {
         try {
-            WalkRecord walk = walkRecordRepository.findById(walkId).orElseThrow();
-            Dog dog = dogRepository.findById(dogId).orElseThrow();
+            WalkRecord walk = walkRecordRepository.findById(walkId)
+                    .orElseThrow(() -> new IllegalStateException("WalkRecord not found: " + walkId));
+            Dog dog = dogRepository.findById(dogId)
+                    .orElseThrow(() -> new IllegalStateException("Dog not found: " + dogId));
 
             // Redis에서 GPS 좌표로 날씨 + 근처 장소 조회
             WeatherService.WeatherData weather = fetchWeather(walkId);

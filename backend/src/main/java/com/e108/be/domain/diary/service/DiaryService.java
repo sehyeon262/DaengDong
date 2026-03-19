@@ -8,6 +8,7 @@ import com.e108.be.domain.dog.entity.Dog;
 import com.e108.be.domain.dog.repository.DogRepository;
 import com.e108.be.domain.walk.entity.WalkRecord;
 import com.e108.be.domain.walk.entity.WalkStatus;
+import com.e108.be.domain.walk.exception.WalkNotFoundException;
 import com.e108.be.domain.walk.repository.WalkRecordRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -51,7 +52,7 @@ public class DiaryService {
     @Transactional
     public void generateForExistingWalk(Long walkId) {
         WalkRecord walk = walkRecordRepository.findById(walkId)
-                .orElseThrow(DiaryNotFoundException::new);
+                .orElseThrow(WalkNotFoundException::new);
 
         if (walk.getWalkStatus() != WalkStatus.COMPLETED) {
             throw new IllegalArgumentException("완료된 산책만 일기를 생성할 수 있습니다.");
@@ -77,9 +78,9 @@ public class DiaryService {
 
     public DiaryResponse getDiary(Long walkId) {
         WalkRecord walk = walkRecordRepository.findById(walkId)
-                .orElseThrow(DiaryNotFoundException::new);
+                .orElseThrow(WalkNotFoundException::new);
         Dog dog = dogRepository.findById(walk.getDogId())
-                .orElseThrow(DiaryNotFoundException::new);
+                .orElseThrow(WalkNotFoundException::new);
         Diary diary = diaryRepository.findByWalkId(walkId)
                 .orElseThrow(DiaryNotFoundException::new);
         return DiaryResponse.from(diary, walk, dog);
