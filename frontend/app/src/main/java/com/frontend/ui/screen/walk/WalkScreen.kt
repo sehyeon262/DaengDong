@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -22,6 +23,8 @@ import androidx.compose.material.icons.filled.GpsFixed
 import androidx.compose.material.icons.filled.Pets
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -31,14 +34,18 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.foundation.Image
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -50,7 +57,10 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.frontend.R
+import com.frontend.domain.model.DangerLocation
+import com.frontend.domain.model.DangerZone
 import com.frontend.ui.component.MapOverlayButton
+import com.frontend.ui.screen.walk.components.DangerReportModal
 import com.frontend.ui.screen.walk.components.WalkFilterBottomSheet
 import com.frontend.ui.screen.walk.components.WalkRouteCard
 import com.frontend.ui.screen.walk.components.WalkSearchBar
@@ -89,6 +99,9 @@ fun WalkScreen(
     var currentLocationLabel by remember { mutableStateOf<Label?>(null) }
     val currentPosition by viewModel.currentPosition.collectAsState()
     var fovOverlay by remember { mutableStateOf<Polygon?>(null) }
+
+    // 위험 구역 마커 목록 (강아지 마커와 분리 관리)
+    val dangerZoneLabels = remember { mutableStateListOf<Label>() }
 
     // 위치 권한 요청 launcher - 허용 시 위치 트래킹 시작
     val locationPermissionLauncher = rememberLauncherForActivityResult(
@@ -176,6 +189,30 @@ fun WalkScreen(
         }
     }
 
+    // 위험 구역 선택 모드 진입/종료 시 TrackingManager 제어
+    // 선택 모드: tracking 중단 → 지도 드래그 위치 유지
+    // 선택 모드 해제: tracking 재개 → 강아지 마커 다시 따라가기
+    LaunchedEffect(state.isSelectingDangerZone, kakaoMap) {
+        val map = kakaoMap ?: return@LaunchedEffect
+        if (state.isSelectingDangerZone) {
+            map.trackingManager?.stopTracking()
+        } else {
+            currentLocationLabel?.let { label ->
+                map.trackingManager?.startTracking(label)
+            }
+        }
+    }
+
+    // 새 위험 구역이 추가될 때마다 지도에 깃발 마커 그리기 (기존 마커 유지)
+    LaunchedEffect(state.dangerZones, kakaoMap) {
+        val map = kakaoMap ?: return@LaunchedEffect
+        val newZones = state.dangerZones.drop(dangerZoneLabels.size)
+        newZones.forEach { zone ->
+            val label = addDangerZoneMarker(context, map, zone)
+            if (label != null) dangerZoneLabels.add(label)
+        }
+    }
+
     Box(modifier = Modifier.fillMaxSize()) {
 
         // ── 1. 카카오맵 ─────────────────────────────────────────────────
@@ -184,7 +221,21 @@ fun WalkScreen(
             onMapReady = { map -> kakaoMap = map }
         )
 
-        // ── 2. 전체 오버레이 레이아웃 (검색바 + 하단 패널) ───────────
+        // ── 2. 위험 구역 선택 모드: 지도 중앙 깃발 핀 오버레이 ──────────
+        // fillMaxSize Box 없이 외부 Box의 align으로만 배치 → 지도 터치 통과
+        if (state.isSelectingDangerZone) {
+            Image(
+                painter = painterResource(id = R.drawable.danger_flag),
+                contentDescription = "위험 위치 선택 핀",
+                contentScale = ContentScale.Fit,
+                modifier = Modifier
+                    .size(72.dp)
+                    .offset(y = (-36).dp)   // 깃발 하단이 지도 좌표에 맞도록
+                    .align(Alignment.Center)
+            )
+        }
+
+        // ── 3. 전체 오버레이 레이아웃 (검색바 + 하단 패널) ───────────
         Column(
             modifier = Modifier.fillMaxSize()
         ) {
@@ -194,78 +245,111 @@ fun WalkScreen(
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)
             )
 
+            // 위험 구역 선택 모드: 상단 안내 배너
+            if (state.isSelectingDangerZone) {
+                DangerZoneSelectionBanner(
+                    modifier = Modifier
+                        .align(Alignment.CenterHorizontally)
+                        .padding(horizontal = 48.dp)
+                )
+            }
+
             Spacer(modifier = Modifier.weight(1f))
 
-            // 하단 패널
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(bottom = 12.dp)
-            ) {
-                // "추천 산책 경로" 레이블
-                Text(
-                    text = "추천 산책 경로",
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    color = TextMain,
-                    modifier = Modifier.padding(start = 20.dp, bottom = 10.dp)
-                )
-
-                // 경로 카드 가로 페이저
-                HorizontalPager(
-                    state = pagerState,
-                    contentPadding = PaddingValues(start = 20.dp, end = screenWidth * 0.44f),
-                    pageSpacing = 12.dp,
-                    modifier = Modifier.fillMaxWidth()
-                ) { pageIndex ->
-                    WalkRouteCard(
-                        route = routes[pageIndex],
-                        isSelected = pageIndex == state.selectedRouteIndex,
-                        onClick = { viewModel.selectRoute(pageIndex) },
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                }
-
-                Spacer(modifier = Modifier.height(12.dp))
-
-                // 산책 시작 버튼
-                Button(
-                    onClick = {},
+            // 위험 구역 선택 모드: 하단 "선택하기" 패널
+            if (state.isSelectingDangerZone) {
+                DangerZoneBottomPanel(
+                    onSelectClick = {
+                        // 지도 중심 좌표 캡처
+                        val center = kakaoMap?.cameraPosition?.position
+                        viewModel.selectDangerLocation(
+                            DangerLocation(
+                                latitude = center?.latitude ?: 37.5665,
+                                longitude = center?.longitude ?: 126.9780
+                            )
+                        )
+                        viewModel.openDangerReportDialog()
+                    },
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(screenHeight * 0.067f)
-                        .padding(horizontal = 20.dp),
-                    shape = RoundedCornerShape(16.dp),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = PointGreen
-                    )
+                        .padding(horizontal = 20.dp, vertical = 16.dp)
+                )
+            } else {
+                // 일반 모드: 경로 추천 + 산책 시작 패널
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 12.dp)
                 ) {
-                    Icon(
-                        imageVector = Icons.Filled.Pets,
-                        contentDescription = null,
-                        modifier = Modifier.size(20.dp)
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
+                    // "추천 산책 경로" 레이블
                     Text(
-                        text = "산책 시작",
-                        fontSize = 16.sp,
-                        fontWeight = FontWeight.Bold
+                        text = "추천 산책 경로",
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = TextMain,
+                        modifier = Modifier.padding(start = 20.dp, bottom = 10.dp)
                     )
+
+                    // 경로 카드 가로 페이저
+                    HorizontalPager(
+                        state = pagerState,
+                        contentPadding = PaddingValues(start = 20.dp, end = screenWidth * 0.44f),
+                        pageSpacing = 12.dp,
+                        modifier = Modifier.fillMaxWidth()
+                    ) { pageIndex ->
+                        WalkRouteCard(
+                            route = routes[pageIndex],
+                            isSelected = pageIndex == state.selectedRouteIndex,
+                            onClick = { viewModel.selectRoute(pageIndex) },
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    // 산책 시작 버튼
+                    Button(
+                        onClick = {},
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(screenHeight * 0.067f)
+                            .padding(horizontal = 20.dp),
+                        shape = RoundedCornerShape(16.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = PointGreen
+                        )
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.Pets,
+                            contentDescription = null,
+                            modifier = Modifier.size(20.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = "산책 시작",
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
                 }
             }
         }
 
-        // ── 4. 우측 플로팅 버튼 (캐릭터, 현재위치, 필터) ──────────────────────
+        // ── 4. 우측 플로팅 버튼 (위험신고, 현재위치, 필터) ──────────────────
         Column(
             modifier = Modifier
                 .align(Alignment.BottomEnd)
                 .padding(end = 16.dp, bottom = screenHeight * 0.225f),
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
+            // 위험 구역 신고 FAB (토글)
             MapOverlayButton(
                 painter = painterResource(id = R.drawable.alert),
-                contentDescription = "캐릭터",
-                onClick = {}
+                contentDescription = if (state.isSelectingDangerZone) "위험 신고 취소" else "위험 구역 신고",
+                onClick = {
+                    if (state.isSelectingDangerZone) viewModel.cancelDangerZoneSelection()
+                    else viewModel.startDangerZoneSelection()
+                }
             )
             MapOverlayButton(
                 icon = Icons.Filled.GpsFixed,
@@ -293,6 +377,65 @@ fun WalkScreen(
                 onDismiss = { viewModel.hideFilter() }
             )
         }
+
+        // ── 6. 위험 구역 신고 모달 ──────────────────────────────────────
+        if (state.isDangerReportDialogOpen) {
+            DangerReportModal(
+                selectedReason = state.selectedDangerReason,
+                customReason = state.customDangerReason,
+                isSubmitting = state.isSubmitting,
+                onReasonSelect = { viewModel.selectDangerReason(it) },
+                onCustomReasonChange = { viewModel.updateCustomDangerReason(it) },
+                onSubmit = { viewModel.submitDangerReport() },
+                onDismiss = { viewModel.closeDangerReportDialog() }
+            )
+        }
+    }
+}
+
+// ── 위험 구역 선택 모드: 상단 안내 배너 ─────────────────────────────────────
+@Composable
+private fun DangerZoneSelectionBanner(modifier: Modifier = Modifier) {
+    Card(
+        modifier = modifier,
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(containerColor = Color(0xFFFF6B35)),
+        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
+    ) {
+        Text(
+            text = "위험 구역을 선택해주세요",
+            color = Color.White,
+            fontSize = 14.sp,
+            fontWeight = FontWeight.SemiBold,
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+        )
+    }
+}
+
+// ── 위험 구역 선택 모드: 하단 "선택하기" 버튼 패널 ──────────────────────────
+@Composable
+private fun DangerZoneBottomPanel(
+    onSelectClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Button(
+        onClick = onSelectClick,
+        modifier = modifier.height(52.dp),
+        shape = RoundedCornerShape(16.dp),
+        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFF6B35))
+    ) {
+//        Image(
+//            painter = painterResource(id = R.drawable.danger_flag),
+//            contentDescription = null,
+//            modifier = Modifier.size(22.dp)
+//        )
+        Spacer(modifier = Modifier.width(8.dp))
+        Text(
+            text = "이 위치로 신고하기",
+            fontSize = 16.sp,
+            fontWeight = FontWeight.Bold,
+            color = Color.White
+        )
     }
 }
 
@@ -349,6 +492,24 @@ private fun KakaoMapView(
     )
 }
 
+// ── 위험 구역 깃발 마커 추가 ──────────────────────────────────────────────────
+private fun addDangerZoneMarker(
+    context: android.content.Context,
+    kakaoMap: KakaoMap,
+    zone: DangerZone
+): Label? {
+    val position = LatLng.from(zone.location.latitude, zone.location.longitude)
+    val source = android.graphics.BitmapFactory.decodeResource(
+        context.resources, R.drawable.danger_flag
+    )
+    val targetWidth = 60
+    val targetHeight = (targetWidth * source.height.toFloat() / source.width).toInt()
+    val scaled = android.graphics.Bitmap.createScaledBitmap(source, targetWidth, targetHeight, true)
+    val style = LabelStyle.from(scaled).setAnchorPoint(0.5f, 1.0f)   // 하단 중앙을 좌표에 맞춤
+    val styles = LabelStyles.from(style)
+    val options = LabelOptions.from(position).setStyles(styles)
+    return kakaoMap.labelManager?.layer?.addLabel(options)
+}
 
 // ── FOV cone 업데이트 (Polygon 부채꼴) ───────────────────────────────────────
 private fun updateFovCone(
@@ -420,4 +581,3 @@ private fun createDogMarkerBitmap(context: android.content.Context): android.gra
     val targetWidth = (targetHeight * aspectRatio).toInt()
     return source.scale(targetWidth, targetHeight)
 }
-

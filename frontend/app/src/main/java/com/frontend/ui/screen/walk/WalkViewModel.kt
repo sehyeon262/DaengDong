@@ -7,7 +7,11 @@ import android.hardware.SensorEventListener
 import android.hardware.SensorManager
 import android.os.Looper
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
+import com.frontend.domain.model.DangerLocation
+import com.frontend.domain.model.DangerReason
 import com.frontend.domain.model.WalkRoute
+import com.frontend.domain.usecase.ReportDangerZoneUseCase
 import com.google.android.gms.location.LocationCallback
 import com.google.android.gms.location.LocationRequest
 import com.google.android.gms.location.LocationResult
@@ -19,16 +23,21 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
 import javax.inject.Inject
 import kotlin.math.abs
 
 @HiltViewModel
 class WalkViewModel @Inject constructor(
-    @ApplicationContext private val context: Context
+    @ApplicationContext private val context: Context,
+    private val reportDangerZoneUseCase: ReportDangerZoneUseCase
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(WalkState())
     val state = _state.asStateFlow()
+
+    // ── 현재 산책 ID (산책 시작 후 서버에서 발급) ──────────────────────────────
+    private var currentWalkId: Long? = null
 
     // ── 나침반 (방향 센서) ─────────────────────────────────────────────────────
     private val sensorManager = context.getSystemService(Context.SENSOR_SERVICE) as SensorManager
@@ -144,5 +153,102 @@ class WalkViewModel @Inject constructor(
 
     fun applyFilter() {
         _state.update { it.copy(showFilterSheet = false) }
+    }
+
+    // ── 위험 구역 신고 ─────────────────────────────────────────────────────────
+
+    /** 위치 선택 모드 진입 */
+    fun startDangerZoneSelection() {
+        _state.update {
+            it.copy(
+                isSelectingDangerZone = true,
+                selectedLocation = null
+            )
+        }
+    }
+
+    /** 위치 선택 모드 취소 */
+    fun cancelDangerZoneSelection() {
+        _state.update {
+            it.copy(
+                isSelectingDangerZone = false,
+                selectedLocation = null
+            )
+        }
+    }
+
+    /** 지도 중심 좌표를 선택된 위치로 저장 */
+    fun selectDangerLocation(location: DangerLocation) {
+        _state.update { it.copy(selectedLocation = location) }
+    }
+
+    /** 신고 모달 열기 */
+    fun openDangerReportDialog() {
+        _state.update {
+            it.copy(
+                isDangerReportDialogOpen = true,
+                selectedDangerReason = null,
+                customDangerReason = ""
+            )
+        }
+    }
+
+    /** 신고 모달 닫기 */
+    fun closeDangerReportDialog() {
+        _state.update {
+            it.copy(
+                isDangerReportDialogOpen = false,
+                selectedDangerReason = null,
+                customDangerReason = ""
+            )
+        }
+    }
+
+    /** 위험 사유 선택 */
+    fun selectDangerReason(reason: DangerReason) {
+        _state.update { it.copy(selectedDangerReason = reason) }
+    }
+
+    /** "기타" 입력 텍스트 변경 */
+    fun updateCustomDangerReason(text: String) {
+        _state.update { it.copy(customDangerReason = text) }
+    }
+
+    /** 위험 구역 신고 제출 */
+    fun submitDangerReport() {
+        val location = _state.value.selectedLocation ?: return
+        val reason = _state.value.selectedDangerReason ?: return
+
+        viewModelScope.launch {
+            _state.update { it.copy(isSubmitting = true) }
+
+            val customReason = if (reason == DangerReason.OTHER) {
+                _state.value.customDangerReason.takeIf { it.isNotBlank() }
+            } else null
+
+            reportDangerZoneUseCase(
+                walkId = currentWalkId,
+                location = location,
+                reason = reason,
+                customReason = customReason
+            ).fold(
+                onSuccess = { dangerZone ->
+                    _state.update {
+                        it.copy(
+                            dangerZones = it.dangerZones + dangerZone,
+                            isSelectingDangerZone = false,
+                            selectedLocation = null,
+                            isDangerReportDialogOpen = false,
+                            selectedDangerReason = null,
+                            customDangerReason = "",
+                            isSubmitting = false
+                        )
+                    }
+                },
+                onFailure = {
+                    _state.update { it.copy(isSubmitting = false) }
+                }
+            )
+        }
     }
 }
