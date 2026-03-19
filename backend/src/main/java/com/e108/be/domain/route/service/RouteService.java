@@ -1,5 +1,7 @@
 package com.e108.be.domain.route.service;
 
+import com.e108.be.domain.dog.entity.Dog;
+import com.e108.be.domain.dog.repository.DogRepository;
 import com.e108.be.domain.place.repository.NearbyPlaceProjection;
 import com.e108.be.domain.place.repository.PlaceRepository;
 import com.e108.be.domain.route.dto.response.RouteDetailResponse;
@@ -45,18 +47,24 @@ public class RouteService {
     private static final int REDUCED_MIN = 3;  // 2개 경로 가능
 
     private final PlaceRepository placeRepository;
+    private final DogRepository dogRepository;
     private final PlaceScoringService placeScoringService;
     private final RouteGeneratorService routeGeneratorService;
 
     /**
      * 경로 추천
      *
-     * @param lat   기준 위도
-     * @param lon   기준 경도
-     * @param dogId 반려견 ID
+     * 로그인한 사용자의 첫 번째 반려견을 자동 조회하여 경로를 추천한다.
+     * TODO: 반려견 정보를 스코어링에 반영 (견종별 적정 거리, 활동 수준 등)
+     *
+     * @param memberId 회원 ID (JWT에서 추출)
+     * @param lat      기준 위도
+     * @param lon      기준 경도
      * @return 폴백 레벨에 따른 경로 응답
      */
-    public RouteRecommendResponse recommend(double lat, double lon, Long dogId) {
+    public RouteRecommendResponse recommend(Long memberId, double lat, double lon) {
+        // 사용자의 반려견 자동 조회 (추후 스코어링에 활용)
+        Dog dog = dogRepository.findFirstByUser_Id(memberId).orElse(null);
 
         // 1단계: 반경별 후보 장소 조회
         List<ScoredPlace> shortPlaces = findAndScore(lat, lon, SHORT_RADIUS_M);
