@@ -6,6 +6,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 import software.amazon.awssdk.core.sync.RequestBody;
 import software.amazon.awssdk.services.s3.S3Client;
+import software.amazon.awssdk.services.s3.model.DeleteObjectRequest;
 import software.amazon.awssdk.services.s3.model.PutObjectRequest;
 
 import java.io.IOException;
@@ -56,6 +57,29 @@ public class S3Service {
         }
 
         return String.format("https://%s.s3.%s.amazonaws.com/%s", bucket, region, key);
+    }
+
+    /**
+     * S3에서 파일 삭제
+     * URL에서 key를 추출하여 삭제
+     *
+     * @param fileUrl 삭제할 파일의 S3 URL
+     */
+    public void delete(String fileUrl) {
+        String key = extractKeyFromUrl(fileUrl);
+        s3Client.deleteObject(DeleteObjectRequest.builder()
+                .bucket(bucket)
+                .key(key)
+                .build());
+    }
+
+    /**
+     * S3 URL에서 key 추출
+     * https://{bucket}.s3.{region}.amazonaws.com/{key} → {key}
+     */
+    private String extractKeyFromUrl(String url) {
+        String prefix = String.format("https://%s.s3.%s.amazonaws.com/", bucket, region);
+        return url.replace(prefix, "");
     }
 
     /**
