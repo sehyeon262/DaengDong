@@ -85,6 +85,14 @@ public class DogService {
         return new UpdateWeightResponse(dog.getId(), dog.getWeight());
     }
 
+    // S14P21E108-169: 반려견 공개 프로필 조회 (소유권 체크 없음)
+    @Transactional(readOnly = true)
+    public DogProfileResponse getPublicDog(Long dogId) {
+        Dog dog = dogRepository.findById(dogId)
+                .orElseThrow(() -> new DogNotFoundException());
+        return new DogProfileResponse(dog);
+    }
+
     // P1-05: 반려견 성향 태그 등록/수정
     @Transactional
     public UpdateTraitsResponse updateTraits(Long memberId, Long dogId, UpdateTraitsRequest request) {

@@ -1,11 +1,18 @@
 package com.e108.be.domain.walk.controller;
 
+import com.e108.be.domain.walk.dto.request.*;
 import com.e108.be.domain.walk.dto.request.StartWalkRequest;
 import com.e108.be.domain.walk.dto.response.EndWalkResponse;
+import com.e108.be.domain.walk.dto.response.NearbyDogsResponse;
+import com.e108.be.domain.walk.dto.response.ProposalResponse;
 import com.e108.be.domain.walk.dto.response.StartWalkResponse;
+import org.springframework.web.multipart.MultipartFile;
+
+import java.util.List;
 import com.e108.be.domain.walk.dto.response.WalkDurationResponse;
 import com.e108.be.domain.walk.dto.response.CaloriesResponse;
 import com.e108.be.domain.walk.dto.response.DistanceResponse;
+import com.e108.be.domain.walk.dto.response.WalkDetailResponse;
 import com.e108.be.domain.walk.service.WalkService;
 import com.e108.be.global.common.template.ResTemplate;
 import lombok.RequiredArgsConstructor;
@@ -84,5 +91,86 @@ public class WalkController {
             return ResTemplate.success(HttpStatus.OK, "체중을 입력해 주세요", response);
         }
         return ResTemplate.success(HttpStatus.OK, "칼로리 조회 성공", response);
+    }
+
+    /**
+     * 산책 상세 조회 (산책 데이터 + 강아지 + 일기)
+     * GET /api/v1/walks/{walkId}
+     */
+    @GetMapping("/{walkId}")
+    public ResTemplate<WalkDetailResponse> getWalkDetail(@PathVariable Long walkId) {
+        WalkDetailResponse response = walkService.getWalkDetail(walkId);
+        return ResTemplate.success(HttpStatus.OK, "산책 상세 조회 성공", response);
+    }
+
+    /**
+     * 산책 사진 업로드
+     * POST /api/v1/walks/{walkId}/photos
+     */
+    @PostMapping("/{walkId}/photos")
+    public ResTemplate<List<String>> uploadPhotos(
+            @PathVariable Long walkId,
+            @RequestParam("files") List<MultipartFile> files) {
+        List<String> urls = walkService.uploadPhotos(walkId, files);
+        return ResTemplate.success(HttpStatus.OK, "사진 업로드 성공", urls);
+    }
+
+    /**
+     * S14P21E108-165: 산책 중 주변 반려견 조회
+     * GET /api/v1/walks/nearby-dogs?lat=&lon=&radius=&myDogId=&myWalkRecordId=
+     */
+    @GetMapping("/nearby-dogs")
+    public ResTemplate<NearbyDogsResponse> getNearbyDogs(
+            @RequestParam double lat,
+            @RequestParam double lon,
+            @RequestParam(defaultValue = "500") double radius,
+            @RequestParam Long myDogId,
+            @RequestParam(required = false) Long myWalkRecordId) {
+        NearbyDogsResponse response = walkService.getNearbyDogs(lat, lon, radius, myDogId, myWalkRecordId);
+        return ResTemplate.success(HttpStatus.OK, "주변 강아지 조회 성공", response);
+    }
+
+    /**
+     * S14P21E108-172: 산책 제안 전송
+     * POST /api/v1/walks/proposals
+     */
+    @PostMapping("/proposals")
+    public ResTemplate<ProposalResponse> sendProposal(@RequestBody ProposalRequest request) {
+        ProposalResponse response = walkService.sendProposal(request);
+        return ResTemplate.success(HttpStatus.OK, "산책 제안이 전송되었습니다.", response);
+    }
+
+    /**
+     * S14P21E108-172: 산책 제안 수락/거절
+     * PATCH /api/v1/walks/proposals/{proposalId}
+     */
+    @PatchMapping("/proposals/{proposalId}")
+    public ResTemplate<Void> respondToProposal(
+            @PathVariable String proposalId,
+            @RequestBody ProposalRespondRequest request) {
+        walkService.respondToProposal(proposalId, request);
+        return ResTemplate.success(HttpStatus.OK, "산책 제안 처리 완료", null);
+    }
+
+    /**
+     * S14P21E108-172: 산책 종료 시 2m 자동 만남 일괄 기록
+     * POST /api/v1/walks/{walkRecordId}/encounters
+     */
+    @PostMapping("/{walkRecordId}/encounters")
+    public ResTemplate<Void> recordEncounters(
+            @PathVariable Long walkRecordId,
+            @RequestBody EncounterRequest request) {
+        walkService.recordEncounters(walkRecordId, request);
+        return ResTemplate.success(HttpStatus.OK, "만남이 기록되었습니다.", null);
+    }
+
+    /**
+     * S14P21E108-172: 피드백 설정/수정
+     * PATCH /api/v1/walks/met-dogs/feedback
+     */
+    @PatchMapping("/met-dogs/feedback")
+    public ResTemplate<Void> updateFeedback(@RequestBody FeedbackRequest request) {
+        walkService.updateFeedback(request);
+        return ResTemplate.success(HttpStatus.OK, "피드백이 저장되었습니다.", null);
     }
 }

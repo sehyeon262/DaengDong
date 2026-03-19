@@ -6,9 +6,9 @@ import lombok.AccessLevel;
 import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 import org.locationtech.jts.geom.LineString;
-
-import com.e108.be.global.common.converter.StringListConverter;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -68,8 +68,8 @@ public class WalkRecord extends BaseEntity {
     @Column(name = "calories", precision = 10, scale = 2)
     private BigDecimal calories;
 
-    // 산책 사진 URL 목록 (JSON)
-    @Convert(converter = StringListConverter.class)
+    // 산책 사진 URL 목록 (JSON) - Hibernate 6 방식
+    @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "photo_urls", columnDefinition = "json")
     private List<String> photoUrls;
 
@@ -114,5 +114,9 @@ public class WalkRecord extends BaseEntity {
 
     public void updateCalories(BigDecimal calories) {
         this.calories = calories;
+    }
+
+    public void updatePhotoUrls(List<String> photoUrls) {
+        this.photoUrls = photoUrls;
     }
 }
