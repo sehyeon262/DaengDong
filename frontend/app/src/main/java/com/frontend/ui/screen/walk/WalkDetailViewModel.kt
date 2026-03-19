@@ -30,6 +30,8 @@ class WalkDetailViewModel @Inject constructor(
     private val _state = MutableStateFlow(WalkDetailState())
     val state: StateFlow<WalkDetailState> = _state.asStateFlow()
 
+    private var pollingJob: kotlinx.coroutines.Job? = null
+
     init {
         loadWalkDetail()
     }
@@ -40,10 +42,35 @@ class WalkDetailViewModel @Inject constructor(
             walkRepository.getWalkDetail(walkId)
                 .onSuccess { detail ->
                     _state.update { it.copy(isLoading = false, detail = detail) }
+                    startPollingIfNeeded(detail)
                 }
                 .onFailure { e ->
                     _state.update { it.copy(isLoading = false, error = e.message ?: "오류가 발생했습니다") }
                 }
         }
+    }
+
+    // diary가 생성 중(content=null)이면 5초마다 재조회
+    private fun startPollingIfNeeded(detail: WalkDetailResponse) {
+        val isGenerating = detail.diary != null && detail.diary.content == null
+        if (!isGenerating) return
+
+        pollingJob?.cancel()
+        pollingJob = viewModelScope.launch {
+            while (true) {
+                kotlinx.coroutines.delay(5000)
+                walkRepository.getWalkDetail(walkId).onSuccess { newDetail ->
+                    _state.update { it.copy(detail = newDetail) }
+                    if (newDetail.diary?.content != null) {
+                        pollingJob?.cancel() // 완성되면 폴링 중단
+                    }
+                }
+            }
+        }
+    }
+
+    override fun onCleared() {
+        super.onCleared()
+        pollingJob?.cancel()
     }
 }

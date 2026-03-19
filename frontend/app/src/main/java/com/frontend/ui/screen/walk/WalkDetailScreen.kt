@@ -7,6 +7,10 @@ import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.offset
@@ -528,29 +532,55 @@ private fun DiaryCard(
 
 @Composable
 private fun DiaryLoadingIndicator() {
-    val infiniteTransition = rememberInfiniteTransition(label = "diary_loading")
-    val alpha by infiniteTransition.animateFloat(
-        initialValue = 0.3f,
-        targetValue = 1f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(800, easing = LinearEasing),
-            repeatMode = RepeatMode.Reverse
-        ),
-        label = "alpha"
-    )
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    val fullText = "일기를 쓰고 있어요"
+    var charCount by remember { mutableIntStateOf(0) }
+    var isAdding by remember { androidx.compose.runtime.mutableStateOf(true) }
+
+    // 글자 하나씩 추가/삭제 타이핑 애니메이션
+    LaunchedEffect(Unit) {
+        while (true) {
+            if (isAdding) {
+                if (charCount < fullText.length) {
+                    charCount++
+                    kotlinx.coroutines.delay(120)
+                } else {
+                    kotlinx.coroutines.delay(600)
+                    isAdding = false
+                }
+            } else {
+                if (charCount > 0) {
+                    charCount--
+                    kotlinx.coroutines.delay(70)
+                } else {
+                    kotlinx.coroutines.delay(300)
+                    isAdding = true
+                }
+            }
+        }
+    }
+
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+        modifier = Modifier.fillMaxWidth()
     ) {
-        CircularProgressIndicator(
-            modifier = Modifier.size(16.dp),
-            color = PointGreen.copy(alpha = alpha),
-            strokeWidth = 2.dp
+        // 강아지 일기 쓰는 이미지
+        androidx.compose.foundation.Image(
+            painter = painterResource(R.drawable.loading),
+            contentDescription = "일기 생성 중",
+            modifier = Modifier
+                .fillMaxWidth(0.6f)
+                .aspectRatio(1.3f),
+            contentScale = ContentScale.Fit
         )
+
+        // 타이핑 텍스트
         Text(
-            text = "일기를 생성하고 있어요...",
-            fontSize = 14.sp,
-            color = TextGray.copy(alpha = alpha)
+            text = fullText.take(charCount) + "✏️",
+            fontSize = 15.sp,
+            color = PointGreen,
+            fontFamily = mansehFont,
+            fontWeight = FontWeight.Medium
         )
     }
 }
