@@ -241,7 +241,6 @@ fun WalkScreen(
     // 장소 목록 변경 시: 새 마커 추가 (PLACE 필터 ON → API 응답 도착)
     LaunchedEffect(state.places, kakaoMap) {
         val map = kakaoMap ?: return@LaunchedEffect
-        android.util.Log.d("PlaceDebug", "▶ LaunchedEffect(places): ${state.places.size}개")
         if (state.places.isEmpty()) return@LaunchedEffect
 
         // 기존 장소 마커 전부 제거 후 재생성 (장소 목록 교체 시 동기화)
@@ -252,25 +251,15 @@ fun WalkScreen(
             val label = addPlaceMarker(context, map, place)
             if (label != null) placeLabels.add(label)
         }
-        android.util.Log.d("PlaceDebug", "✅ 마커 ${placeLabels.size}개 추가 완료")
     }
 
     // PLACE 필터 ON/OFF 처리
     LaunchedEffect(state.activeFilters, kakaoMap) {
-        val map = kakaoMap ?: run {
-            android.util.Log.d("PlaceDebug", "⚠ LaunchedEffect(activeFilters): kakaoMap null → 스킵")
-            return@LaunchedEffect
-        }
+        val map = kakaoMap ?: return@LaunchedEffect
         if (WalkFilterType.PLACE in state.activeFilters) {
-            val center = map.cameraPosition?.position
-            android.util.Log.d("PlaceDebug", "▶ PLACE 필터 ON, cameraPosition=$center")
-            if (center == null) {
-                android.util.Log.d("PlaceDebug", "⚠ cameraPosition null → 스킵")
-                return@LaunchedEffect
-            }
+            val center = map.cameraPosition?.position ?: return@LaunchedEffect
             viewModel.loadPlacesByPosition(center.latitude, center.longitude)
         } else {
-            android.util.Log.d("PlaceDebug", "▶ PLACE 필터 OFF → 마커 제거")
             placeLabels.forEach { map.labelManager?.layer?.remove(it) }
             placeLabels.clear()
         }

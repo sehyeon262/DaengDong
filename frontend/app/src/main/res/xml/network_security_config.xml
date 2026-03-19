@@ -3,6 +3,7 @@
     <domain-config cleartextTrafficPermitted="true">
         <domain includeSubdomains="true">43.202.66.161</domain>
         <domain includeSubdomains="true">10.0.2.2</domain>
+        <!-- TODO: 배포 직전 제거 필요 - 로컬 개발용 IP -->
         <domain includeSubdomains="true">192.168.0.103</domain>
     </domain-config>
 </network-security-config>

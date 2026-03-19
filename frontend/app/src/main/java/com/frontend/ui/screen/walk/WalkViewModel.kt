@@ -182,17 +182,14 @@ class WalkViewModel @Inject constructor(
 
     /** 지정 좌표 기반 주변 장소 로드 */
     fun loadPlacesByPosition(latitude: Double, longitude: Double) {
-        android.util.Log.d("PlaceDebug", "▶ loadPlacesByPosition 호출: lat=$latitude, lon=$longitude")
         viewModelScope.launch {
             _state.update { it.copy(isPlacesLoading = true) }
             getPlacesUseCase(
                 latitude = latitude,
                 longitude = longitude
             ).onSuccess { places ->
-                android.util.Log.d("PlaceDebug", "✅ API 성공: ${places.size}개 장소")
                 _state.update { it.copy(places = places, isPlacesLoading = false) }
             }.onFailure {
-                android.util.Log.e("PlaceDebug", "❌ API 실패: ${it.javaClass.simpleName} - ${it.message}")
                 _state.update { it.copy(isPlacesLoading = false) }
             }
         }

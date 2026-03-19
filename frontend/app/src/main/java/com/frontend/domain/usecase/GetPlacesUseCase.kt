@@ -7,7 +7,13 @@ import javax.inject.Inject
 class GetPlacesUseCase @Inject constructor(
     private val repository: PlaceRepository
 ) {
-    suspend operator fun invoke(latitude: Double, longitude: Double): Result<List<Place>> {
-        return repository.getPlacesNearby(latitude, longitude)
+    suspend operator fun invoke(
+        latitude: Double,
+        longitude: Double,
+        radius: Double? = null,
+        limit: Int? = null,
+        category: String? = null
+    ): Result<List<Place>> {
+        return repository.getPlacesNearby(latitude, longitude, radius, limit, category)
     }
 }

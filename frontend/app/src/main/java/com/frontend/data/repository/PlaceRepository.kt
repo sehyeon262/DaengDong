@@ -19,9 +19,7 @@ class PlaceRepository constructor(
         limit: Int? = null,
         category: String? = null
     ): Result<List<Place>> = runCatching {
-        val rawToken = tokenDataStore.getAccessToken().first()
-        android.util.Log.d("PlaceDebug", "🔑 토큰 조회 결과: ${if (rawToken != null) "있음(${rawToken.take(20)}...)" else "null"}")
-        val token = rawToken ?: error("인증 토큰 없음")
+        val token = tokenDataStore.getAccessToken().first() ?: error("인증 토큰 없음")
         placeApi.getPlacesNearby(
             authorization = "Bearer $token",
             lat = latitude,
