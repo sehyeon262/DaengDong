@@ -181,12 +181,34 @@ public class WalkService {
         WalkRecord walkRecord = walkRecordRepository.findById(walkId)
                 .orElseThrow(WalkNotFoundException::new);
 
-        List<String> urls = files.stream()
+        List<String> newUrls = files.stream()
                 .map(file -> s3Service.upload(file, "walks/" + walkId + "/photos"))
                 .toList();
 
-        walkRecord.updatePhotoUrls(urls);
-        return urls;
+        // 기존 사진에 추가 (덮어쓰지 않음)
+        List<String> existing = walkRecord.getPhotoUrls() != null
+                ? new ArrayList<>(walkRecord.getPhotoUrls())
+                : new ArrayList<>();
+        existing.addAll(newUrls);
+        walkRecord.updatePhotoUrls(existing);
+        return existing;
+    }
+
+    /**
+     * 사진 삭제
+     * DELETE /api/v1/walks/{walkId}/photos
+     */
+    @Transactional
+    public List<String> deletePhoto(Long walkId, String photoUrl) {
+        WalkRecord walkRecord = walkRecordRepository.findById(walkId)
+                .orElseThrow(WalkNotFoundException::new);
+
+        List<String> updated = new ArrayList<>(
+                walkRecord.getPhotoUrls() != null ? walkRecord.getPhotoUrls() : Collections.emptyList()
+        );
+        updated.remove(photoUrl);
+        walkRecord.updatePhotoUrls(updated);
+        return updated;
     }
 
     /**

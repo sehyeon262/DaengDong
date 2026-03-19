@@ -116,6 +116,18 @@ public class WalkController {
     }
 
     /**
+     * 산책 사진 삭제
+     * DELETE /api/v1/walks/{walkId}/photos
+     */
+    @DeleteMapping("/{walkId}/photos")
+    public ResTemplate<List<String>> deletePhoto(
+            @PathVariable Long walkId,
+            @RequestBody DeletePhotoRequest request) {
+        List<String> urls = walkService.deletePhoto(walkId, request.getPhotoUrl());
+        return ResTemplate.success(HttpStatus.OK, "사진 삭제 성공", urls);
+    }
+
+    /**
      * S14P21E108-165: 산책 중 주변 반려견 조회
      * GET /api/v1/walks/nearby-dogs?lat=&lon=&radius=&myDogId=&myWalkRecordId=
      */
