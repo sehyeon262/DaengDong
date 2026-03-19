@@ -16,5 +16,6 @@ data class WalkState(
     val selectedDangerReason: DangerReason? = null,   // 선택된 위험 사유
     val customDangerReason: String = "",              // "기타" 직접 입력 텍스트
     val dangerZones: List<DangerZone> = emptyList(),  // 신고 완료된 위험 구역 목록
-    val isSubmitting: Boolean = false                 // 제출 중 여부
+    val isLoading: Boolean = false,                   // 제출 중 여부 (컨벤션 표준 명칭)
+    val error: String? = null                         // 에러 메시지 (없으면 null)
 )

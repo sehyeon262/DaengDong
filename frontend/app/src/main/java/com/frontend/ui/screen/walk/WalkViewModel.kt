@@ -155,6 +155,18 @@ class WalkViewModel @Inject constructor(
         _state.update { it.copy(showFilterSheet = false) }
     }
 
+    // ── 산책 ID 관리 ───────────────────────────────────────────────────────────
+
+    /** 산책 시작 후 서버에서 발급된 walkId 저장 */
+    fun setCurrentWalkId(walkId: Long) {
+        currentWalkId = walkId
+    }
+
+    /** 산책 종료 시 walkId 초기화 */
+    fun clearCurrentWalkId() {
+        currentWalkId = null
+    }
+
     // ── 위험 구역 신고 ─────────────────────────────────────────────────────────
 
     /** 위치 선택 모드 진입 */
@@ -220,35 +232,35 @@ class WalkViewModel @Inject constructor(
         val reason = _state.value.selectedDangerReason ?: return
 
         viewModelScope.launch {
-            _state.update { it.copy(isSubmitting = true) }
+            _state.update { it.copy(isLoading = true, error = null) }
 
             val customReason = if (reason == DangerReason.OTHER) {
                 _state.value.customDangerReason.takeIf { it.isNotBlank() }
             } else null
 
-            reportDangerZoneUseCase(
-                walkId = currentWalkId,
-                location = location,
-                reason = reason,
-                customReason = customReason
-            ).fold(
-                onSuccess = { dangerZone ->
-                    _state.update {
-                        it.copy(
-                            dangerZones = it.dangerZones + dangerZone,
-                            isSelectingDangerZone = false,
-                            selectedLocation = null,
-                            isDangerReportDialogOpen = false,
-                            selectedDangerReason = null,
-                            customDangerReason = "",
-                            isSubmitting = false
-                        )
-                    }
-                },
-                onFailure = {
-                    _state.update { it.copy(isSubmitting = false) }
+            try {
+                val dangerZone = reportDangerZoneUseCase(
+                    walkId = currentWalkId,
+                    location = location,
+                    reason = reason,
+                    customReason = customReason
+                ).getOrThrow()
+
+                _state.update {
+                    it.copy(
+                        dangerZones = it.dangerZones + dangerZone,
+                        isSelectingDangerZone = false,
+                        selectedLocation = null,
+                        isDangerReportDialogOpen = false,
+                        selectedDangerReason = null,
+                        customDangerReason = "",
+                        isLoading = false,
+                        error = null
+                    )
                 }
-            )
+            } catch (e: Exception) {
+                _state.update { it.copy(isLoading = false, error = e.message) }
+            }
         }
     }
 }

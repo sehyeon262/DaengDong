@@ -26,17 +26,24 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.frontend.domain.model.DangerReason
 import com.frontend.ui.theme.PointGreen
 
+private const val MAX_CUSTOM_REASON_LENGTH = 50
+
 @Composable
 fun DangerReportModal(
     selectedReason: DangerReason?,
     customReason: String,
-    isSubmitting: Boolean,
+    isLoading: Boolean,
+    error: String? = null,
     onReasonSelect: (DangerReason) -> Unit,
     onCustomReasonChange: (String) -> Unit,
     onSubmit: () -> Unit,
@@ -123,10 +130,14 @@ fun DangerReportModal(
                         modifier = Modifier.weight(1f)
                     )
 
-                    // "기타" 선택 시 직접 입력 필드
+                    // "기타" 선택 시 직접 입력 필드 (최대 50자)
                     OutlinedTextField(
                         value = customReason,
-                        onValueChange = onCustomReasonChange,
+                        onValueChange = { input ->
+                            if (input.length <= MAX_CUSTOM_REASON_LENGTH) {
+                                onCustomReasonChange(input)
+                            }
+                        },
                         enabled = selectedReason == DangerReason.OTHER,
                         placeholder = {
                             Text(
@@ -135,9 +146,31 @@ fun DangerReportModal(
                                 color = Color(0xFFBBBBBB)
                             )
                         },
+                        supportingText = {
+                            if (selectedReason == DangerReason.OTHER) {
+                                Text(
+                                    text = "${customReason.length}/$MAX_CUSTOM_REASON_LENGTH",
+                                    fontSize = 11.sp,
+                                    color = if (customReason.length >= MAX_CUSTOM_REASON_LENGTH)
+                                        Color(0xFFE53935) else Color(0xFFAAAAAA)
+                                )
+                            }
+                        },
                         shape = RoundedCornerShape(10.dp),
                         singleLine = false,
                         modifier = Modifier.weight(1f)
+                    )
+                }
+
+                // 에러 메시지
+                if (error != null) {
+                    Text(
+                        text = error,
+                        fontSize = 12.sp,
+                        color = Color(0xFFE53935),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 4.dp)
                     )
                 }
 
@@ -146,7 +179,7 @@ fun DangerReportModal(
                 // 제출 버튼
                 val canSubmit = selectedReason != null &&
                         (selectedReason != DangerReason.OTHER || customReason.isNotBlank()) &&
-                        !isSubmitting
+                        !isLoading
 
                 Button(
                     onClick = onSubmit,
@@ -161,7 +194,7 @@ fun DangerReportModal(
                     )
                 ) {
                     Text(
-                        text = if (isSubmitting) "제출 중..." else "제출하기",
+                        text = if (isLoading) "제출 중..." else "제출하기",
                         fontSize = 16.sp,
                         fontWeight = FontWeight.Bold,
                         color = Color.White
@@ -188,6 +221,10 @@ private fun ReasonChip(
                 color = if (isSelected) PointGreen else Color(0xFFE0E0E0),
                 shape = RoundedCornerShape(10.dp)
             )
+            .semantics {
+                role = Role.Button
+                contentDescription = "${reason.label} 선택${if (isSelected) " (선택됨)" else ""}"
+            }
             .clickable(onClick = onClick)
             .padding(vertical = 12.dp, horizontal = 8.dp),
         contentAlignment = Alignment.Center

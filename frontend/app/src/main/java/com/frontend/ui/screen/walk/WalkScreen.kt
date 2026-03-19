@@ -383,7 +383,8 @@ fun WalkScreen(
             DangerReportModal(
                 selectedReason = state.selectedDangerReason,
                 customReason = state.customDangerReason,
-                isSubmitting = state.isSubmitting,
+                isLoading = state.isLoading,
+                error = state.error,
                 onReasonSelect = { viewModel.selectDangerReason(it) },
                 onCustomReasonChange = { viewModel.updateCustomDangerReason(it) },
                 onSubmit = { viewModel.submitDangerReport() },
