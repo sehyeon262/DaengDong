@@ -4,6 +4,7 @@ import com.frontend.data.remote.AuthApi
 import com.frontend.data.remote.DangerZoneApi
 import com.frontend.data.remote.DogApi
 import com.frontend.data.remote.HomeApi
+import com.frontend.data.remote.PlaceApi
 import com.frontend.data.remote.RecordApi
 import com.frontend.data.remote.WalkApi
 import com.frontend.util.Constants
@@ -75,5 +76,11 @@ object NetworkModule {
     @Singleton
     fun provideDangerZoneApi(retrofit: Retrofit): DangerZoneApi {
         return retrofit.create(DangerZoneApi::class.java)
+    }
+
+    @Provides
+    @Singleton
+    fun providePlaceApi(retrofit: Retrofit): PlaceApi {
+        return retrofit.create(PlaceApi::class.java)
     }
 }

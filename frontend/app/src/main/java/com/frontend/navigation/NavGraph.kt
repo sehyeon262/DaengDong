@@ -44,7 +44,7 @@ fun NavGraph() {
     ) { innerPadding ->
         NavHost(
             navController = navController,
-            startDestination = Routes.LOGIN,
+            startDestination = Routes.SPLASH,
             modifier = Modifier.padding(innerPadding)
         ) {
             composable(Routes.SPLASH) {

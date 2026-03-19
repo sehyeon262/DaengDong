@@ -107,6 +107,9 @@ fun WalkScreen(
     // 위험 구역 마커 목록 (강아지 마커와 분리 관리)
     val dangerZoneLabels = remember { mutableStateListOf<Label>() }
 
+    // 장소 마커 목록 (PLACE 필터 on/off 시 추가/제거)
+    val placeLabels = remember { mutableStateListOf<Label>() }
+
     // 위치 권한 요청 launcher - 허용 시 위치 트래킹 시작
     val locationPermissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestMultiplePermissions()
@@ -232,6 +235,44 @@ fun WalkScreen(
         newZones.forEach { zone ->
             val label = addDangerZoneMarker(context, map, zone)
             if (label != null) dangerZoneLabels.add(label)
+        }
+    }
+
+    // 장소 목록 변경 시: 새 마커 추가 (PLACE 필터 ON → API 응답 도착)
+    LaunchedEffect(state.places, kakaoMap) {
+        val map = kakaoMap ?: return@LaunchedEffect
+        if (state.places.isEmpty()) return@LaunchedEffect
+
+        // 기존 장소 마커 전부 제거 후 재생성 (장소 목록 교체 시 동기화)
+        placeLabels.forEach { map.labelManager?.layer?.remove(it) }
+        placeLabels.clear()
+
+        state.places.forEach { place ->
+            val label = addPlaceMarker(context, map, place)
+            if (label != null) placeLabels.add(label)
+        }
+    }
+
+    // PLACE 필터 ON/OFF 처리
+    LaunchedEffect(state.activeFilters, kakaoMap) {
+        val map = kakaoMap ?: return@LaunchedEffect
+        if (WalkFilterType.PLACE in state.activeFilters) {
+            val center = map.cameraPosition?.position ?: return@LaunchedEffect
+            viewModel.loadPlacesByPosition(center.latitude, center.longitude)
+        } else {
+            placeLabels.forEach { map.labelManager?.layer?.remove(it) }
+            placeLabels.clear()
+        }
+    }
+
+    // 지도 카메라 이동 완료 시 PLACE 필터가 ON이면 새 중심 좌표로 장소 재조회
+    LaunchedEffect(kakaoMap) {
+        val map = kakaoMap ?: return@LaunchedEffect
+        map.setOnCameraMoveEndListener { _, cameraPosition, _ ->
+            if (WalkFilterType.PLACE in viewModel.state.value.activeFilters) {
+                val center = cameraPosition.position
+                viewModel.loadPlacesByPosition(center.latitude, center.longitude)
+            }
         }
     }
 
@@ -394,8 +435,8 @@ fun WalkScreen(
         // ── 5. 필터 바텀시트 ────────────────────────────────────────────
         if (state.showFilterSheet) {
             WalkFilterBottomSheet(
-                selectedFilter = state.selectedFilter,
-                onFilterSelect = { viewModel.selectFilter(it) },
+                activeFilters = state.pendingFilters,
+                onFilterToggle = { viewModel.toggleFilter(it) },
                 onApply = { viewModel.applyFilter() },
                 onDismiss = { viewModel.hideFilter() }
             )
@@ -415,6 +456,7 @@ fun WalkScreen(
             )
         }
     }
+}
 }
 
 // ── 위험 구역 선택 모드: 상단 안내 배너 ─────────────────────────────────────
@@ -530,6 +572,28 @@ private fun addDangerZoneMarker(
     val targetHeight = (targetWidth * source.height.toFloat() / source.width).toInt()
     val scaled = android.graphics.Bitmap.createScaledBitmap(source, targetWidth, targetHeight, true)
     val style = LabelStyle.from(scaled).setAnchorPoint(0.5f, 1.0f)   // 하단 중앙을 좌표에 맞춤
+    val styles = LabelStyles.from(style)
+    val options = LabelOptions.from(position).setStyles(styles)
+    return kakaoMap.labelManager?.layer?.addLabel(options)
+}
+
+// ── 장소 마커 추가 (강아지 집 아이콘) ─────────────────────────────────────────
+private fun addPlaceMarker(
+    context: android.content.Context,
+    kakaoMap: KakaoMap,
+    place: com.frontend.domain.model.Place
+): Label? {
+    val position = LatLng.from(place.latitude, place.longitude)
+
+    val source = android.graphics.BitmapFactory.decodeResource(
+        context.resources, R.drawable.place_mark
+    )
+    val targetSize = 80
+    val aspectRatio = source.width.toFloat() / source.height.toFloat()
+    val targetWidth = (targetSize * aspectRatio).toInt()
+    val scaled = android.graphics.Bitmap.createScaledBitmap(source, targetWidth, targetSize, true)
+
+    val style = LabelStyle.from(scaled).setAnchorPoint(0.5f, 1.0f)  // 하단 중앙을 좌표에 맞춤
     val styles = LabelStyles.from(style)
     val options = LabelOptions.from(position).setStyles(styles)
     return kakaoMap.labelManager?.layer?.addLabel(options)
