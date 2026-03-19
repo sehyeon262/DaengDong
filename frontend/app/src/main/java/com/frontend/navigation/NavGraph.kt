@@ -19,6 +19,7 @@ import com.frontend.ui.screen.dog.DogProfileScreen
 import com.frontend.ui.screen.home.HomeScreen
 import com.frontend.ui.screen.login.LoginScreen
 import com.frontend.ui.screen.record.RecordScreen
+import com.frontend.ui.screen.splash.SplashScreen
 import com.frontend.ui.screen.walk.WalkScreen
 
 @Composable
@@ -40,9 +41,12 @@ fun NavGraph() {
     ) { innerPadding ->
         NavHost(
             navController = navController,
-            startDestination = Routes.LOGIN,
+            startDestination = Routes.SPLASH,
             modifier = Modifier.padding(innerPadding)
         ) {
+            composable(Routes.SPLASH) {
+                SplashScreen(navController = navController)
+            }
             composable(Routes.LOGIN) {
                 LoginScreen(navController = navController)
             }
