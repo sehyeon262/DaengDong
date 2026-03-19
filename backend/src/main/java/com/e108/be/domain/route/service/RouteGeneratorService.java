@@ -1,8 +1,7 @@
 package com.e108.be.domain.route.service;
 
 import com.e108.be.domain.place.repository.NearbyPlaceProjection;
-import com.e108.be.domain.route.dto.response.RouteDetailResponse;
-import com.e108.be.domain.route.dto.response.RoutePlaceResponse;
+import com.e108.be.domain.route.dto.response.*;
 import com.e108.be.domain.route.util.GeoUtils;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -14,6 +13,8 @@ import java.util.stream.Collectors;
  * 경로 생성기
  *
  * 반경별로 분리된 장소 목록을 받아 거리감이 다른 경로를 생성한다.
+ * 장소 방문 순서는 Nearest Neighbor 알고리즘으로 결정하여
+ * 자연스러운 산책 동선을 구성한다.
  *
  * NORMAL:
  * - 빠른 산책 (500m 반경):  가까운 장소 2~3개 → 짧은 루프
@@ -58,14 +59,14 @@ public class RouteGeneratorService {
                 .limit(SHORT_PLACE_COUNT)
                 .map(ScoredPlace::place)
                 .toList();
-        routes.add(buildLoop(originLat, originLon, shortList, "빠른 산책", "SHORT"));
+        routes.add(buildLoop(originLat, originLon, shortList, "빠른 산책", RouteType.SHORT));
 
         // 경로 2: 추천 코스 - 1km 반경 내 스코어순 상위
         List<NearbyPlaceProjection> recommendList = recommendPlaces.stream()
                 .limit(RECOMMEND_PLACE_COUNT)
                 .map(ScoredPlace::place)
                 .toList();
-        routes.add(buildLoop(originLat, originLon, recommendList, "추천 코스", "RECOMMENDED"));
+        routes.add(buildLoop(originLat, originLon, recommendList, "추천 코스", RouteType.RECOMMENDED));
 
         // 경로 3: 탐험 코스 - 1.5km 반경에서 다른 경로에 없는 장소 우선
         Set<Long> usedIds = new HashSet<>();
@@ -85,7 +86,7 @@ public class RouteGeneratorService {
                     .map(ScoredPlace::place)
                     .toList();
         }
-        routes.add(buildLoop(originLat, originLon, exploreList, "탐험 코스", "EXPLORE"));
+        routes.add(buildLoop(originLat, originLon, exploreList, "탐험 코스", RouteType.EXPLORE));
 
         return routes;
     }
@@ -117,13 +118,13 @@ public class RouteGeneratorService {
                     .map(ScoredPlace::place)
                     .toList();
         }
-        routes.add(buildLoop(originLat, originLon, shortList, "빠른 산책", "SHORT"));
+        routes.add(buildLoop(originLat, originLon, shortList, "빠른 산책", RouteType.SHORT));
 
         // 경로 2: 추천 코스 - 전체 장소 활용
         List<NearbyPlaceProjection> allPlaces = recommendPlaces.stream()
                 .map(ScoredPlace::place)
                 .toList();
-        routes.add(buildLoop(originLat, originLon, allPlaces, "추천 코스", "RECOMMENDED"));
+        routes.add(buildLoop(originLat, originLon, allPlaces, "추천 코스", RouteType.RECOMMENDED));
 
         return routes;
     }
@@ -144,7 +145,7 @@ public class RouteGeneratorService {
             List<NearbyPlaceProjection> places = scoredPlaces.stream()
                     .map(ScoredPlace::place)
                     .toList();
-            routes.add(buildLoop(originLat, originLon, places, "장소 경유 산책", "SHORT"));
+            routes.add(buildLoop(originLat, originLon, places, "장소 경유 산책", RouteType.SHORT));
         }
 
         // 거리별 순수 산책 코스 (120도 간격 방향, 거리 차등)
@@ -164,33 +165,33 @@ public class RouteGeneratorService {
     // ==================== 공통 빌더 ====================
 
     /**
-     * 장소들을 방위각 순서로 정렬하여 원형 루프 경로 구성
+     * Nearest Neighbor 알고리즘으로 방문 순서를 결정하여 원형 루프 경로 구성
      *
-     * 출발지 → 장소1 → 장소2 → ... → 출발지
+     * 출발지에서 가장 가까운 장소를 먼저 방문하고,
+     * 현재 위치에서 가장 가까운 미방문 장소를 순차적으로 방문한 뒤 출발지로 복귀한다.
+     *
+     * 출발지 → (가장 가까운) 장소1 → 장소2 → ... → 출발지
      */
     private RouteDetailResponse buildLoop(
             double originLat, double originLon,
             List<NearbyPlaceProjection> places,
-            String name, String type) {
+            String name, RouteType type) {
 
-        // 방위각(bearing) 기준 정렬 → 원형 동선
-        List<NearbyPlaceProjection> sorted = new ArrayList<>(places);
-        sorted.sort(Comparator.comparingDouble(p ->
-                GeoUtils.bearing(originLat, originLon, p.getLatitude(), p.getLongitude())
-        ));
+        // Nearest Neighbor로 방문 순서 결정
+        List<NearbyPlaceProjection> ordered = nearestNeighborOrder(originLat, originLon, places);
 
         // polyline 좌표: 출발지 → 각 장소 → 출발지
-        List<double[]> polyline = new ArrayList<>();
-        polyline.add(new double[]{originLat, originLon});
-        for (NearbyPlaceProjection p : sorted) {
-            polyline.add(new double[]{p.getLatitude(), p.getLongitude()});
+        List<LatLng> polyline = new ArrayList<>();
+        polyline.add(new LatLng(originLat, originLon));
+        for (NearbyPlaceProjection p : ordered) {
+            polyline.add(new LatLng(p.getLatitude(), p.getLongitude()));
         }
-        polyline.add(new double[]{originLat, originLon});
+        polyline.add(new LatLng(originLat, originLon));
 
         int totalDistanceM = calculateTotalDistance(polyline);
         int estimatedMinutes = (int) Math.ceil(totalDistanceM / 67.0); // 4km/h 기준
 
-        List<RoutePlaceResponse> placeResponses = sorted.stream()
+        List<RoutePlaceResponse> placeResponses = ordered.stream()
                 .map(RoutePlaceResponse::from)
                 .toList();
 
@@ -205,6 +206,49 @@ public class RouteGeneratorService {
     }
 
     /**
+     * Nearest Neighbor 알고리즘
+     *
+     * 현재 위치에서 가장 가까운 미방문 장소를 반복적으로 선택하여
+     * 자연스러운 산책 동선을 구성한다. (장소 3~5개 수준에서 최적에 근접)
+     */
+    private List<NearbyPlaceProjection> nearestNeighborOrder(
+            double startLat, double startLon,
+            List<NearbyPlaceProjection> places) {
+
+        if (places.size() <= 1) {
+            return new ArrayList<>(places);
+        }
+
+        List<NearbyPlaceProjection> remaining = new ArrayList<>(places);
+        List<NearbyPlaceProjection> ordered = new ArrayList<>();
+
+        double currentLat = startLat;
+        double currentLon = startLon;
+
+        while (!remaining.isEmpty()) {
+            // 현재 위치에서 가장 가까운 장소 찾기
+            int nearestIdx = 0;
+            double nearestDist = Double.MAX_VALUE;
+
+            for (int i = 0; i < remaining.size(); i++) {
+                NearbyPlaceProjection p = remaining.get(i);
+                double dist = GeoUtils.haversine(currentLat, currentLon, p.getLatitude(), p.getLongitude());
+                if (dist < nearestDist) {
+                    nearestDist = dist;
+                    nearestIdx = i;
+                }
+            }
+
+            NearbyPlaceProjection nearest = remaining.remove(nearestIdx);
+            ordered.add(nearest);
+            currentLat = nearest.getLatitude();
+            currentLon = nearest.getLongitude();
+        }
+
+        return ordered;
+    }
+
+    /**
      * 방향 + 거리 기반 순수 산책 코스 생성
      *
      * 출발지 → 지정 방향/거리 지점 → 출발지 (왕복)
@@ -216,10 +260,10 @@ public class RouteGeneratorService {
 
         double[] destination = GeoUtils.destinationPoint(originLat, originLon, bearingDeg, distanceM);
 
-        List<double[]> polyline = List.of(
-                new double[]{originLat, originLon},
-                destination,
-                new double[]{originLat, originLon}
+        List<LatLng> polyline = List.of(
+                new LatLng(originLat, originLon),
+                new LatLng(destination[0], destination[1]),
+                new LatLng(originLat, originLon)
         );
 
         int totalDistanceM = (int) (distanceM * 2);
@@ -227,7 +271,7 @@ public class RouteGeneratorService {
 
         return RouteDetailResponse.builder()
                 .name(name)
-                .type("WALK_ONLY")
+                .type(RouteType.WALK_ONLY)
                 .totalDistanceM(totalDistanceM)
                 .estimatedMinutes(estimatedMinutes)
                 .places(List.of())
@@ -236,14 +280,14 @@ public class RouteGeneratorService {
     }
 
     /**
-     * polyline 좌표 배열의 총 직선 거리 합산 (미터)
+     * polyline 좌표의 총 직선 거리 합산 (미터)
      */
-    private int calculateTotalDistance(List<double[]> polyline) {
+    private int calculateTotalDistance(List<LatLng> polyline) {
         double total = 0;
         for (int i = 0; i < polyline.size() - 1; i++) {
             total += GeoUtils.haversine(
-                    polyline.get(i)[0], polyline.get(i)[1],
-                    polyline.get(i + 1)[0], polyline.get(i + 1)[1]
+                    polyline.get(i).latitude(), polyline.get(i).longitude(),
+                    polyline.get(i + 1).latitude(), polyline.get(i + 1).longitude()
             );
         }
         return (int) Math.round(total);

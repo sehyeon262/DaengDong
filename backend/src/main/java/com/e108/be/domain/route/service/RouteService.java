@@ -4,6 +4,7 @@ import com.e108.be.domain.dog.entity.Dog;
 import com.e108.be.domain.dog.repository.DogRepository;
 import com.e108.be.domain.place.repository.NearbyPlaceProjection;
 import com.e108.be.domain.place.repository.PlaceRepository;
+import com.e108.be.domain.route.dto.response.FallbackLevel;
 import com.e108.be.domain.route.dto.response.RouteDetailResponse;
 import com.e108.be.domain.route.dto.response.RouteRecommendResponse;
 import com.e108.be.domain.route.service.RouteGeneratorService.ScoredPlace;
@@ -133,7 +134,7 @@ public class RouteService {
 
         List<RouteDetailResponse> routes = routeGeneratorService.generateRoutes(
                 lat, lon, shortPlaces, recommendPlaces, explorePlaces);
-        return RouteRecommendResponse.of("NORMAL", null, routes);
+        return RouteRecommendResponse.of(FallbackLevel.NORMAL, null, routes);
     }
 
     /**
@@ -147,7 +148,7 @@ public class RouteService {
         List<RouteDetailResponse> routes = routeGeneratorService.generateReducedRoutes(
                 lat, lon, shortPlaces, recommendPlaces);
         return RouteRecommendResponse.of(
-                "REDUCED",
+                FallbackLevel.REDUCED,
                 "주변 장소가 적어 2개 코스를 추천합니다.",
                 routes
         );
@@ -163,7 +164,7 @@ public class RouteService {
         List<RouteDetailResponse> routes = routeGeneratorService.generateWalkOnlyRoutes(
                 lat, lon, shortPlaces);
         return RouteRecommendResponse.of(
-                "WALK_ONLY",
+                FallbackLevel.WALK_ONLY,
                 "주변에 등록된 장소가 적어 산책 경로 위주로 추천합니다.",
                 routes
         );

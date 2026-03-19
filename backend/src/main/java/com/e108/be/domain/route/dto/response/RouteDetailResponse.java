@@ -10,9 +10,9 @@ import java.util.List;
 public class RouteDetailResponse {
 
     private String name;
-    private String type;            // SHORT, RECOMMENDED, EXPLORE
+    private RouteType type;
     private int totalDistanceM;     // 총 거리 (미터)
     private int estimatedMinutes;   // 예상 소요 시간 (분)
     private List<RoutePlaceResponse> places;
-    private List<double[]> polyline; // [위도, 경도] 좌표 배열
+    private List<LatLng> polyline;
 }
