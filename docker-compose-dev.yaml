@@ -41,8 +41,10 @@ services:
       - AIR_QUALITY_SERVICE_KEY=${AIR_QUALITY_SERVICE_KEY}
       - AWS_ACCESS_KEY=${AWS_ACCESS_KEY}
       - AWS_SECRET_KEY=${AWS_SECRET_KEY}
+      - GMS_KEY=${GMS_KEY}
     networks:
       - e108-network-dev
+      - ssafy-network
 
   redis-dev:
     image: redis:alpine
@@ -56,3 +58,5 @@ services:
 networks:
   e108-network-dev:
     driver: bridge
+  ssafy-network:
+    external: true
