@@ -203,6 +203,10 @@ public class WalkService {
         WalkRecord walkRecord = walkRecordRepository.findById(walkId)
                 .orElseThrow(WalkNotFoundException::new);
 
+        // S3에서 실제 파일 삭제
+        s3Service.delete(photoUrl);
+
+        // DB에서 URL 제거
         List<String> updated = new ArrayList<>(
                 walkRecord.getPhotoUrls() != null ? walkRecord.getPhotoUrls() : Collections.emptyList()
         );
