@@ -6,10 +6,9 @@ import lombok.AccessLevel;
 import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
-import org.locationtech.jts.geom.LineString;
-
 import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
+import org.locationtech.jts.geom.LineString;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -69,7 +68,7 @@ public class WalkRecord extends BaseEntity {
     @Column(name = "calories", precision = 10, scale = 2)
     private BigDecimal calories;
 
-    // 산책 사진 URL 목록 (JSON)
+    // 산책 사진 URL 목록 (JSON) - Hibernate 6 방식
     @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "photo_urls", columnDefinition = "json")
     private List<String> photoUrls;

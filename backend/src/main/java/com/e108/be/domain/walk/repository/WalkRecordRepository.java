@@ -15,4 +15,6 @@ public interface WalkRecordRepository extends JpaRepository<WalkRecord, Long> {
             Long dogId, WalkStatus walkStatus,
             LocalDateTime start, LocalDateTime end
     );
+
+    List<WalkRecord> findAllByWalkStatus(WalkStatus walkStatus);
 }

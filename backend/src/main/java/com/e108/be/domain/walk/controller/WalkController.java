@@ -2,6 +2,7 @@ package com.e108.be.domain.walk.controller;
 
 import com.e108.be.domain.walk.dto.request.StartWalkRequest;
 import com.e108.be.domain.walk.dto.response.EndWalkResponse;
+import com.e108.be.domain.walk.dto.response.NearbyDogsResponse;
 import com.e108.be.domain.walk.dto.response.StartWalkResponse;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -110,5 +111,19 @@ public class WalkController {
             @RequestParam("files") List<MultipartFile> files) {
         List<String> urls = walkService.uploadPhotos(walkId, files);
         return ResTemplate.success(HttpStatus.OK, "사진 업로드 성공", urls);
+    }
+
+    /**
+     * S14P21E108-165: 산책 중 주변 반려견 조회
+     * GET /api/v1/walks/nearby-dogs?lat=&lon=&radius=&myDogId=
+     */
+    @GetMapping("/nearby-dogs")
+    public ResTemplate<NearbyDogsResponse> getNearbyDogs(
+            @RequestParam double lat,
+            @RequestParam double lon,
+            @RequestParam(defaultValue = "500") double radius,
+            @RequestParam Long myDogId) {
+        NearbyDogsResponse response = walkService.getNearbyDogs(lat, lon, radius, myDogId);
+        return ResTemplate.success(HttpStatus.OK, "주변 강아지 조회 성공", response);
     }
 }
