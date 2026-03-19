@@ -24,6 +24,10 @@ import androidx.compose.material.icons.filled.Room
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -31,6 +35,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.frontend.domain.model.WalkRoute
@@ -49,7 +54,6 @@ fun WalkRouteCard(
 
     Box(
         modifier = modifier
-            .heightIn(min = 100.dp)
             .alpha(cardAlpha)
             .shadow(elevation = 2.dp, shape = RoundedCornerShape(20.dp))
             .clip(RoundedCornerShape(20.dp))
@@ -63,62 +67,80 @@ fun WalkRouteCard(
                 shape = RoundedCornerShape(20.dp)
             )
             .clickable { onClick() }
-            .padding(horizontal = 16.dp, vertical = 14.dp)
+            .padding(horizontal = 12.dp, vertical = 14.dp)
     ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Column(modifier = Modifier.weight(1f)) {
+                var subtitleFontSize by remember(route.subtitle) { mutableStateOf(12.sp) }
                 Text(
                     text = route.subtitle,
-                    fontSize = 12.sp,
-                    color = if (isSelected) PointGreen else TextGray
+                    fontSize = subtitleFontSize,
+                    color = if (isSelected) PointGreen else TextGray,
+                    maxLines = 1,
+                    overflow = TextOverflow.Visible,
+                    onTextLayout = { result ->
+                        if (result.hasVisualOverflow && subtitleFontSize > 9.sp) {
+                            subtitleFontSize = (subtitleFontSize.value - 0.5f).sp
+                        }
+                    }
                 )
 
                 Spacer(modifier = Modifier.height(4.dp))
 
+                var titleFontSize by remember(route.title) { mutableStateOf(18.sp) }
                 Text(
                     text = route.title,
-                    fontSize = 18.sp,
+                    fontSize = titleFontSize,
                     fontWeight = FontWeight.Bold,
-                    color = TextMain
+                    color = TextMain,
+                    maxLines = 1,
+                    overflow = TextOverflow.Visible,
+                    onTextLayout = { result ->
+                        if (result.hasVisualOverflow && titleFontSize > 10.sp) {
+                            titleFontSize = (titleFontSize.value - 1).sp
+                        }
+                    }
                 )
 
-                if (route.distanceKm != null || route.durationMin != null) {
-                    Spacer(modifier = Modifier.height(8.dp))
-
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        route.distanceKm?.let { distance ->
-                            Icon(
-                                imageVector = Icons.Filled.Room,
-                                contentDescription = "거리",
-                                tint = TextGray,
-                                modifier = Modifier.size(14.dp)
-                            )
-                            Spacer(modifier = Modifier.width(2.dp))
-                            Text(
-                                text = "${distance}km",
-                                fontSize = 12.sp,
-                                color = TextGray
-                            )
-                            Spacer(modifier = Modifier.width(10.dp))
-                        }
-
-                        route.durationMin?.let { duration ->
-                            Icon(
-                                imageVector = Icons.Filled.AccessTime,
-                                contentDescription = "소요시간",
-                                tint = TextGray,
-                                modifier = Modifier.size(14.dp)
-                            )
-                            Spacer(modifier = Modifier.width(2.dp))
-                            Text(
-                                text = "${duration}분",
-                                fontSize = 12.sp,
-                                color = TextGray
-                            )
-                        }
+                // 항상 공간을 예약해서 모든 카드의 높이를 동일하게 유지
+                Spacer(modifier = Modifier.height(8.dp))
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.heightIn(min = 16.dp)
+                ) {
+                    route.distanceKm?.let { distance ->
+                        Icon(
+                            imageVector = Icons.Filled.Room,
+                            contentDescription = "거리",
+                            tint = TextGray,
+                            modifier = Modifier.size(14.dp)
+                        )
+                        Spacer(modifier = Modifier.width(1.dp))
+                        Text(
+                            text = "${distance}km",
+                            fontSize = 12.sp,
+                            color = TextGray,
+                            maxLines = 1
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                    }
+                    route.durationMin?.let { duration ->
+                        Icon(
+                            imageVector = Icons.Filled.AccessTime,
+                            contentDescription = "소요시간",
+                            tint = TextGray,
+                            modifier = Modifier.size(14.dp)
+                        )
+                        Spacer(modifier = Modifier.width(2.dp))
+                        Text(
+                            text = "${duration}분",
+                            fontSize = 12.sp,
+                            color = TextGray,
+                            maxLines = 1
+                        )
                     }
                 }
             }

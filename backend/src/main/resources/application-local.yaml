@@ -5,7 +5,7 @@ spring:
       - optional:file:../infra/.env[.properties]
   # 개발용 DB 설정
   datasource:
-    url: ${DB_URL:jdbc:postgresql://localhost:5432/e108_db}
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/e108_db?sslmode=disable}
     username: postgres
     password: ${DB_PASSWORD}
     driver-class-name: org.postgresql.Driver
@@ -16,12 +16,21 @@ spring:
       host: localhost
       port: 6379
 
+  # local 전용 초기 데이터 로딩
+  sql:
+    init:
+      data-locations:
+        - classpath:sql/users.sql
+        - classpath:sql/init_places.sql
+        - classpath:sql/walk_records.sql
+      continue-on-error: true
+
   # 개발용 JPA 설정
   jpa:
+    defer-datasource-initialization: true
     hibernate:
       ddl-auto: update
     show-sql: true
     properties:
       hibernate:
         format_sql: true
-

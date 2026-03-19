@@ -39,6 +39,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
@@ -72,6 +73,9 @@ fun WalkScreen(
     val state by viewModel.state.collectAsState()
     val routes = viewModel.routes
     val context = LocalContext.current
+    val configuration = LocalConfiguration.current
+    val screenWidth = configuration.screenWidthDp.dp
+    val screenHeight = configuration.screenHeightDp.dp
 
     var kakaoMap by remember { mutableStateOf<KakaoMap?>(null) }
 
@@ -106,7 +110,7 @@ fun WalkScreen(
         MapCharacter(
             modifier = Modifier
                 .align(Alignment.Center)
-                .offset(y = (-40).dp)
+                .offset(y = -(screenHeight * 0.05f))
         )
 
         // ── 3. 전체 오버레이 레이아웃 (검색바 + 하단 패널) ───────────
@@ -139,7 +143,7 @@ fun WalkScreen(
                 // 경로 카드 가로 페이저
                 HorizontalPager(
                     state = pagerState,
-                    contentPadding = PaddingValues(start = 20.dp, end = 160.dp),
+                    contentPadding = PaddingValues(start = 20.dp, end = screenWidth * 0.44f),
                     pageSpacing = 12.dp,
                     modifier = Modifier.fillMaxWidth()
                 ) { pageIndex ->
@@ -158,7 +162,7 @@ fun WalkScreen(
                     onClick = {},
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(54.dp)
+                        .height(screenHeight * 0.067f)
                         .padding(horizontal = 20.dp),
                     shape = RoundedCornerShape(16.dp),
                     colors = ButtonDefaults.buttonColors(
@@ -184,7 +188,7 @@ fun WalkScreen(
         Column(
             modifier = Modifier
                 .align(Alignment.BottomEnd)
-                .padding(end = 16.dp, bottom = 180.dp),
+                .padding(end = 16.dp, bottom = screenHeight * 0.225f),
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
             MapOverlayButton(
@@ -290,6 +294,10 @@ private fun moveToCurrentLocation(context: android.content.Context, kakaoMap: Ka
 // ── 지도 위 강아지 캐릭터 + 시야 원뿔 ────────────────────────────────────────
 @Composable
 private fun MapCharacter(modifier: Modifier = Modifier) {
+    val configuration = LocalConfiguration.current
+    val screenWidth = configuration.screenWidthDp.dp
+    val screenHeight = configuration.screenHeightDp.dp
+
     Box(
         modifier = modifier,
         contentAlignment = Alignment.BottomCenter
@@ -297,8 +305,8 @@ private fun MapCharacter(modifier: Modifier = Modifier) {
         // 시야 원뿔 (Canvas)
         androidx.compose.foundation.Canvas(
             modifier = Modifier
-                .width(120.dp)
-                .height(130.dp)
+                .width(screenWidth * 0.33f)
+                .height(screenHeight * 0.16f)
                 .align(Alignment.BottomCenter)
         ) {
             val path = androidx.compose.ui.graphics.Path().apply {
@@ -323,7 +331,7 @@ private fun MapCharacter(modifier: Modifier = Modifier) {
             painter = painterResource(id = R.drawable.normal),
             contentDescription = "강아지 캐릭터",
             modifier = Modifier
-                .size(80.dp)
+                .size(screenWidth * 0.22f)
                 .align(Alignment.TopCenter),
             contentScale = ContentScale.Fit
         )
