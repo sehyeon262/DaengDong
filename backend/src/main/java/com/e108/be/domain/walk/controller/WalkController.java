@@ -2,6 +2,7 @@ package com.e108.be.domain.walk.controller;
 
 import com.e108.be.domain.walk.dto.request.StartWalkRequest;
 import com.e108.be.domain.walk.dto.response.EndWalkResponse;
+import com.e108.be.domain.walk.dto.response.NearbyDogsResponse;
 import com.e108.be.domain.walk.dto.response.StartWalkResponse;
 import com.e108.be.domain.walk.dto.response.WalkDurationResponse;
 import com.e108.be.domain.walk.dto.response.CaloriesResponse;
@@ -84,5 +85,19 @@ public class WalkController {
             return ResTemplate.success(HttpStatus.OK, "체중을 입력해 주세요", response);
         }
         return ResTemplate.success(HttpStatus.OK, "칼로리 조회 성공", response);
+    }
+
+    /**
+     * S14P21E108-165: 산책 중 주변 반려견 조회
+     * GET /api/v1/walks/nearby-dogs?lat=&lon=&radius=&myDogId=
+     */
+    @GetMapping("/nearby-dogs")
+    public ResTemplate<NearbyDogsResponse> getNearbyDogs(
+            @RequestParam double lat,
+            @RequestParam double lon,
+            @RequestParam(defaultValue = "500") double radius,
+            @RequestParam Long myDogId) {
+        NearbyDogsResponse response = walkService.getNearbyDogs(lat, lon, radius, myDogId);
+        return ResTemplate.success(HttpStatus.OK, "주변 강아지 조회 성공", response);
     }
 }

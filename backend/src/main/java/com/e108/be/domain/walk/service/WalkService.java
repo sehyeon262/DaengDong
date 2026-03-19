@@ -2,6 +2,8 @@ package com.e108.be.domain.walk.service;
 
 import com.e108.be.domain.walk.dto.request.StartWalkRequest;
 import com.e108.be.domain.walk.dto.response.EndWalkResponse;
+import com.e108.be.domain.walk.dto.response.NearbyDogResponse;
+import com.e108.be.domain.walk.dto.response.NearbyDogsResponse;
 import com.e108.be.domain.walk.dto.response.StartWalkResponse;
 import com.e108.be.domain.walk.dto.response.WalkDurationResponse;
 import com.e108.be.domain.dog.entity.Dog;
@@ -21,7 +23,10 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
+import java.util.Optional;
 import java.time.LocalDateTime;
 
 @Service
@@ -131,6 +136,57 @@ public class WalkService {
                 .doubleValue();
 
         return new CaloriesResponse(calories, false);
+    }
+
+    /**
+     * S14P21E108-165: 주변 산책 중 강아지 조회
+     * GET /api/v1/walks/nearby-dogs
+     *
+     * 1. IN_PROGRESS 상태인 모든 산책 조회
+     * 2. 각 walkId의 Redis에서 마지막 GPS 좌표 추출
+     * 3. Haversine으로 거리 계산 → radius 이내만 포함
+     * 4. 본인 dogId 제외
+     */
+    public NearbyDogsResponse getNearbyDogs(double lat, double lon, double radius, Long myDogId) {
+        List<WalkRecord> inProgressWalks = walkRecordRepository.findAllByWalkStatus(WalkStatus.IN_PROGRESS);
+        List<NearbyDogResponse> nearbyDogs = new ArrayList<>();
+
+        for (WalkRecord walk : inProgressWalks) {
+            // 본인 강아지 제외
+            if (walk.getDogId().equals(myDogId)) continue;
+
+            // Redis에서 마지막 GPS 좌표 조회
+            String redisKey = GPS_KEY_PREFIX + walk.getId();
+            String lastPoint = redisTemplate.opsForList().index(redisKey, -1);
+            if (lastPoint == null) continue;
+
+            double[] coords = parsePoint(lastPoint);
+            double dogLat = coords[0];
+            double dogLon = coords[1];
+
+            // 거리 계산 및 필터링
+            double distance = haversine(lat, lon, dogLat, dogLon);
+            if (distance > radius) continue;
+
+            // 강아지 정보 조회
+            Optional<Dog> dogOpt = dogRepository.findById(walk.getDogId());
+            if (dogOpt.isEmpty()) continue;
+            Dog dog = dogOpt.get();
+
+            nearbyDogs.add(new NearbyDogResponse(
+                    dog.getId(),
+                    dog.getName(),
+                    dog.getBreed(),
+                    dog.getProfileImageUrl(),
+                    dogLat,
+                    dogLon,
+                    Math.round(distance * 10.0) / 10.0,
+                    walk.getId()
+            ));
+        }
+
+        // pendingProposals는 172번 (산책 제안) 작업 시 채워짐
+        return new NearbyDogsResponse(nearbyDogs, Collections.emptyList());
     }
 
     /**
