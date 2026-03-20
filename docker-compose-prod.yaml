@@ -1,35 +1,32 @@
 version: '3.8'
 
 services:
-  # 운영용 데이터베이스 (PostgreSQL)
   db:
-    image: postgres:15
+    image: postgis/postgis:15-3.5
     container_name: e108-postgres-prod
     restart: always
     environment:
-      # 운영 서버의 .env 파일에서 값을 읽어옵니다.
       POSTGRES_DB: e108_db_prod
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: ${DB_PASSWORD}
     ports:
-      - "5432:5432"  # 운영은 표준 포트(5432)를 그대로 사용합니다.
+      - "5432:5432"
     volumes:
-      # 운영 데이터를 개발 데이터와 완전히 다른 경로에 보관합니다.
       - ~/postgres/prod/data:/var/lib/postgresql/data
     networks:
       - e108-network-prod
 
-  # 운영용 백엔드 애플리케이션 (Spring Boot)
   app:
     image: backend-app-prod
     container_name: be-app-prod
     restart: always
-    env_file:
-    #  - .env
+    # env_file:
+    #   - .env
     ports:
-      - "80:8080"  # 사용자가 포트 번호 없이 접속할 수 있도록 HTTP 표준 포트(80)를 엽니다.
+      - "8080:8080"
     depends_on:
       - db
+      - redis-prod
     environment:
       - SPRING_PROFILES_ACTIVE=${SPRING_PROFILES_ACTIVE}
       - JWT_SECRET=${JWT_SECRET}
@@ -39,9 +36,22 @@ services:
       - AIR_QUALITY_SERVICE_KEY=${AIR_QUALITY_SERVICE_KEY}
       - AWS_ACCESS_KEY=${AWS_ACCESS_KEY}
       - AWS_SECRET_KEY=${AWS_SECRET_KEY}
+      - GMS_KEY=${GMS_KEY}
+    networks:
+      - e108-network-prod
+      - ssafy-network
+
+  redis-prod:
+    image: redis:alpine
+    container_name: e108-redis-prod
+    restart: always
+    ports:
+      - "6379:6379"
     networks:
       - e108-network-prod
 
 networks:
   e108-network-prod:
     driver: bridge
+  ssafy-network:
+    external: true

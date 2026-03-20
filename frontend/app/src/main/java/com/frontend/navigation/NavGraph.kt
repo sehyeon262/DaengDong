@@ -10,16 +10,20 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.sp
+import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import androidx.navigation.navArgument
 import com.frontend.ui.screen.dog.DogEditScreen
 import com.frontend.ui.screen.dog.DogProfileScreen
+import com.frontend.ui.screen.dog.MetDogsScreen
 import com.frontend.ui.screen.home.HomeScreen
 import com.frontend.ui.screen.login.LoginScreen
 import com.frontend.ui.screen.record.RecordScreen
 import com.frontend.ui.screen.splash.SplashScreen
+import com.frontend.ui.screen.walk.WalkDetailScreen
 import com.frontend.ui.screen.walk.WalkScreen
 
 @Composable
@@ -41,7 +45,7 @@ fun NavGraph() {
     ) { innerPadding ->
         NavHost(
             navController = navController,
-            // TODO: 로그인 우회 (원래: Routes.SPLASH)
+            // TODO: (로그인 우회 : Routes.SPLASH) (원래: Routes.SPLASH)
             startDestination = Routes.SPLASH,
             modifier = Modifier.padding(innerPadding)
         ) {
@@ -69,13 +73,29 @@ fun NavGraph() {
                 )
             }
             composable(Routes.RECORD) {
-                RecordScreen()
+                RecordScreen(
+                    onWalkClick = { walkId ->
+                        navController.navigate(Routes.walkDetail(walkId))
+                    }
+                )
             }
             composable(Routes.MY_INFO) {
                 DogProfileScreen(navController = navController)
             }
             composable(Routes.DOG_EDIT) {
                 DogEditScreen(navController = navController)
+            }
+            composable(
+                route = Routes.MET_DOGS,
+                arguments = listOf(navArgument("dogId") { type = NavType.LongType })
+            ) {
+                MetDogsScreen(navController = navController)
+            }
+            composable(
+                route = Routes.WALK_DETAIL,
+                arguments = listOf(navArgument("walkId") { type = NavType.LongType })
+            ) {
+                WalkDetailScreen(navController = navController)
             }
         }
     }

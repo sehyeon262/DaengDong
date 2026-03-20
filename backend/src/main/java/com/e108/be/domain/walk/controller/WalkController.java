@@ -3,6 +3,7 @@ package com.e108.be.domain.walk.controller;
 import com.e108.be.domain.walk.dto.request.*;
 import com.e108.be.domain.walk.dto.request.StartWalkRequest;
 import com.e108.be.domain.walk.dto.response.EndWalkResponse;
+import com.e108.be.domain.walk.dto.response.MetDogResponse;
 import com.e108.be.domain.walk.dto.response.NearbyDogsResponse;
 import com.e108.be.domain.walk.dto.response.ProposalResponse;
 import com.e108.be.domain.walk.dto.response.StartWalkResponse;
@@ -121,6 +122,18 @@ public class WalkController {
     }
 
     /**
+     * 산책 사진 삭제
+     * DELETE /api/v1/walks/{walkId}/photos
+     */
+    @DeleteMapping("/{walkId}/photos")
+    public ResTemplate<List<String>> deletePhoto(
+            @PathVariable Long walkId,
+            @RequestBody DeletePhotoRequest request) {
+        List<String> urls = walkService.deletePhoto(walkId, request.getPhotoUrl());
+        return ResTemplate.success(HttpStatus.OK, "사진 삭제 성공", urls);
+    }
+
+    /**
      * S14P21E108-165: 산책 중 주변 반려견 조회
      * GET /api/v1/walks/nearby-dogs?lat=&lon=&radius=&myDogId=&myWalkRecordId=
      */
@@ -167,6 +180,16 @@ public class WalkController {
             @RequestBody EncounterRequest request) {
         walkService.recordEncounters(walkRecordId, request);
         return ResTemplate.success(HttpStatus.OK, "만남이 기록되었습니다.", null);
+    }
+
+    /**
+     * 만난 친구 목록 조회
+     * GET /api/v1/walks/met-dogs?dogId=
+     */
+    @GetMapping("/met-dogs")
+    public ResTemplate<List<MetDogResponse>> getMetDogs(@RequestParam Long dogId) {
+        List<MetDogResponse> response = walkService.getMetDogs(dogId);
+        return ResTemplate.success(HttpStatus.OK, "만난 친구 목록 조회 성공", response);
     }
 
     /**

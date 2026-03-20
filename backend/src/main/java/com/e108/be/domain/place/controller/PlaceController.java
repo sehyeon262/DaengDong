@@ -1,25 +1,31 @@
 package com.e108.be.domain.place.controller;
 
+import com.e108.be.domain.place.dto.request.RegisterPlaceRequest;
 import com.e108.be.domain.place.dto.response.NearbyPlaceResponse;
 import com.e108.be.domain.place.dto.response.PlaceCategoryResponse;
 import com.e108.be.domain.place.dto.response.PlaceDetailResponse;
+import com.e108.be.domain.place.dto.response.RegisterPlaceResponse;
 import com.e108.be.domain.place.service.PlaceService;
 import com.e108.be.global.common.template.ResTemplate;
+import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
 
 /**
  * 장소 API
  *
- * GET /places/nearby?lat=35.17&lon=129.07&radius=1000&limit=20&category=카페
- * GET /places/{id}
- * GET /places/categories
+ * POST /places                   장소 등록
+ * GET  /places/nearby?lat=&lon=  주변 장소 조회
+ * GET  /places/{id}              장소 상세 조회
+ * GET  /places/categories        카테고리 목록 조회
  */
 @RestController
 @RequestMapping("/places")
@@ -28,6 +34,23 @@ import java.util.List;
 public class PlaceController {
 
     private final PlaceService placeService;
+
+    /**
+     * 장소 등록 (이미지 포함)
+     *
+     * multipart/form-data로 장소 정보 + 이미지 파일을 함께 전송
+     *
+     * @param request 장소 정보 (name, latitude, longitude, categoryName, address, memo)
+     * @param image   장소 이미지 파일 (선택)
+     */
+    @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResTemplate<RegisterPlaceResponse> registerPlace(
+            @Valid @ModelAttribute RegisterPlaceRequest request,
+            @RequestPart(required = false) MultipartFile image) {
+
+        RegisterPlaceResponse response = placeService.registerPlace(request, image);
+        return ResTemplate.success(HttpStatus.CREATED, "장소 등록 성공", response);
+    }
 
     /**
      * 주변 장소 조회

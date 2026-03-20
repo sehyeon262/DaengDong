@@ -13,6 +13,7 @@ import com.frontend.domain.model.DangerLocation
 import com.frontend.domain.model.DangerReason
 import com.frontend.domain.model.LocationBatchRequest
 import com.frontend.domain.model.WalkRoute
+import com.frontend.domain.usecase.GetPlacesUseCase
 import com.frontend.domain.usecase.ReportDangerZoneUseCase
 import com.google.android.gms.location.LocationCallback
 import com.google.android.gms.location.LocationRequest
@@ -39,6 +40,7 @@ import kotlin.math.sqrt
 class WalkViewModel @Inject constructor(
     @ApplicationContext private val context: Context,
     private val reportDangerZoneUseCase: ReportDangerZoneUseCase,
+    private val getPlacesUseCase: GetPlacesUseCase,
     private val walkRepository: WalkRepository,
 ) : ViewModel() {
 
@@ -66,6 +68,7 @@ class WalkViewModel @Inject constructor(
             val current = _azimuth.value
             val diff = abs(newAzimuth - current)
             val normalizedDiff = if (diff > 180f) 360f - diff else diff
+            // 5도 이상 변경 시에만 업데이트 (성능 최적화)
             if (normalizedDiff >= 5f) {
                 _azimuth.value = newAzimuth
             }
@@ -176,20 +179,58 @@ class WalkViewModel @Inject constructor(
         _state.update { it.copy(selectedRouteIndex = index) }
     }
 
+    // ── 필터 ───────────────────────────────────────────────────────────────────
+
+    /** 필터 바텀시트 열기: 현재 activeFilters를 pendingFilters로 복사해 편집 시작 */
     fun showFilter() {
-        _state.update { it.copy(showFilterSheet = true) }
+        _state.update { it.copy(showFilterSheet = true, pendingFilters = it.activeFilters) }
     }
 
+    /** 필터 바텀시트 닫기 (변경 사항 버림) */
     fun hideFilter() {
-        _state.update { it.copy(showFilterSheet = false) }
+        _state.update { it.copy(showFilterSheet = false, pendingFilters = it.activeFilters) }
     }
 
-    fun selectFilter(filter: WalkFilterType) {
-        _state.update { it.copy(selectedFilter = filter) }
+    /** 바텀시트에서 필터 항목 토글 (pendingFilters 편집) */
+    fun toggleFilter(filter: WalkFilterType) {
+        _state.update { state ->
+            val updated = if (filter in state.pendingFilters) {
+                state.pendingFilters - filter
+            } else {
+                state.pendingFilters + filter
+            }
+            state.copy(pendingFilters = updated)
+        }
     }
 
+    /** 적용하기: pendingFilters를 activeFilters에 반영하고 필요한 데이터 로드 */
     fun applyFilter() {
-        _state.update { it.copy(showFilterSheet = false) }
+        val pending = _state.value.pendingFilters
+        val wasPlaceActive = WalkFilterType.PLACE in _state.value.activeFilters
+        val isPlaceActive = WalkFilterType.PLACE in pending
+
+        _state.update { it.copy(activeFilters = pending, showFilterSheet = false) }
+
+        // 장소 필터가 꺼진 경우 → 장소 목록 초기화 (마커 제거 + 재조회는 Screen에서 처리)
+        if (!isPlaceActive && wasPlaceActive) {
+            _state.update { it.copy(places = emptyList()) }
+        }
+        // 장소 필터 ON 시 로드는 WalkScreen의 LaunchedEffect(activeFilters)에서 지도 중심으로 처리
+    }
+
+    /** 지정 좌표 기반 주변 장소 로드 */
+    fun loadPlacesByPosition(latitude: Double, longitude: Double) {
+        viewModelScope.launch {
+            _state.update { it.copy(isPlacesLoading = true) }
+            getPlacesUseCase(
+                latitude = latitude,
+                longitude = longitude
+            ).onSuccess { places ->
+                _state.update { it.copy(places = places, isPlacesLoading = false) }
+            }.onFailure {
+                _state.update { it.copy(isPlacesLoading = false) }
+            }
+        }
     }
 
     // ── 자유 산책 시작 ─────────────────────────────────────────────────────────

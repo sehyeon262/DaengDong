@@ -5,6 +5,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.util.List;
 import java.util.Optional;
 
 public interface MetDogRepository extends JpaRepository<MetDog, Long> {
@@ -24,4 +25,16 @@ public interface MetDogRepository extends JpaRepository<MetDog, Long> {
             @Param("sourceDogId") Long sourceDogId,
             @Param("targetDogId") Long targetDogId
     );
+
+    /**
+     * 내 강아지가 만난 모든 강아지 목록 (최신순).
+     * 만난 친구들 목록 조회 시 사용.
+     */
+    @Query("""
+        SELECT m FROM MetDog m
+        JOIN FETCH m.latestWalkRecord wr
+        WHERE wr.dogId = :sourceDogId
+        ORDER BY m.updatedAt DESC
+        """)
+    List<MetDog> findAllBySourceDogId(@Param("sourceDogId") Long sourceDogId);
 }

@@ -54,6 +54,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
@@ -120,6 +122,8 @@ fun WalkScreen(
     var currentLocationLabel by remember { mutableStateOf<Label?>(null) }
     val currentPosition by viewModel.currentPosition.collectAsState()
     var fovOverlay by remember { mutableStateOf<Polygon?>(null) }
+    // GPS 버튼으로 트래킹 활성화 여부 (사용자가 지도를 드래그하면 자동 해제)
+    var isTrackingActive by remember { mutableStateOf(false) }
 
     // 산책 경로 폴리라인
     val routePoints by viewModel.routePoints.collectAsState()
@@ -127,6 +131,9 @@ fun WalkScreen(
 
     // 위험 구역 마커 목록 (강아지 마커와 분리 관리)
     val dangerZoneLabels = remember { mutableStateListOf<Label>() }
+
+    // 장소 마커 목록 (PLACE 필터 on/off 시 추가/제거)
+    val placeLabels = remember { mutableStateListOf<Label>() }
 
     // 위치 권한 요청 launcher - 허용 시 위치 트래킹 시작
     val locationPermissionLauncher = rememberLauncherForActivityResult(
@@ -176,6 +183,7 @@ fun WalkScreen(
 
         if (currentLocationLabel == null) {
             // 최초: 카메라 이동 + 마커 생성 + TrackingManager 시작
+            // 최초: 카메라 이동 + 마커 생성 (트래킹은 GPS 버튼으로만 활성화)
             map.moveCamera(CameraUpdateFactory.newCenterPosition(pos, 15))
             val bitmap = rotateBitmap(createDogMarkerBitmap(context), azimuth)
             val styles = LabelStyles.from(LabelStyle.from(bitmap).setAnchorPoint(0.5f, 0.5f))
@@ -214,6 +222,24 @@ fun WalkScreen(
         }
     }
 
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            // 사용자가 지도를 드래그하면 트래킹 중단 (이벤트는 소비하지 않아 지도에 그대로 전달)
+            .pointerInput(isTrackingActive) {
+                if (!isTrackingActive) return@pointerInput
+                awaitPointerEventScope {
+                    while (true) {
+                        val event = awaitPointerEvent(PointerEventPass.Initial)
+                        if (event.changes.any { it.position != it.previousPosition }) {
+                            kakaoMap?.trackingManager?.stopTracking()
+                            isTrackingActive = false
+                            break
+                        }
+                    }
+                }
+            }
+    ) {
     // 위험 구역 선택 모드 진입/종료 시 TrackingManager 제어
     // 선택 모드: tracking 중단 → 지도 드래그 위치 유지
     // 선택 모드 해제: tracking 재개 → 강아지 마커 다시 따라가기
@@ -426,6 +452,7 @@ fun WalkScreen(
                     // TrackingManager 재활성화 (수동 이동 후 다시 마커 따라가기)
                     currentLocationLabel?.let { label ->
                         kakaoMap?.trackingManager?.startTracking(label)
+                        isTrackingActive = true
                     }
                 }
             )
@@ -439,8 +466,8 @@ fun WalkScreen(
         // ── 5. 필터 바텀시트 ────────────────────────────────────────────
         if (state.showFilterSheet) {
             WalkFilterBottomSheet(
-                selectedFilter = state.selectedFilter,
-                onFilterSelect = { viewModel.selectFilter(it) },
+                activeFilters = state.pendingFilters,
+                onFilterToggle = { viewModel.toggleFilter(it) },
                 onApply = { viewModel.applyFilter() },
                 onDismiss = { viewModel.hideFilter() }
             )
@@ -897,6 +924,28 @@ private fun addDangerZoneMarker(
     val targetHeight = (targetWidth * source.height.toFloat() / source.width).toInt()
     val scaled = source.scale(targetWidth, targetHeight)
     val style = LabelStyle.from(scaled).setAnchorPoint(0.5f, 1.0f)   // 하단 중앙을 좌표에 맞춤
+    val styles = LabelStyles.from(style)
+    val options = LabelOptions.from(position).setStyles(styles)
+    return kakaoMap.labelManager?.layer?.addLabel(options)
+}
+
+// ── 장소 마커 추가 (강아지 집 아이콘) ─────────────────────────────────────────
+private fun addPlaceMarker(
+    context: android.content.Context,
+    kakaoMap: KakaoMap,
+    place: com.frontend.domain.model.Place
+): Label? {
+    val position = LatLng.from(place.latitude, place.longitude)
+
+    val source = android.graphics.BitmapFactory.decodeResource(
+        context.resources, R.drawable.place_mark
+    )
+    val targetSize = 80
+    val aspectRatio = source.width.toFloat() / source.height.toFloat()
+    val targetWidth = (targetSize * aspectRatio).toInt()
+    val scaled = android.graphics.Bitmap.createScaledBitmap(source, targetWidth, targetSize, true)
+
+    val style = LabelStyle.from(scaled).setAnchorPoint(0.5f, 1.0f)  // 하단 중앙을 좌표에 맞춤
     val styles = LabelStyles.from(style)
     val options = LabelOptions.from(position).setStyles(styles)
     return kakaoMap.labelManager?.layer?.addLabel(options)
