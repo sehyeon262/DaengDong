@@ -4,6 +4,8 @@ import com.frontend.domain.model.ApiResponse
 import com.frontend.domain.model.SaveLocationRequest
 import com.frontend.domain.model.StartWalkRequest
 import com.frontend.domain.model.StartWalkResponse
+import com.frontend.domain.model.FeedbackRequest
+import com.frontend.domain.model.MetDogResponse
 import com.frontend.domain.model.WalkDetailResponse
 import okhttp3.MultipartBody
 import retrofit2.http.Body
@@ -11,9 +13,11 @@ import retrofit2.http.DELETE
 import retrofit2.http.GET
 import retrofit2.http.Header
 import retrofit2.http.Multipart
+import retrofit2.http.PATCH
 import retrofit2.http.POST
 import retrofit2.http.Part
 import retrofit2.http.Path
+import retrofit2.http.Query
 
 interface WalkApi {
 
@@ -55,4 +59,18 @@ interface WalkApi {
         @Path("walkId") walkId: Long,
         @Body request: Map<String, String>,
     ): ApiResponse<List<String>>
+
+    /** 만난 친구 목록 조회 — GET /api/v1/walks/met-dogs */
+    @GET("walks/met-dogs")
+    suspend fun getMetDogs(
+        @Header("Authorization") authorization: String,
+        @Query("dogId") dogId: Long,
+    ): ApiResponse<List<MetDogResponse>>
+
+    /** 궁합 피드백 설정/수정 — PATCH /api/v1/walks/met-dogs/feedback */
+    @PATCH("walks/met-dogs/feedback")
+    suspend fun updateFeedback(
+        @Header("Authorization") authorization: String,
+        @Body request: FeedbackRequest,
+    ): ApiResponse<Unit>
 }

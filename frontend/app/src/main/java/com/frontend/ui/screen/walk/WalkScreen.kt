@@ -456,6 +456,7 @@ fun WalkScreen(
             )
         }
     }
+    }
 }
 }
 

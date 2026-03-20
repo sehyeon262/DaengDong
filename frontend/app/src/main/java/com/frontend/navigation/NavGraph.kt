@@ -18,6 +18,7 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.frontend.ui.screen.dog.DogEditScreen
 import com.frontend.ui.screen.dog.DogProfileScreen
+import com.frontend.ui.screen.dog.MetDogsScreen
 import com.frontend.ui.screen.home.HomeScreen
 import com.frontend.ui.screen.login.LoginScreen
 import com.frontend.ui.screen.record.RecordScreen
@@ -71,6 +72,12 @@ fun NavGraph() {
             }
             composable(Routes.DOG_EDIT) {
                 DogEditScreen(navController = navController)
+            }
+            composable(
+                route = Routes.MET_DOGS,
+                arguments = listOf(navArgument("dogId") { type = NavType.LongType })
+            ) {
+                MetDogsScreen(navController = navController)
             }
             composable(
                 route = Routes.WALK_DETAIL,

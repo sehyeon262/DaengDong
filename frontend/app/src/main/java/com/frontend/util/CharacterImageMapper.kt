@@ -5,7 +5,7 @@ import androidx.compose.ui.graphics.Color
 import com.frontend.R
 
 @DrawableRes
-fun getCharacterImage(characterType: String): Int {
+fun getCharacterImage(characterType: String, temperature: Int = 20): Int {
     val parts = characterType.split("_")
     val sky = parts.getOrNull(0) ?: ""
     val status = parts.getOrNull(1) ?: ""
@@ -17,6 +17,9 @@ fun getCharacterImage(characterType: String): Int {
 
         // CAUTION
         status == "CAUTION" && sky in listOf("RAINY", "SNOWY") -> R.drawable.rainy
+        // 맑지만 추운 날 (15°C 미만) → cold 이미지
+        status == "CAUTION" && sky == "SUNNY" && temperature < 15 -> R.drawable.cold
+        // 맑고 더운 날 → hot 이미지
         status == "CAUTION" && sky == "SUNNY" -> R.drawable.hot
         status == "CAUTION" -> R.drawable.dust
 

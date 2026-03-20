@@ -2,6 +2,7 @@ package com.frontend.ui.screen.dog
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
@@ -49,9 +50,6 @@ private val TRAIT_COLORS = listOf(
 )
 private const val MOCK_WALK_MINUTES = 45
 private const val MOCK_WALK_KM = 1.2
-private const val MOCK_FRIEND_NAME = "보리"
-private const val MOCK_FRIEND_BREED = "비글"
-private const val MOCK_FRIEND_LOCATION = "올림픽공원 입구 근처"
 private val BADGE_COLOR_SETS = listOf(
     listOf(Color(0xFFFF8A65), Color(0xFFFFB74D), Color(0xFF81C784)),
     listOf(Color(0xFF4DB6AC), Color(0xFFAED581), Color(0xFF7986CB)),
@@ -120,13 +118,25 @@ fun DogProfileScreen(
                     Text(state.error!!, color = TextGray, fontSize = 12.sp)
                 }
             }
-            state.profile != null -> DogProfileContent(state.profile!!)
+            state.profile != null -> DogProfileContent(
+                profile = state.profile!!,
+                recentMetDog = state.recentMetDog,
+                onMetDogsClick = {
+                    state.dogId?.let { dogId ->
+                        navController.navigate(Routes.metDogs(dogId))
+                    }
+                }
+            )
         }
     }
 }
 
 @Composable
-private fun DogProfileContent(profile: DogProfileResponse) {
+private fun DogProfileContent(
+    profile: DogProfileResponse,
+    recentMetDog: com.frontend.domain.model.MetDogResponse?,
+    onMetDogsClick: () -> Unit
+) {
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(horizontal = 20.dp, vertical = 8.dp),
@@ -135,7 +145,7 @@ private fun DogProfileContent(profile: DogProfileResponse) {
         item { ProfileSection(profile) }
         item { TraitsSection(profile.traits.orEmpty()) }
         item { WalkStatsSection() }
-        item { RecentFriendSection() }
+        item { RecentFriendSection(recentMetDog, onMetDogsClick) }
         item { BadgeSection() }
         item { Spacer(Modifier.height(8.dp)) }
     }
@@ -251,36 +261,99 @@ private fun WalkStatCard(modifier: Modifier, title: String, icon: @Composable ()
 }
 
 @Composable
-private fun RecentFriendSection() {
+private fun RecentFriendSection(
+    recentMetDog: com.frontend.domain.model.MetDogResponse?,
+    onMetDogsClick: () -> Unit
+) {
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        Text("최근 만난 친구", fontSize = 16.sp, fontWeight = FontWeight.SemiBold, color = TextMain)
-        Card(
-            modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(16.dp),
-            colors = CardDefaults.cardColors(containerColor = Color.White),
-            elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable { onMetDogsClick() },
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            Column {
-                Row(modifier = Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Box(
-                        modifier = Modifier.size(52.dp).background(Color(0xFFE8F5E9), CircleShape),
-                        contentAlignment = Alignment.Center
-                    ) { Icon(Icons.Filled.Pets, null, tint = PointGreen, modifier = Modifier.size(28.dp)) }
-                    Spacer(Modifier.width(12.dp))
-                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                            Text(MOCK_FRIEND_NAME, fontSize = 16.sp, fontWeight = FontWeight.SemiBold, color = TextMain)
-                            InfoChip(MOCK_FRIEND_BREED, Color(0xFFFFF0B3), Color(0xFF8B6E00))
+            Text("최근 만난 친구", fontSize = 16.sp, fontWeight = FontWeight.SemiBold, color = TextMain)
+            Text("더보기", fontSize = 13.sp, color = TextGray)
+        }
+        if (recentMetDog == null) {
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { onMetDogsClick() },
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(containerColor = Color.White),
+                elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+            ) {
+                Box(
+                    modifier = Modifier.fillMaxWidth().padding(24.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text("아직 만난 친구가 없어요", fontSize = 14.sp, color = TextGray)
+                }
+            }
+        } else {
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { onMetDogsClick() },
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(containerColor = Color.White),
+                elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+            ) {
+                Column {
+                    Row(modifier = Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                        AsyncImage(
+                            model = recentMetDog.targetDogProfileImageUrl,
+                            contentDescription = "${recentMetDog.targetDogName} 프로필",
+                            modifier = Modifier.size(52.dp).clip(CircleShape),
+                            contentScale = ContentScale.Crop,
+                            placeholder = painterResource(R.drawable.default_profile),
+                            error = painterResource(R.drawable.default_profile)
+                        )
+                        Spacer(Modifier.width(12.dp))
+                        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                Text(recentMetDog.targetDogName, fontSize = 16.sp, fontWeight = FontWeight.SemiBold, color = TextMain)
+                                if (recentMetDog.targetDogBreed != null) {
+                                    InfoChip(recentMetDog.targetDogBreed, Color(0xFFF2EFE8), Color(0xFF7A6A50))
+                                }
+                            }
+                            Text(formatLastMetDate(recentMetDog.lastMetAt), fontSize = 13.sp, color = TextGray)
                         }
-                        Text(MOCK_FRIEND_LOCATION, fontSize = 13.sp, color = TextGray)
+                    }
+                    HorizontalDivider(color = Color(0xFFEEEEEE))
+                    Box(
+                        modifier = Modifier.fillMaxWidth().padding(16.dp),
+                        contentAlignment = Alignment.CenterStart
+                    ) {
+                        if (!recentMetDog.feedbackDone) {
+                            Text("궁합 평가하기", fontSize = 14.sp, color = TextGray)
+                        } else {
+                            when (recentMetDog.feedback) {
+                                "좋아요" -> Box(
+                                    modifier = Modifier.background(Color(0xFFE8F5E9), RoundedCornerShape(20.dp)).padding(horizontal = 12.dp, vertical = 4.dp)
+                                ) { Text("잘 맞아요", fontSize = 13.sp, color = Color(0xFF4CAF50), fontWeight = FontWeight.SemiBold) }
+                                "싫어요" -> Box(
+                                    modifier = Modifier.background(Color(0xFFFFEBEE), RoundedCornerShape(20.dp)).padding(horizontal = 12.dp, vertical = 4.dp)
+                                ) { Text("안 맞아요", fontSize = 13.sp, color = Color(0xFFF44336), fontWeight = FontWeight.SemiBold) }
+                                else -> Text("평가 완료", fontSize = 14.sp, color = TextGray)
+                            }
+                        }
                     }
                 }
-                HorizontalDivider(color = Color(0xFFEEEEEE))
-                Box(
-                    modifier = Modifier.fillMaxWidth().padding(16.dp),
-                    contentAlignment = Alignment.CenterStart
-                ) { Text("궁합 평가하기", fontSize = 14.sp, color = TextGray) }
             }
         }
+    }
+}
+
+private fun formatLastMetDate(dateTimeStr: String): String {
+    return try {
+        val dateTime = java.time.LocalDateTime.parse(dateTimeStr, java.time.format.DateTimeFormatter.ISO_LOCAL_DATE_TIME)
+        val formatter = java.time.format.DateTimeFormatter.ofPattern("yyyy.MM.dd에 만남")
+        dateTime.format(formatter)
+    } catch (e: Exception) {
+        dateTimeStr
     }
 }
 

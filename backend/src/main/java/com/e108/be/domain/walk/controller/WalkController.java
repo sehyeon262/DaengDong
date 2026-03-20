@@ -3,6 +3,7 @@ package com.e108.be.domain.walk.controller;
 import com.e108.be.domain.walk.dto.request.*;
 import com.e108.be.domain.walk.dto.request.StartWalkRequest;
 import com.e108.be.domain.walk.dto.response.EndWalkResponse;
+import com.e108.be.domain.walk.dto.response.MetDogResponse;
 import com.e108.be.domain.walk.dto.response.NearbyDogsResponse;
 import com.e108.be.domain.walk.dto.response.ProposalResponse;
 import com.e108.be.domain.walk.dto.response.StartWalkResponse;
@@ -174,6 +175,16 @@ public class WalkController {
             @RequestBody EncounterRequest request) {
         walkService.recordEncounters(walkRecordId, request);
         return ResTemplate.success(HttpStatus.OK, "만남이 기록되었습니다.", null);
+    }
+
+    /**
+     * 만난 친구 목록 조회
+     * GET /api/v1/walks/met-dogs?dogId=
+     */
+    @GetMapping("/met-dogs")
+    public ResTemplate<List<MetDogResponse>> getMetDogs(@RequestParam Long dogId) {
+        List<MetDogResponse> response = walkService.getMetDogs(dogId);
+        return ResTemplate.success(HttpStatus.OK, "만난 친구 목록 조회 성공", response);
     }
 
     /**
