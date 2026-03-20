@@ -45,6 +45,7 @@ fun NavGraph() {
     ) { innerPadding ->
         NavHost(
             navController = navController,
+            // TODO: (로그인 우회 : Routes.SPLASH) (원래: Routes.SPLASH)
             startDestination = Routes.SPLASH,
             modifier = Modifier.padding(innerPadding)
         ) {
@@ -58,7 +59,18 @@ fun NavGraph() {
                 HomeScreen()
             }
             composable(Routes.WALK) {
-                WalkScreen()
+                WalkScreen(
+                    onNavigateToRecord = {
+                        navController.navigate(Routes.RECORD) {
+                            popUpTo(Routes.WALK) { inclusive = false }
+                        }
+                    },
+                    onNavigateToHome = {
+                        navController.navigate(Routes.HOME) {
+                            popUpTo(Routes.WALK) { inclusive = false }
+                        }
+                    }
+                )
             }
             composable(Routes.RECORD) {
                 RecordScreen(

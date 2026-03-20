@@ -44,7 +44,6 @@ import java.util.concurrent.TimeUnit;
 @Transactional(readOnly = true)
 public class WalkService {
 
-    private static final String GPS_KEY_PREFIX      = "walk:gps:";
     private static final String PROPOSAL_KEY_PREFIX = "walk:proposals:";
     private static final double EARTH_RADIUS_M      = 6_371_000.0;
     private static final double CALORIE_FACTOR      = 0.8;
@@ -74,6 +73,15 @@ public class WalkService {
     }
 
     /**
+     * R1-03 자유 산책 시작
+     * POST /walks/free-start
+     */
+    @Transactional
+    public StartWalkResponse startFreeWalk(StartWalkRequest request) {
+        return startWalk(request);
+    }
+
+    /**
      * 누적 거리 조회
      * GET /walks/{walkId}/distance
      */
@@ -81,13 +89,11 @@ public class WalkService {
         walkRecordRepository.findById(walkId)
                 .orElseThrow(WalkNotFoundException::new);
 
-        String redisKey = GPS_KEY_PREFIX + walkId;
-        List<String> points = redisTemplate.opsForList().range(redisKey, 0, -1);
+        Double distanceM = walkRecordRepository.getRouteLength(walkId);
+        if (distanceM == null) distanceM = 0.0;
 
-        double totalMeters = calculateTotalDistance(points);
-        double totalKm = Math.round(totalMeters / 10.0) / 100.0;
-
-        return new DistanceResponse(Math.round(totalMeters * 100.0) / 100.0, totalKm);
+        double totalKm = Math.round(distanceM / 10.0) / 100.0;
+        return new DistanceResponse(Math.round(distanceM * 100.0) / 100.0, totalKm);
     }
 
     public WalkDurationResponse getWalkDuration(Long walkId) {
@@ -109,10 +115,9 @@ public class WalkService {
             throw new WalkAlreadyEndedException();
         }
 
-        // Redis GPS 좌표로 실제 거리 계산
-        String redisKey = GPS_KEY_PREFIX + walkId;
-        List<String> points = redisTemplate.opsForList().range(redisKey, 0, -1);
-        double distanceM = calculateTotalDistance(points);
+        // route_line에서 실제 거리 계산
+        Double rawDistance = walkRecordRepository.getRouteLength(walkId);
+        double distanceM = rawDistance != null ? rawDistance : 0.0;
         BigDecimal totalDistance = BigDecimal.valueOf(distanceM)
                 .setScale(2, RoundingMode.HALF_UP);
 
@@ -148,10 +153,8 @@ public class WalkService {
             return new CaloriesResponse(null, true);
         }
 
-        String redisKey = GPS_KEY_PREFIX + walkId;
-        List<String> points = redisTemplate.opsForList().range(redisKey, 0, -1);
-
-        double distanceKm = calculateTotalDistance(points) / 1000.0;
+        Double distanceM = walkRecordRepository.getRouteLength(walkId);
+        double distanceKm = (distanceM != null ? distanceM : 0.0) / 1000.0;
         double weightKg = dog.getWeight().doubleValue();
         double calories = BigDecimal.valueOf(weightKg * distanceKm * CALORIE_FACTOR)
                 .setScale(1, RoundingMode.HALF_UP)
@@ -229,13 +232,11 @@ public class WalkService {
         for (WalkRecord walk : inProgressWalks) {
             if (walk.getDogId().equals(myDogId)) continue;
 
-            String redisKey = GPS_KEY_PREFIX + walk.getId();
-            String lastPoint = redisTemplate.opsForList().index(redisKey, -1);
-            if (lastPoint == null) continue;
+            Object[] lastPoint = walkRecordRepository.getLastPoint(walk.getId());
+            if (lastPoint == null || lastPoint.length < 2) continue;
 
-            double[] coords = parsePoint(lastPoint);
-            double dogLat = coords[0];
-            double dogLon = coords[1];
+            double dogLat = ((Number) lastPoint[0]).doubleValue();
+            double dogLon = ((Number) lastPoint[1]).doubleValue();
 
             double distance = haversine(lat, lon, dogLat, dogLon);
             if (distance > radius) continue;
@@ -430,25 +431,6 @@ public class WalkService {
     }
 
     // ────────────── 내부 유틸 ──────────────
-
-    private double calculateTotalDistance(List<String> points) {
-        if (points == null || points.size() < 2) return 0.0;
-
-        double total = 0.0;
-        double[] prev = parsePoint(points.get(0));
-
-        for (int i = 1; i < points.size(); i++) {
-            double[] curr = parsePoint(points.get(i));
-            total += haversine(prev[0], prev[1], curr[0], curr[1]);
-            prev = curr;
-        }
-        return total;
-    }
-
-    private double[] parsePoint(String value) {
-        String[] parts = value.split(",");
-        return new double[]{Double.parseDouble(parts[0]), Double.parseDouble(parts[1])};
-    }
 
     private double haversine(double lat1, double lon1, double lat2, double lon2) {
         double dLat = Math.toRadians(lat2 - lat1);

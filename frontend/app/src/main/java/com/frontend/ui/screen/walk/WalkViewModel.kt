@@ -8,8 +8,10 @@ import android.hardware.SensorManager
 import android.os.Looper
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.frontend.data.repository.WalkRepository
 import com.frontend.domain.model.DangerLocation
 import com.frontend.domain.model.DangerReason
+import com.frontend.domain.model.LocationBatchRequest
 import com.frontend.domain.model.WalkRoute
 import com.frontend.domain.usecase.GetPlacesUseCase
 import com.frontend.domain.usecase.ReportDangerZoneUseCase
@@ -21,18 +23,25 @@ import com.google.android.gms.location.Priority
 import com.kakao.vectormap.LatLng
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 import kotlin.math.abs
+import kotlin.math.atan2
+import kotlin.math.cos
+import kotlin.math.sin
+import kotlin.math.sqrt
 
 @HiltViewModel
 class WalkViewModel @Inject constructor(
     @ApplicationContext private val context: Context,
     private val reportDangerZoneUseCase: ReportDangerZoneUseCase,
-    private val getPlacesUseCase: GetPlacesUseCase
+    private val getPlacesUseCase: GetPlacesUseCase,
+    private val walkRepository: WalkRepository,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(WalkState())
@@ -82,10 +91,37 @@ class WalkViewModel @Inject constructor(
     private val _currentPosition = MutableStateFlow<LatLng?>(null)
     val currentPosition = _currentPosition.asStateFlow()
 
+    // ── 산책 경로 (실시간 폴리라인용) ─────────────────────────────────────────
+    private val _routePoints = MutableStateFlow<List<LatLng>>(emptyList())
+    val routePoints = _routePoints.asStateFlow()
+
+    // ── GPS 배치 전송 대기열 (10초마다 서버로 전송) ───────────────────────────
+    private val pendingPoints = mutableListOf<LocationBatchRequest.LocationPoint>()
+    private var batchSendJob: Job? = null
+    private var timerJob: Job? = null
+
     private val locationCallback = object : LocationCallback() {
         override fun onLocationResult(result: LocationResult) {
             result.lastLocation?.let { loc ->
-                _currentPosition.value = LatLng.from(loc.latitude, loc.longitude)
+                val latLng = LatLng.from(loc.latitude, loc.longitude)
+                val prev = _currentPosition.value
+                _currentPosition.value = latLng
+
+                // 산책 중이고 일시정지가 아닐 때만 경로/거리 누적
+                if (_state.value.isWalking && !_state.value.isPaused) {
+                    if (prev != null) {
+                        val d = haversineMeters(prev.latitude, prev.longitude, loc.latitude, loc.longitude)
+                        _state.update { it.copy(distanceMeters = it.distanceMeters + d) }
+                    }
+                    _routePoints.value = _routePoints.value + latLng
+                    pendingPoints.add(
+                        LocationBatchRequest.LocationPoint(
+                            latitude = loc.latitude,
+                            longitude = loc.longitude,
+                            timestamp = System.currentTimeMillis(),
+                        )
+                    )
+                }
             }
         }
     }
@@ -109,9 +145,11 @@ class WalkViewModel @Inject constructor(
         super.onCleared()
         sensorManager.unregisterListener(sensorListener)
         stopLocationTracking()
+        batchSendJob?.cancel()
+        timerJob?.cancel()
     }
 
-    // ── 산책 경로 ──────────────────────────────────────────────────────────────
+    // ── 산책 경로 카드 ─────────────────────────────────────────────────────────
     val routes = listOf(
         WalkRoute(
             title = "자유 산책",
@@ -195,16 +233,186 @@ class WalkViewModel @Inject constructor(
         }
     }
 
-    // ── 산책 ID 관리 ───────────────────────────────────────────────────────────
+    // ── 자유 산책 시작 ─────────────────────────────────────────────────────────
 
-    /** 산책 시작 후 서버에서 발급된 walkId 저장 */
-    fun setCurrentWalkId(walkId: Long) {
-        currentWalkId = walkId
+    /**
+     * R1-03: 자유 산책 시작
+     * - 버튼 클릭 즉시 isWalking = true (낙관적 UI 전환 → 즉각 화면 전환)
+     * - 타이머 즉시 시작
+     * - 백그라운드에서 서버 요청 → walkId 수신 후 GPS 배치 전송 시작
+     */
+    fun startFreeWalk() {
+        // 즉시 UI 전환
+        _state.update {
+            it.copy(
+                isWalking = true,
+                isPaused = false,
+                elapsedSeconds = 0,
+                distanceMeters = 0.0,
+                walkError = null,
+            )
+        }
+        _routePoints.value = emptyList()
+        pendingPoints.clear()
+        startWalkTimer()
+
+        // 백그라운드 서버 요청
+        viewModelScope.launch {
+            walkRepository.startFreeWalk()
+                .onSuccess { walkId ->
+                    currentWalkId = walkId
+                    startBatchSending(walkId)
+                }
+                .onFailure { e ->
+                    // 서버 실패해도 UI는 산책 중 상태 유지 (GPS 배치만 못 보냄)
+                    android.util.Log.w("WalkViewModel", "산책 시작 API 실패: ${e.message}")
+                    _state.update { it.copy(walkError = e.message) }
+                }
+        }
     }
 
-    /** 산책 종료 시 walkId 초기화 */
-    fun clearCurrentWalkId() {
-        currentWalkId = null
+    /**
+     * W1-06: 산책 종료
+     * - 타이머 정지
+     * - 남은 GPS 포인트 서버 전송
+     * - 요약 화면 표시 (routePoints는 요약 화면에서 지도 표시용으로 유지)
+     */
+    fun endWalk() {
+        timerJob?.cancel()
+        timerJob = null
+
+        // 요약 데이터 캡처 (상태 초기화 전)
+        val summarySeconds = _state.value.elapsedSeconds
+        val summaryDistance = _state.value.distanceMeters
+        val summaryRoute = routes.getOrNull(_state.value.selectedRouteIndex)?.title ?: "자유 산책"
+
+        val walkId = currentWalkId
+        if (walkId == null) {
+            // 서버 walkId 없이 종료 (API 실패 케이스)
+            batchSendJob?.cancel()
+            pendingPoints.clear()
+            _state.update {
+                it.copy(
+                    isWalking = false,
+                    isPaused = false,
+                    elapsedSeconds = 0,
+                    distanceMeters = 0.0,
+                    walkError = null,
+                    isWalkSummaryVisible = true,
+                    summaryElapsedSeconds = summarySeconds,
+                    summaryDistanceMeters = summaryDistance,
+                    summaryRouteName = summaryRoute,
+                    summaryRating = 0,
+                )
+            }
+            return
+        }
+
+        viewModelScope.launch {
+            batchSendJob?.cancel()
+
+            // 남은 포인트 전송 (2개 미만이면 건너뜀 - 백엔드 LINESTRING 최소 2점 필요)
+            val remaining = pendingPoints.toList()
+            pendingPoints.clear()
+            if (remaining.size >= 2) {
+                walkRepository.saveLocations(walkId, remaining)
+            }
+
+            walkRepository.endWalk(walkId)
+                .onSuccess {
+                    currentWalkId = null
+                    // routePoints는 유지 → 요약 화면 배경 지도에 경로 표시
+                    _state.update {
+                        it.copy(
+                            isWalking = false,
+                            isPaused = false,
+                            elapsedSeconds = 0,
+                            distanceMeters = 0.0,
+                            walkError = null,
+                            isWalkSummaryVisible = true,
+                            summaryElapsedSeconds = summarySeconds,
+                            summaryDistanceMeters = summaryDistance,
+                            summaryRouteName = summaryRoute,
+                            summaryRating = 0,
+                        )
+                    }
+                }
+                .onFailure { e ->
+                    _state.update { it.copy(walkError = e.message) }
+                }
+        }
+    }
+
+    /** 산책 별점 선택 */
+    fun setWalkRating(rating: Int) {
+        _state.update { it.copy(summaryRating = rating) }
+    }
+
+    /** 요약 화면 닫기 — routePoints 초기화 */
+    fun dismissWalkSummary() {
+        _routePoints.value = emptyList()
+        _state.update {
+            it.copy(
+                isWalkSummaryVisible = false,
+                summaryElapsedSeconds = 0,
+                summaryDistanceMeters = 0.0,
+                summaryRouteName = "",
+                summaryRating = 0,
+            )
+        }
+    }
+
+    /** 일시정지 */
+    fun pauseWalk() {
+        _state.update { it.copy(isPaused = true) }
+    }
+
+    /** 산책 재개 */
+    fun resumeWalk() {
+        _state.update { it.copy(isPaused = false) }
+    }
+
+    /** 1초마다 elapsedSeconds 증가 (일시정지 중에는 멈춤) */
+    private fun startWalkTimer() {
+        timerJob?.cancel()
+        timerJob = viewModelScope.launch {
+            while (true) {
+                delay(1000L)
+                if (_state.value.isWalking && !_state.value.isPaused) {
+                    _state.update { it.copy(elapsedSeconds = it.elapsedSeconds + 1) }
+                }
+            }
+        }
+    }
+
+    /**
+     * 10초마다 pending 포인트를 서버로 배치 전송
+     * - 2개 미만이면 건너뜀 (LINESTRING 최소 2점 필요)
+     */
+    private fun startBatchSending(walkId: Long) {
+        batchSendJob?.cancel()
+        batchSendJob = viewModelScope.launch {
+            while (true) {
+                delay(10_000L)
+                val batch = pendingPoints.toList()
+                if (batch.size >= 2) {
+                    pendingPoints.clear()
+                    walkRepository.saveLocations(walkId, batch)
+                }
+            }
+        }
+    }
+
+    /** Haversine 공식 — 두 좌표 사이 거리 (미터) */
+    private fun haversineMeters(lat1: Double, lon1: Double, lat2: Double, lon2: Double): Double {
+        val R = 6371000.0
+        val φ1 = Math.toRadians(lat1)
+        val φ2 = Math.toRadians(lat2)
+        val Δφ = Math.toRadians(lat2 - lat1)
+        val Δλ = Math.toRadians(lon2 - lon1)
+        val a = sin(Δφ / 2) * sin(Δφ / 2) + cos(φ1) * cos(φ2) * sin(Δλ / 2) * sin(Δλ / 2)
+        val c = 2 * atan2(sqrt(a), sqrt(1 - a))
+        return R * c
     }
 
     // ── 위험 구역 신고 ─────────────────────────────────────────────────────────

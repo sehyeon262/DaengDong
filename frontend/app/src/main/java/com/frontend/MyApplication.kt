@@ -14,8 +14,10 @@ class MyApplication : Application() {
         super.onCreate()
         try {
             KakaoMapSdk.init(this, BuildConfig.KAKAO_MAP_API_KEY)
+            Log.d("KakaoMap", "KakaoMapSdk.init() 성공")
         } catch (e: Exception) {
-            // 에뮬레이터(x86_64)에서는 카카오맵 네이티브 라이브러리 미지원 - 무시
+            // 에뮬레이터(x86_64)에서는 카카오맵 네이티브 라이브러리 미지원
+            Log.e("KakaoMap", "KakaoMapSdk.init() 실패: ${e.message}", e)
         }
         if (BuildConfig.DEBUG) {
             printKeyHash()
