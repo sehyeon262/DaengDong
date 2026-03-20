@@ -9,15 +9,15 @@ plugins {
     id("com.google.gms.google-services")
 }
 
-val localProperties = Properties().apply {
-    val localPropertiesFile = rootProject.file("local.properties")
-    if (localPropertiesFile.exists()) {
-        localPropertiesFile.inputStream().use { load(it) }
+val envProperties = Properties().apply {
+    val envFile = rootProject.file(".env")
+    if (envFile.exists()) {
+        envFile.inputStream().use { load(it) }
     }
 }
 
-val kakaoMapApiKey: String = localProperties.getProperty("KAKAO_MAP_API_KEY", "")
-val baseUrl: String = localProperties.getProperty("BASE_URL", "http://10.0.2.2:8080/api/v1/")  // ← 추가
+val kakaoMapApiKey: String = envProperties.getProperty("KAKAO_MAP_API_KEY", "")
+val baseUrl: String = envProperties.getProperty("BASE_URL", "http://10.0.2.2:8080/api/v1/")
 
 android {
     namespace = "com.frontend"
