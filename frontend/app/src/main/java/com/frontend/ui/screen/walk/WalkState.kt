@@ -17,6 +17,7 @@ data class WalkState(
     // ── 장소 마커 ──────────────────────────────────────────────────────────────
     val places: List<Place> = emptyList(),            // 지도에 표시할 장소 목록
     val isPlacesLoading: Boolean = false,             // 장소 로딩 중 여부
+    val selectedPlace: Place? = null,                 // 클릭된 장소 (상세 바텀시트 표시용)
 
     // ── 자유 산책 ──────────────────────────────────────────────────────────────
     val isWalking: Boolean = false,       // 산책 진행 중 여부

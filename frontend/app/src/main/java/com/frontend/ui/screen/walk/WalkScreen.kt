@@ -78,6 +78,7 @@ import com.frontend.domain.model.DangerLocation
 import com.frontend.domain.model.DangerZone
 import com.frontend.ui.component.MapOverlayButton
 import com.frontend.ui.screen.walk.components.DangerReportModal
+import com.frontend.ui.screen.walk.components.PlaceDetailBottomSheet
 import com.frontend.ui.screen.walk.components.WalkFilterBottomSheet
 import com.frontend.ui.screen.walk.components.WalkRouteCard
 import com.frontend.ui.screen.walk.components.WalkSearchBar
@@ -293,6 +294,49 @@ fun WalkScreen(
         }
     }
 
+    // 장소 목록 변경 시: 마커 전체 교체 (PLACE 필터 ON → API 응답 도착)
+    LaunchedEffect(state.places, kakaoMap) {
+        val map = kakaoMap ?: return@LaunchedEffect
+        placeLabels.forEach { map.labelManager?.layer?.remove(it) }
+        placeLabels.clear()
+        if (state.places.isEmpty()) return@LaunchedEffect
+        state.places.forEach { place ->
+            val label = addPlaceMarker(context, map, place)
+            if (label != null) placeLabels.add(label)
+        }
+    }
+
+    // PLACE 필터 ON/OFF 처리
+    LaunchedEffect(state.activeFilters, kakaoMap) {
+        val map = kakaoMap ?: return@LaunchedEffect
+        if (WalkFilterType.PLACE in state.activeFilters) {
+            val center = map.cameraPosition?.position ?: return@LaunchedEffect
+            viewModel.loadPlacesByPosition(center.latitude, center.longitude)
+        } else {
+            placeLabels.forEach { map.labelManager?.layer?.remove(it) }
+            placeLabels.clear()
+        }
+    }
+
+    // 카메라 이동 완료 시 장소 재조회 + 마커 클릭 리스너 등록
+    LaunchedEffect(kakaoMap) {
+        val map = kakaoMap ?: return@LaunchedEffect
+        // 지도 이동 시 PLACE 필터 ON이면 새 중심 좌표로 장소 재조회
+        map.setOnCameraMoveEndListener { _, cameraPosition, _ ->
+            if (WalkFilterType.PLACE in viewModel.state.value.activeFilters) {
+                val center = cameraPosition.position
+                viewModel.loadPlacesByPosition(center.latitude, center.longitude)
+            }
+        }
+        // 장소 마커 클릭 시 상세 바텀시트 표시
+        map.setOnLabelClickListener { _, _, label ->
+            val placeId = label.tag as? Long
+            val place = viewModel.state.value.places.find { it.id == placeId }
+            if (place != null) viewModel.selectPlace(place)
+            true
+        }
+    }
+
     Box(modifier = Modifier.fillMaxSize()) {
 
         // ── 1. 카카오맵 ─────────────────────────────────────────────────
@@ -463,13 +507,21 @@ fun WalkScreen(
             )
         }
 
-        // ── 5. 필터 바텀시트 ────────────────────────────────────────────
+        // ── 5. `필터 바텀`시트 ────────────────────────────────────────────
         if (state.showFilterSheet) {
             WalkFilterBottomSheet(
                 activeFilters = state.pendingFilters,
                 onFilterToggle = { viewModel.toggleFilter(it) },
                 onApply = { viewModel.applyFilter() },
                 onDismiss = { viewModel.hideFilter() }
+            )
+        }
+
+        // ── 7. 장소 상세 바텀시트 ───────────────────────────────────────
+        state.selectedPlace?.let { place ->
+            PlaceDetailBottomSheet(
+                place = place,
+                onDismiss = { viewModel.dismissPlaceDetail() }
             )
         }
 
@@ -948,7 +1000,7 @@ private fun addPlaceMarker(
 
     val style = LabelStyle.from(scaled).setAnchorPoint(0.5f, 1.0f)  // 하단 중앙을 좌표에 맞춤
     val styles = LabelStyles.from(style)
-    val options = LabelOptions.from(position).setStyles(styles)
+    val options = LabelOptions.from(position).setStyles(styles).setTag(place.id)
     return kakaoMap.labelManager?.layer?.addLabel(options)
 }
 
