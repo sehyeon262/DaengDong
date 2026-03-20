@@ -13,9 +13,14 @@ import com.frontend.data.repository.WalkRepository
 import com.frontend.domain.model.DangerLocation
 import com.frontend.domain.model.DangerReason
 import com.frontend.domain.model.LocationBatchRequest
+import com.frontend.domain.model.Place
 import com.frontend.domain.model.WalkRoute
+import com.frontend.domain.usecase.EndWalkUseCase
+import com.frontend.domain.usecase.GetPlaceDetailUseCase
 import com.frontend.domain.usecase.GetPlacesUseCase
 import com.frontend.domain.usecase.ReportDangerZoneUseCase
+import com.frontend.domain.usecase.SaveLocationsUseCase
+import com.frontend.domain.usecase.StartFreeWalkUseCase
 import com.google.android.gms.location.LocationCallback
 import com.google.android.gms.location.LocationRequest
 import com.google.android.gms.location.LocationResult
@@ -45,6 +50,10 @@ class WalkViewModel @Inject constructor(
     private val getPlacesUseCase: GetPlacesUseCase,
     private val walkRepository: WalkRepository,
     private val tokenDataStore: TokenDataStore,
+    private val getPlaceDetailUseCase: GetPlaceDetailUseCase,
+    private val startFreeWalkUseCase: StartFreeWalkUseCase,
+    private val saveLocationsUseCase: SaveLocationsUseCase,
+    private val endWalkUseCase: EndWalkUseCase
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(WalkState())
@@ -55,6 +64,17 @@ class WalkViewModel @Inject constructor(
 
     // ── 현재 산책 ID (산책 시작 후 서버에서 발급) ──────────────────────────────
     private var currentWalkId: Long? = null
+
+    // ── 산책 경로 포인트 (지도 경로 표시용) ────────────────────────────────────
+    private val _routePoints = MutableStateFlow<List<LatLng>>(emptyList())
+    val routePoints = _routePoints.asStateFlow()
+
+    // ── GPS 배치 전송 버퍼 ──────────────────────────────────────────────────────
+    private val pendingPoints = mutableListOf<LocationBatchRequest.LocationPoint>()
+
+    // ── 타이머 / 배치 전송 Job ──────────────────────────────────────────────────
+    private var timerJob: Job? = null
+    private var batchSendJob: Job? = null
 
     // ── 나침반 (방향 센서) ─────────────────────────────────────────────────────
     private val sensorManager = context.getSystemService(Context.SENSOR_SERVICE) as SensorManager
@@ -103,34 +123,25 @@ class WalkViewModel @Inject constructor(
     private val _currentPosition = MutableStateFlow<LatLng?>(null)
     val currentPosition = _currentPosition.asStateFlow()
 
-    // ── 산책 경로 (실시간 폴리라인용) ─────────────────────────────────────────
-    private val _routePoints = MutableStateFlow<List<LatLng>>(emptyList())
-    val routePoints = _routePoints.asStateFlow()
-
-    // ── GPS 배치 전송 대기열 (10초마다 서버로 전송) ───────────────────────────
-    private val pendingPoints = mutableListOf<LocationBatchRequest.LocationPoint>()
-    private var batchSendJob: Job? = null
-    private var timerJob: Job? = null
-
     private val locationCallback = object : LocationCallback() {
         override fun onLocationResult(result: LocationResult) {
             result.lastLocation?.let { loc ->
-                val latLng = LatLng.from(loc.latitude, loc.longitude)
-                val prev = _currentPosition.value
-                _currentPosition.value = latLng
+                val newLatLng = LatLng.from(loc.latitude, loc.longitude)
+                _currentPosition.value = newLatLng
 
-                // 산책 중이고 일시정지가 아닐 때만 경로/거리 누적
+                // 산책 중이고 일시정지가 아닐 때만 GPS 포인트 기록
                 if (_state.value.isWalking && !_state.value.isPaused) {
+                    val prev = _routePoints.value.lastOrNull()
                     if (prev != null) {
-                        val d = haversineMeters(prev.latitude, prev.longitude, loc.latitude, loc.longitude)
-                        _state.update { it.copy(distanceMeters = it.distanceMeters + d) }
+                        val dist = haversineMeters(prev.latitude, prev.longitude, loc.latitude, loc.longitude)
+                        _state.update { it.copy(distanceMeters = it.distanceMeters + dist) }
                     }
-                    _routePoints.value = _routePoints.value + latLng
+                    _routePoints.value = _routePoints.value + newLatLng
                     pendingPoints.add(
                         LocationBatchRequest.LocationPoint(
                             latitude = loc.latitude,
                             longitude = loc.longitude,
-                            timestamp = System.currentTimeMillis(),
+                            timestamp = System.currentTimeMillis()
                         )
                     )
                 }
@@ -157,11 +168,9 @@ class WalkViewModel @Inject constructor(
         super.onCleared()
         sensorManager.unregisterListener(sensorListener)
         stopLocationTracking()
-        batchSendJob?.cancel()
-        timerJob?.cancel()
     }
 
-    // ── 산책 경로 카드 ─────────────────────────────────────────────────────────
+    // ── 산책 경로 ──────────────────────────────────────────────────────────────
     val routes = listOf(
         WalkRoute(
             title = "자유 산책",
@@ -252,7 +261,28 @@ class WalkViewModel @Inject constructor(
         }
     }
 
-    // ── 자유 산책 시작 ─────────────────────────────────────────────────────────
+    // ── 장소 상세 선택 ─────────────────────────────────────────────────────────
+
+    /** 마커 클릭 시 선택된 장소 설정 후 상세 API 호출로 description 추가 */
+    fun selectPlace(place: Place) {
+        _state.update { it.copy(selectedPlace = place) }
+        viewModelScope.launch {
+            getPlaceDetailUseCase(place.id)
+                .onSuccess { detail ->
+                    // 현재 선택된 장소가 아직 같은 장소일 때만 업데이트
+                    if (_state.value.selectedPlace?.id == detail.id) {
+                        _state.update { it.copy(selectedPlace = detail) }
+                    }
+                }
+        }
+    }
+
+    /** 장소 상세 바텀시트 닫기 */
+    fun dismissPlaceDetail() {
+        _state.update { it.copy(selectedPlace = null) }
+    }
+
+    // ── 산책 ID 관리 ───────────────────────────────────────────────────────────
 
     /**
      * R1-03: 자유 산책 시작
@@ -277,14 +307,14 @@ class WalkViewModel @Inject constructor(
 
         // 백그라운드 서버 요청
         viewModelScope.launch {
-            walkRepository.startFreeWalk()
+            startFreeWalkUseCase()
                 .onSuccess { walkId ->
                     currentWalkId = walkId
                     _state.update { it.copy(currentWalkId = walkId) }
                     startBatchSending(walkId)
                 }
                 .onFailure { e ->
-                    android.util.Log.w("WalkViewModel", "산책 시작 API 실패: ${e.message}")
+                    // 서버 실패해도 UI는 산책 중 상태 유지 (GPS 배치만 못 보냄)
                     _state.update { it.copy(walkError = e.message) }
                 }
         }
@@ -333,10 +363,10 @@ class WalkViewModel @Inject constructor(
             val remaining = pendingPoints.toList()
             pendingPoints.clear()
             if (remaining.size >= 2) {
-                walkRepository.saveLocations(walkId, remaining)
+                saveLocationsUseCase(walkId, remaining)
             }
 
-            walkRepository.endWalk(walkId)
+            endWalkUseCase(walkId)
                 .onSuccess {
                     currentWalkId = null
                     _state.update {
@@ -415,7 +445,7 @@ class WalkViewModel @Inject constructor(
                 val batch = pendingPoints.toList()
                 if (batch.size >= 2) {
                     pendingPoints.clear()
-                    walkRepository.saveLocations(walkId, batch)
+                    saveLocationsUseCase(walkId, batch)
                 }
             }
         }

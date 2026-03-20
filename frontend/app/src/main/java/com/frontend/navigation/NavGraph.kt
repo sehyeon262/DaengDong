@@ -46,7 +46,7 @@ fun NavGraph() {
         NavHost(
             navController = navController,
             // TODO: (로그인 우회 : Routes.SPLASH) (원래: Routes.SPLASH)
-            startDestination = Routes.SPLASH,
+            startDestination = Routes.LOGIN,
             modifier = Modifier.padding(innerPadding)
         ) {
             composable(Routes.SPLASH) {
