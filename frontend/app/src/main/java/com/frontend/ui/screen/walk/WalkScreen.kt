@@ -521,7 +521,7 @@ fun WalkScreen(
         state.selectedPlace?.let { place ->
             PlaceDetailBottomSheet(
                 place = place,
-                onDismiss = { viewModel.selectPlace(null) }
+                onDismiss = { viewModel.dismissPlaceDetail() }
             )
         }
 

@@ -8,14 +8,17 @@ import android.hardware.SensorManager
 import android.os.Looper
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.frontend.data.repository.WalkRepository
 import com.frontend.domain.model.DangerLocation
 import com.frontend.domain.model.DangerReason
 import com.frontend.domain.model.LocationBatchRequest
+import com.frontend.domain.model.Place
 import com.frontend.domain.model.WalkRoute
+import com.frontend.domain.usecase.EndWalkUseCase
 import com.frontend.domain.usecase.GetPlaceDetailUseCase
 import com.frontend.domain.usecase.GetPlacesUseCase
 import com.frontend.domain.usecase.ReportDangerZoneUseCase
+import com.frontend.domain.usecase.SaveLocationsUseCase
+import com.frontend.domain.usecase.StartFreeWalkUseCase
 import com.google.android.gms.location.LocationCallback
 import com.google.android.gms.location.LocationRequest
 import com.google.android.gms.location.LocationResult
@@ -42,8 +45,10 @@ class WalkViewModel @Inject constructor(
     @ApplicationContext private val context: Context,
     private val reportDangerZoneUseCase: ReportDangerZoneUseCase,
     private val getPlacesUseCase: GetPlacesUseCase,
-    private val walkRepository: WalkRepository,
-    private val getPlaceDetailUseCase: GetPlaceDetailUseCase
+    private val getPlaceDetailUseCase: GetPlaceDetailUseCase,
+    private val startFreeWalkUseCase: StartFreeWalkUseCase,
+    private val saveLocationsUseCase: SaveLocationsUseCase,
+    private val endWalkUseCase: EndWalkUseCase
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(WalkState())
@@ -237,20 +242,23 @@ class WalkViewModel @Inject constructor(
 
     // ── 장소 상세 선택 ─────────────────────────────────────────────────────────
 
-    /** 마커 클릭 시 선택된 장소 설정 후 상세 API 호출로 description 추가, null 전달 시 바텀시트 닫기 */
-    fun selectPlace(place: com.frontend.domain.model.Place?) {
+    /** 마커 클릭 시 선택된 장소 설정 후 상세 API 호출로 description 추가 */
+    fun selectPlace(place: Place) {
         _state.update { it.copy(selectedPlace = place) }
-        if (place != null) {
-            viewModelScope.launch {
-                getPlaceDetailUseCase(place.id)
-                    .onSuccess { detail ->
-                        // 현재 선택된 장소가 아직 같은 장소일 때만 업데이트
-                        if (_state.value.selectedPlace?.id == detail.id) {
-                            _state.update { it.copy(selectedPlace = detail) }
-                        }
+        viewModelScope.launch {
+            getPlaceDetailUseCase(place.id)
+                .onSuccess { detail ->
+                    // 현재 선택된 장소가 아직 같은 장소일 때만 업데이트
+                    if (_state.value.selectedPlace?.id == detail.id) {
+                        _state.update { it.copy(selectedPlace = detail) }
                     }
-            }
+                }
         }
+    }
+
+    /** 장소 상세 바텀시트 닫기 */
+    fun dismissPlaceDetail() {
+        _state.update { it.copy(selectedPlace = null) }
     }
 
     // ── 산책 ID 관리 ───────────────────────────────────────────────────────────
@@ -278,14 +286,13 @@ class WalkViewModel @Inject constructor(
 
         // 백그라운드 서버 요청
         viewModelScope.launch {
-            walkRepository.startFreeWalk()
+            startFreeWalkUseCase()
                 .onSuccess { walkId ->
                     currentWalkId = walkId
                     startBatchSending(walkId)
                 }
                 .onFailure { e ->
                     // 서버 실패해도 UI는 산책 중 상태 유지 (GPS 배치만 못 보냄)
-                    android.util.Log.w("WalkViewModel", "산책 시작 API 실패: ${e.message}")
                     _state.update { it.copy(walkError = e.message) }
                 }
         }
@@ -335,10 +342,10 @@ class WalkViewModel @Inject constructor(
             val remaining = pendingPoints.toList()
             pendingPoints.clear()
             if (remaining.size >= 2) {
-                walkRepository.saveLocations(walkId, remaining)
+                saveLocationsUseCase(walkId, remaining)
             }
 
-            walkRepository.endWalk(walkId)
+            endWalkUseCase(walkId)
                 .onSuccess {
                     currentWalkId = null
                     // routePoints는 유지 → 요약 화면 배경 지도에 경로 표시
@@ -417,7 +424,7 @@ class WalkViewModel @Inject constructor(
                 val batch = pendingPoints.toList()
                 if (batch.size >= 2) {
                     pendingPoints.clear()
-                    walkRepository.saveLocations(walkId, batch)
+                    saveLocationsUseCase(walkId, batch)
                 }
             }
         }
