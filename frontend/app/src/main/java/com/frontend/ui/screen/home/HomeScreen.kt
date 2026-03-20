@@ -199,6 +199,7 @@ private fun getAddressFromLatLng(
 ): String {
     return try {
         val geocoder = Geocoder(context, Locale.KOREAN)
+        @Suppress("DEPRECATION")
         val addresses = geocoder.getFromLocation(lat, lng, 1)
         if (!addresses.isNullOrEmpty()) {
             val addr = addresses[0]

@@ -38,7 +38,7 @@ import com.frontend.ui.theme.PointGreen
 import com.frontend.ui.theme.TextGray
 import com.frontend.ui.theme.TextMain
 import java.util.Calendar
-import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.lifecycle.compose.LocalLifecycleOwner
 
 private val TRAIT_COLORS = listOf(
     Color(0xFFB2EBE9) to Color(0xFF2E7D7B),
