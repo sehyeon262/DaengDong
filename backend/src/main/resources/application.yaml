@@ -42,6 +42,12 @@ api:
     api-key: ${GMS_KEY}
     model: gpt-5-mini
     base-url: https://gms.ssafy.io/gmsapi/api.openai.com/v1
+  tmap:
+    app-key: ${TMAP_APP_KEY:}
+    base-url: https://apis.openapi.sk.com/tmap/routes/pedestrian
+    connect-timeout: 5
+    read-timeout: 30
+    enabled: ${TMAP_ENABLED:true}
 
 # S3 설정
 aws:
