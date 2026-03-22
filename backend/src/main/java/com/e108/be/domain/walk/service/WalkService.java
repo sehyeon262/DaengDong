@@ -308,7 +308,9 @@ public class WalkService {
                                     dog.getProfileImageUrl()
                             ))
                     );
-                } catch (Exception ignored) {}
+                } catch (Exception e) {
+                    log.warn("[nearbyDogs] pendingProposal Redis 파싱 오류: {}", e.getMessage());
+                }
             }
         }
 
@@ -332,7 +334,9 @@ public class WalkService {
                     acceptedProposals.add(new AcceptedProposalResponse(proposalId, dogId, name, breed, profileImageUrl));
                     // 읽었으면 삭제 (1회성 알림)
                     redisTemplate.opsForHash().delete(acceptKey, proposalId);
-                } catch (Exception ignored) {}
+                } catch (Exception e) {
+                    log.warn("[nearbyDogs] acceptedProposal Redis 파싱 오류: {}", e.getMessage());
+                }
             }
         }
 
@@ -409,7 +413,9 @@ public class WalkService {
                         ));
                         redisTemplate.opsForHash().put(acceptKey, proposalId, acceptValue);
                         redisTemplate.expire(acceptKey, 30, TimeUnit.MINUTES);
-                    } catch (Exception ignored) {}
+                    } catch (Exception e) {
+                        log.warn("[respondToProposal] 수락 알림 Redis 저장 오류: {}", e.getMessage());
+                    }
                 }
             } catch (ProposalNotFoundException | WalkNotFoundException e) {
                 throw e;
