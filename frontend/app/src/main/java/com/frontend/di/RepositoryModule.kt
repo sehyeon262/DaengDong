@@ -6,11 +6,13 @@ import com.frontend.data.remote.DogApi
 import com.frontend.data.remote.HomeApi
 import com.frontend.data.remote.PlaceApi
 import com.frontend.data.remote.RecordApi
+import com.frontend.data.remote.RouteApi
 import com.frontend.data.repository.AuthRepository
 import com.frontend.data.repository.DogRepository
 import com.frontend.data.repository.HomeRepository
 import com.frontend.data.repository.PlaceRepository
 import com.frontend.data.repository.RecordRepository
+import com.frontend.data.repository.RouteRepository
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -64,5 +66,14 @@ object RepositoryModule {
         tokenDataStore: TokenDataStore
     ): PlaceRepository {
         return PlaceRepository(placeApi, tokenDataStore)
+    }
+
+    @Provides
+    @Singleton
+    fun provideRouteRepository(
+        routeApi: RouteApi,
+        tokenDataStore: TokenDataStore
+    ): RouteRepository {
+        return RouteRepository(routeApi, tokenDataStore)
     }
 }

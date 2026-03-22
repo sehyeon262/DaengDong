@@ -5,10 +5,19 @@ import com.frontend.domain.model.DangerReason
 import com.frontend.domain.model.DangerZone
 import com.frontend.domain.model.NearbyDogResponse
 import com.frontend.domain.model.Place
+import com.frontend.domain.model.RecommendedRoute
 
 data class WalkState(
     val selectedRouteIndex: Int = 0,
     val showFilterSheet: Boolean = false,
+
+    // ── 추천 경로 ────────────────────────────────────────────────────────────
+    val recommendedRoutes: List<RecommendedRoute> = emptyList(),  // API에서 받은 추천 경로 목록
+    val isRoutesLoading: Boolean = false,                          // 경로 로딩 중 여부
+    val routesError: String? = null,                               // 경로 로딩 에러
+    val fallbackLevel: String? = null,                             // NORMAL, REDUCED, WALK_ONLY
+    val fallbackMessage: String? = null,                           // 폴백 안내 메시지
+    val showRecommendedRoute: Boolean = true,                      // 추천 경로 표시 여부 (토글)
 
     // 다중 선택 필터 (각 항목을 독립적으로 on/off)
     val activeFilters: Set<WalkFilterType> = emptySet(),
@@ -18,6 +27,7 @@ data class WalkState(
     // ── 장소 마커 ──────────────────────────────────────────────────────────────
     val places: List<Place> = emptyList(),            // 지도에 표시할 장소 목록
     val isPlacesLoading: Boolean = false,             // 장소 로딩 중 여부
+    val selectedPlace: Place? = null,                 // 클릭된 장소 (상세 바텀시트 표시용)
 
     // ── 자유 산책 ──────────────────────────────────────────────────────────────
     val isWalking: Boolean = false,       // 산책 진행 중 여부

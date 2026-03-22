@@ -22,6 +22,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.DirectionsWalk
 import androidx.compose.material.icons.filled.FilterAlt
 import androidx.compose.material.icons.filled.GpsFixed
+import androidx.compose.material.icons.filled.Route
+import androidx.compose.material.icons.outlined.Route
 import androidx.compose.material.icons.filled.LocalFireDepartment
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.Pets
@@ -79,6 +81,7 @@ import com.frontend.domain.model.DangerZone
 import com.frontend.domain.model.NearbyDogResponse
 import com.frontend.ui.component.MapOverlayButton
 import com.frontend.ui.screen.walk.components.DangerReportModal
+import com.frontend.ui.screen.walk.components.PlaceDetailBottomSheet
 import com.frontend.ui.screen.walk.components.WalkFilterBottomSheet
 import com.frontend.ui.screen.walk.components.WalkRouteCard
 import com.frontend.ui.screen.walk.components.WalkSearchBar
@@ -111,7 +114,7 @@ fun WalkScreen(
     viewModel: WalkViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsState()
-    val routes = viewModel.routes
+    val routes = viewModel.getDisplayRoutes()
     val context = LocalContext.current
     val configuration = LocalConfiguration.current
     val screenWidth = configuration.screenWidthDp.dp
@@ -126,9 +129,12 @@ fun WalkScreen(
     // GPS 버튼으로 트래킹 활성화 여부 (사용자가 지도를 드래그하면 자동 해제)
     var isTrackingActive by remember { mutableStateOf(false) }
 
-    // 산책 경로 폴리라인
+    // 산책 경로 폴리라인 (실제 산책 중 GPS 트래킹)
     val routePoints by viewModel.routePoints.collectAsState()
     var routePolyline by remember { mutableStateOf<Polyline?>(null) }
+
+    // 추천 경로 미리보기 폴리라인
+    var recommendedRoutePolyline by remember { mutableStateOf<Polyline?>(null) }
 
     // 위험 구역 마커 목록 (강아지 마커와 분리 관리)
     val dangerZoneLabels = remember { mutableStateListOf<Label>() }
@@ -186,7 +192,6 @@ fun WalkScreen(
         val map = kakaoMap ?: return@LaunchedEffect
 
         if (currentLocationLabel == null) {
-            // 최초: 카메라 이동 + 마커 생성 + TrackingManager 시작
             // 최초: 카메라 이동 + 마커 생성 (트래킹은 GPS 버튼으로만 활성화)
             map.moveCamera(CameraUpdateFactory.newCenterPosition(pos, 15))
             val bitmap = rotateBitmap(createDogMarkerBitmap(context), azimuth)
@@ -196,6 +201,9 @@ fun WalkScreen(
             if (label != null) {
                 map.trackingManager?.startTracking(label)
             }
+
+            // 최초 위치 수신 시 추천 경로 로드
+            viewModel.loadRecommendedRoutes(pos.latitude, pos.longitude)
         } else {
             // 이후: moveTo()로 이동 (마커 사라짐 없이)
             currentLocationLabel?.moveTo(pos)
@@ -279,7 +287,7 @@ fun WalkScreen(
         }
     }
 
-    // 산책 경로 폴리라인 실시간 업데이트
+    // 산책 경로 폴리라인 실시간 업데이트 (GPS 트래킹)
     LaunchedEffect(routePoints, kakaoMap) {
         val map = kakaoMap ?: return@LaunchedEffect
 
@@ -305,6 +313,103 @@ fun WalkScreen(
             routePolyline = map.shapeManager?.layer?.addPolyline(
                 PolylineOptions.from(mapPoints, style)
             )
+        }
+    }
+
+    // 추천 경로 미리보기 폴리라인 (선택된 경로 변경 시 업데이트)
+    LaunchedEffect(state.selectedRouteIndex, state.recommendedRoutes, state.showRecommendedRoute, kakaoMap) {
+        val map = kakaoMap ?: return@LaunchedEffect
+
+        // 경로 표시 OFF이면 폴리라인 제거
+        if (!state.showRecommendedRoute) {
+            recommendedRoutePolyline?.let {
+                map.shapeManager?.layer?.remove(it)
+                recommendedRoutePolyline = null
+            }
+            return@LaunchedEffect
+        }
+
+        // 선택된 추천 경로 가져오기 (자유 산책이면 null)
+        val selectedRoute = viewModel.getSelectedRecommendedRoute()
+
+        // 추천 경로가 없으면 폴리라인 제거
+        if (selectedRoute == null) {
+            recommendedRoutePolyline?.let {
+                map.shapeManager?.layer?.remove(it)
+                recommendedRoutePolyline = null
+            }
+            return@LaunchedEffect
+        }
+
+        // 경로 포인트 가져오기 (actualPathPoints 우선, 없으면 polyline)
+        val pathPoints = selectedRoute.getPathPoints()
+        if (pathPoints.size < 2) {
+            recommendedRoutePolyline?.let {
+                map.shapeManager?.layer?.remove(it)
+                recommendedRoutePolyline = null
+            }
+            return@LaunchedEffect
+        }
+
+        // LatLngPoint를 KakaoMap LatLng로 변환
+        val latLngList = pathPoints.map { LatLng.from(it.latitude, it.longitude) }
+        val mapPoints = MapPoints.fromLatLng(latLngList)
+
+        // 기존 폴리라인 제거 후 새로 생성 (경로 전환 시 깔끔하게)
+        recommendedRoutePolyline?.let {
+            map.shapeManager?.layer?.remove(it)
+        }
+
+        // 추천 경로 스타일: 파란색 점선 느낌
+        val style = PolylineStyle.from(
+            12f,                                             // lineWidth
+            android.graphics.Color.argb(200, 66, 133, 244)  // 파란색 #4285F4
+        )
+        recommendedRoutePolyline = map.shapeManager?.layer?.addPolyline(
+            PolylineOptions.from(mapPoints, style)
+        )
+    }
+
+    // 장소 목록 변경 시: 마커 전체 교체 (PLACE 필터 ON → API 응답 도착)
+    LaunchedEffect(state.places, kakaoMap) {
+        val map = kakaoMap ?: return@LaunchedEffect
+        placeLabels.forEach { map.labelManager?.layer?.remove(it) }
+        placeLabels.clear()
+        if (state.places.isEmpty()) return@LaunchedEffect
+        state.places.forEach { place ->
+            val label = addPlaceMarker(context, map, place)
+            if (label != null) placeLabels.add(label)
+        }
+    }
+
+    // PLACE 필터 ON/OFF 처리
+    LaunchedEffect(state.activeFilters, kakaoMap) {
+        val map = kakaoMap ?: return@LaunchedEffect
+        if (WalkFilterType.PLACE in state.activeFilters) {
+            val center = map.cameraPosition?.position ?: return@LaunchedEffect
+            viewModel.loadPlacesByPosition(center.latitude, center.longitude)
+        } else {
+            placeLabels.forEach { map.labelManager?.layer?.remove(it) }
+            placeLabels.clear()
+        }
+    }
+
+    // 카메라 이동 완료 시 장소 재조회 + 마커 클릭 리스너 등록
+    LaunchedEffect(kakaoMap) {
+        val map = kakaoMap ?: return@LaunchedEffect
+        // 지도 이동 시 PLACE 필터 ON이면 새 중심 좌표로 장소 재조회
+        map.setOnCameraMoveEndListener { _, cameraPosition, _ ->
+            if (WalkFilterType.PLACE in viewModel.state.value.activeFilters) {
+                val center = cameraPosition.position
+                viewModel.loadPlacesByPosition(center.latitude, center.longitude)
+            }
+        }
+        // 장소 마커 클릭 시 상세 바텀시트 표시
+        map.setOnLabelClickListener { _, _, label ->
+            val placeId = label.tag as? Long
+            val place = viewModel.state.value.places.find { it.id == placeId }
+            if (place != null) viewModel.selectPlace(place)
+            true
         }
     }
 
@@ -472,6 +577,12 @@ fun WalkScreen(
                     }
                 }
             )
+            // 추천 경로 표시 토글 버튼
+            MapOverlayButton(
+                icon = if (state.showRecommendedRoute) Icons.Filled.Route else Icons.Outlined.Route,
+                contentDescription = if (state.showRecommendedRoute) "경로 숨기기" else "경로 보기",
+                onClick = { viewModel.toggleRecommendedRouteVisibility() }
+            )
             MapOverlayButton(
                 icon = Icons.Filled.FilterAlt,
                 contentDescription = "필터",
@@ -479,13 +590,21 @@ fun WalkScreen(
             )
         }
 
-        // ── 5. 필터 바텀시트 ────────────────────────────────────────────
+        // ── 5. `필터 바텀`시트 ────────────────────────────────────────────
         if (state.showFilterSheet) {
             WalkFilterBottomSheet(
                 activeFilters = state.pendingFilters,
                 onFilterToggle = { viewModel.toggleFilter(it) },
                 onApply = { viewModel.applyFilter() },
                 onDismiss = { viewModel.hideFilter() }
+            )
+        }
+
+        // ── 7. 장소 상세 바텀시트 ───────────────────────────────────────
+        state.selectedPlace?.let { place ->
+            PlaceDetailBottomSheet(
+                place = place,
+                onDismiss = { viewModel.dismissPlaceDetail() }
             )
         }
 
@@ -964,7 +1083,7 @@ private fun addPlaceMarker(
 
     val style = LabelStyle.from(scaled).setAnchorPoint(0.5f, 1.0f)  // 하단 중앙을 좌표에 맞춤
     val styles = LabelStyles.from(style)
-    val options = LabelOptions.from(position).setStyles(styles)
+    val options = LabelOptions.from(position).setStyles(styles).setTag(place.id)
     return kakaoMap.labelManager?.layer?.addLabel(options)
 }
 
