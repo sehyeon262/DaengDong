@@ -50,8 +50,11 @@ public interface WalkRecordRepository extends JpaRepository<WalkRecord, Long> {
 
     /**
      * route_line의 마지막 좌표(현재 위치) 반환
-     * 반환: [위도(lat), 경도(lon)]
-     * route_line이 NULL이면 null 반환
+     * 반환: List<Object[]> — 각 행이 [위도(lat), 경도(lon)]
+     * route_line이 NULL이거나 walk가 없으면 빈 리스트 반환
+     *
+     * ※ Hibernate 6(Spring Boot 3.x)에서 Object[] 단일 반환 시
+     *    Object[]{Object[]{lat,lon}} 으로 래핑되는 이슈 → List<Object[]> 로 변경
      */
     @Query(value = """
             SELECT ST_Y(ST_EndPoint(route_line::geometry)) AS lat,
@@ -59,5 +62,5 @@ public interface WalkRecordRepository extends JpaRepository<WalkRecord, Long> {
             FROM walk_records
             WHERE id = :walkId AND route_line IS NOT NULL
             """, nativeQuery = true)
-    Object[] getLastPoint(@Param("walkId") Long walkId);
+    List<Object[]> getLastPoint(@Param("walkId") Long walkId);
 }

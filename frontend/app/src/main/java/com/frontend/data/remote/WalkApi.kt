@@ -2,6 +2,8 @@ package com.frontend.data.remote
 
 import com.frontend.domain.model.ApiResponse
 import com.frontend.domain.model.LocationBatchRequest
+import com.frontend.domain.model.NearbyDogsResponse
+import com.frontend.domain.model.SaveLocationRequest
 import com.frontend.domain.model.StartWalkRequest
 import com.frontend.domain.model.StartWalkResponse
 import com.frontend.domain.model.FeedbackRequest
@@ -87,4 +89,15 @@ interface WalkApi {
         @Header("Authorization") authorization: String,
         @Body request: FeedbackRequest,
     ): ApiResponse<Unit>
+
+    /** W1-03: 주변 강아지 조회 — GET /api/v1/walks/nearby-dogs */
+    @GET("walks/nearby-dogs")
+    suspend fun getNearbyDogs(
+        @Header("Authorization") authorization: String,
+        @Query("lat") lat: Double,
+        @Query("lon") lon: Double,
+        @Query("radius") radius: Double = 500.0,
+        @Query("myDogId") myDogId: Long,
+        @Query("myWalkRecordId") myWalkRecordId: Long,
+    ): ApiResponse<NearbyDogsResponse>
 }

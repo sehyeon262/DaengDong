@@ -78,6 +78,7 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.frontend.R
 import com.frontend.domain.model.DangerLocation
 import com.frontend.domain.model.DangerZone
+import com.frontend.domain.model.NearbyDogResponse
 import com.frontend.ui.component.MapOverlayButton
 import com.frontend.ui.screen.walk.components.DangerReportModal
 import com.frontend.ui.screen.walk.components.PlaceDetailBottomSheet
@@ -140,6 +141,9 @@ fun WalkScreen(
 
     // 장소 마커 목록 (PLACE 필터 on/off 시 추가/제거)
     val placeLabels = remember { mutableStateListOf<Label>() }
+
+    // 주변 강아지 마커 목록
+    val nearbyDogLabels = remember { mutableStateListOf<Label>() }
 
     // 위치 권한 요청 launcher - 허용 시 위치 트래킹 시작
     val locationPermissionLauncher = rememberLauncherForActivityResult(
@@ -259,6 +263,17 @@ fun WalkScreen(
             currentLocationLabel?.let { label ->
                 map.trackingManager?.startTracking(label)
             }
+        }
+    }
+
+    // 주변 강아지 목록 변경 시 기존 마커 전부 제거 후 새로 그리기
+    LaunchedEffect(state.nearbyDogs, kakaoMap) {
+        val map = kakaoMap ?: return@LaunchedEffect
+        nearbyDogLabels.forEach { it.remove() }
+        nearbyDogLabels.clear()
+        state.nearbyDogs.forEach { dog ->
+            val label = addNearbyDogMarker(context, map, dog)
+            if (label != null) nearbyDogLabels.add(label)
         }
     }
 
@@ -509,6 +524,7 @@ fun WalkScreen(
                     // 산책 시작 버튼
                     Button(
                         onClick = { viewModel.startFreeWalk() },
+                        enabled = !state.isWalking,
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(screenHeight * 0.067f)
@@ -1131,6 +1147,26 @@ private fun calculateSectorPoints(
 private fun rotateBitmap(source: android.graphics.Bitmap, degrees: Float): android.graphics.Bitmap {
     val matrix = android.graphics.Matrix().apply { postRotate(degrees) }
     return android.graphics.Bitmap.createBitmap(source, 0, 0, source.width, source.height, matrix, true)
+}
+
+// ── 주변 강아지 마커 추가 ─────────────────────────────────────────────────────
+private val nearbyDogDrawables = listOf(R.drawable.husky, R.drawable.poodle, R.drawable.french)
+
+private fun addNearbyDogMarker(
+    context: android.content.Context,
+    kakaoMap: KakaoMap,
+    dog: com.frontend.domain.model.NearbyDogResponse,
+): Label? {
+    val position = LatLng.from(dog.latitude, dog.longitude)
+    val drawableRes = nearbyDogDrawables[dog.dogId.toInt() % nearbyDogDrawables.size]
+    val source = android.graphics.BitmapFactory.decodeResource(context.resources, drawableRes)
+    val targetHeight = 72
+    val targetWidth = (targetHeight * source.width.toFloat() / source.height).toInt()
+    val scaled = android.graphics.Bitmap.createScaledBitmap(source, targetWidth, targetHeight, true)
+    val style = LabelStyle.from(scaled).setAnchorPoint(0.5f, 0.5f)
+    val styles = LabelStyles.from(style)
+    val options = LabelOptions.from(position).setStyles(styles)
+    return kakaoMap.labelManager?.layer?.addLabel(options)
 }
 
 // ── 강아지 마커용 비트맵 생성 ─────────────────────────────────────────────────
