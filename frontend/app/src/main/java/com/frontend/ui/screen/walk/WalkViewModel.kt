@@ -140,7 +140,7 @@ class WalkViewModel @Inject constructor(
 
     fun startLocationTracking() {
         val request = LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, 3000L)
-            .setMinUpdateDistanceMeters(5f)
+            // setMinUpdateDistanceMeters 제거: 정지 상태에서도 GPS 업데이트 허용
             .build()
         try {
             fusedLocationClient.requestLocationUpdates(request, locationCallback, Looper.getMainLooper())
@@ -282,6 +282,10 @@ class WalkViewModel @Inject constructor(
                     currentWalkId = walkId
                     _state.update { it.copy(currentWalkId = walkId) }
                     startBatchSending(walkId)
+                    // NEARBY_DOG 필터가 이미 활성화된 경우 폴링 시작
+                    if (WalkFilterType.NEARBY_DOG in _state.value.activeFilters) {
+                        startNearbyDogsPolling()
+                    }
                 }
                 .onFailure { e ->
                     android.util.Log.w("WalkViewModel", "산책 시작 API 실패: ${e.message}")
@@ -437,15 +441,24 @@ class WalkViewModel @Inject constructor(
 
     /** 주변 강아지 단건 조회 */
     private fun loadNearbyDogs() {
-        val walkId = currentWalkId ?: return
-        val pos = _currentPosition.value ?: return
+        val walkId = currentWalkId ?: run {
+            android.util.Log.d("WalkVM", "loadNearbyDogs skip: walkId null")
+            return
+        }
+        val pos = _currentPosition.value ?: run {
+            android.util.Log.d("WalkVM", "loadNearbyDogs skip: GPS null")
+            return
+        }
         viewModelScope.launch {
             walkRepository.fetchNearbyDogs(
                 lat = pos.latitude,
                 lon = pos.longitude,
                 myWalkRecordId = walkId,
             ).onSuccess { dogs ->
+                android.util.Log.d("WalkVM", "nearbyDogs 조회 성공: ${dogs.size}마리")
                 _state.update { it.copy(nearbyDogs = dogs) }
+            }.onFailure { e ->
+                android.util.Log.e("WalkVM", "nearbyDogs 조회 실패: ${e.message}", e)
             }
         }
     }

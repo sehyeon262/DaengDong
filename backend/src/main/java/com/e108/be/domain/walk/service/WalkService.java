@@ -28,6 +28,7 @@ import com.e108.be.domain.walk.repository.WalkRecordRepository;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -39,6 +40,7 @@ import java.util.*;
 import java.time.LocalDateTime;
 import java.util.concurrent.TimeUnit;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
@@ -227,19 +229,39 @@ public class WalkService {
     public NearbyDogsResponse getNearbyDogs(double lat, double lon, double radius,
                                              Long myDogId, Long myWalkRecordId) {
         List<WalkRecord> inProgressWalks = walkRecordRepository.findAllByWalkStatus(WalkStatus.IN_PROGRESS);
+        log.info("[nearbyDogs] IN_PROGRESS {}개 조회됨. myDogId={}, lat={}, lon={}, radius={}",
+                inProgressWalks.size(), myDogId, lat, lon, radius);
         List<NearbyDogResponse> nearbyDogs = new ArrayList<>();
 
         for (WalkRecord walk : inProgressWalks) {
-            if (walk.getDogId().equals(myDogId)) continue;
+            if (walk.getDogId().equals(myDogId)) {
+                log.info("[nearbyDogs] walkId={} dogId={} → 내 강아지, skip", walk.getId(), walk.getDogId());
+                continue;
+            }
 
-            Object[] lastPoint = walkRecordRepository.getLastPoint(walk.getId());
-            if (lastPoint == null || lastPoint.length < 2) continue;
+            List<Object[]> lastPointList = walkRecordRepository.getLastPoint(walk.getId());
+            if (lastPointList == null || lastPointList.isEmpty()) {
+                log.info("[nearbyDogs] walkId={} dogId={} → route_line NULL (GPS 미저장), skip",
+                        walk.getId(), walk.getDogId());
+                continue;
+            }
+            Object[] lastPoint = lastPointList.get(0);
+            if (lastPoint == null || lastPoint.length < 2) {
+                log.warn("[nearbyDogs] walkId={} → lastPoint 형식 이상: length={}",
+                        walk.getId(), lastPoint == null ? "null" : lastPoint.length);
+                continue;
+            }
 
             double dogLat = ((Number) lastPoint[0]).doubleValue();
             double dogLon = ((Number) lastPoint[1]).doubleValue();
 
             double distance = haversine(lat, lon, dogLat, dogLon);
-            if (distance > radius) continue;
+            log.info("[nearbyDogs] walkId={} dogId={} → dogLat={}, dogLon={}, distance={}m",
+                    walk.getId(), walk.getDogId(), dogLat, dogLon, distance);
+            if (distance > radius) {
+                log.info("[nearbyDogs] walkId={} → 거리 초과({}m > {}m), skip", walk.getId(), distance, radius);
+                continue;
+            }
 
             Optional<Dog> dogOpt = dogRepository.findById(walk.getDogId());
             if (dogOpt.isEmpty()) continue;
@@ -256,6 +278,7 @@ public class WalkService {
                     walk.getId()
             ));
         }
+        log.info("[nearbyDogs] 최종 결과: {}마리", nearbyDogs.size());
 
         // 내게 온 pending proposals 조회
         List<PendingProposalResponse> pendingProposals = new ArrayList<>();
