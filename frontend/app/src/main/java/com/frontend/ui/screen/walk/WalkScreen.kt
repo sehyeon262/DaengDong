@@ -83,6 +83,8 @@ import com.frontend.ui.component.MapOverlayButton
 import com.frontend.ui.screen.walk.components.DangerReportModal
 import com.frontend.ui.screen.walk.components.NearbyDogProfilePopup
 import com.frontend.ui.screen.walk.components.PlaceDetailBottomSheet
+import com.frontend.ui.screen.walk.components.ProposalAcceptedDialog
+import com.frontend.ui.screen.walk.components.ProposalIncomingDialog
 import com.frontend.ui.screen.walk.components.WalkFilterBottomSheet
 import com.frontend.ui.screen.walk.components.WalkRouteCard
 import com.frontend.ui.screen.walk.components.WalkSearchBar
@@ -620,8 +622,27 @@ fun WalkScreen(
                 nearbyDog = dog,
                 profile = state.dogPublicProfile,
                 isLoading = state.isDogProfileLoading,
+                proposalSent = state.proposalSentDogId == dog.dogId,
+                isSendingProposal = state.isSendingProposal,
                 onDismiss = { viewModel.dismissDogProfile() },
-                onPropose = { /* TODO: S14P21E108-171 함께 산책 요청 */ }
+                onPropose = { viewModel.sendProposal(dog.walkRecordId, dog.dogId) }
+            )
+        }
+
+        // ── 9. 받은 산책 제안 다이얼로그 ────────────────────────────────
+        state.pendingProposals.firstOrNull()?.let { proposal ->
+            ProposalIncomingDialog(
+                proposal = proposal,
+                onAccept = { viewModel.acceptProposal(proposal) },
+                onReject = { viewModel.rejectProposal(proposal) }
+            )
+        }
+
+        // ── 10. 제안 수락 알림 다이얼로그 ───────────────────────────────
+        state.acceptedProposals.firstOrNull()?.let { accepted ->
+            ProposalAcceptedDialog(
+                accepted = accepted,
+                onDismiss = { viewModel.dismissAcceptedProposal(accepted.proposalId) }
             )
         }
 

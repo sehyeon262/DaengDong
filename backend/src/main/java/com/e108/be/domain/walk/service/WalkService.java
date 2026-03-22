@@ -46,7 +46,8 @@ import java.util.concurrent.TimeUnit;
 @Transactional(readOnly = true)
 public class WalkService {
 
-    private static final String PROPOSAL_KEY_PREFIX = "walk:proposals:";
+    private static final String PROPOSAL_KEY_PREFIX  = "walk:proposals:";
+    private static final String ACCEPTED_KEY_PREFIX  = "walk:accepted:";
     private static final double EARTH_RADIUS_M      = 6_371_000.0;
     private static final double CALORIE_FACTOR      = 0.8;
 
@@ -311,7 +312,31 @@ public class WalkService {
             }
         }
 
-        return new NearbyDogsResponse(nearbyDogs, pendingProposals);
+        // 내가 보낸 제안이 수락됐는지 조회
+        List<AcceptedProposalResponse> acceptedProposals = new ArrayList<>();
+        if (myWalkRecordId != null) {
+            String acceptKey = ACCEPTED_KEY_PREFIX + myWalkRecordId;
+            Map<Object, Object> acceptedEntries = redisTemplate.opsForHash().entries(acceptKey);
+            for (Map.Entry<Object, Object> entry : acceptedEntries.entrySet()) {
+                try {
+                    String proposalId = entry.getKey().toString();
+                    Map<String, Object> data = objectMapper.readValue(
+                            entry.getValue().toString(),
+                            new TypeReference<Map<String, Object>>() {}
+                    );
+                    Long dogId = Long.valueOf(data.get("dogId").toString());
+                    String name = data.get("name").toString();
+                    String breed = data.get("breed").toString();
+                    String profileImageUrl = data.containsKey("profileImageUrl")
+                            ? data.get("profileImageUrl").toString() : null;
+                    acceptedProposals.add(new AcceptedProposalResponse(proposalId, dogId, name, breed, profileImageUrl));
+                    // 읽었으면 삭제 (1회성 알림)
+                    redisTemplate.opsForHash().delete(acceptKey, proposalId);
+                } catch (Exception ignored) {}
+            }
+        }
+
+        return new NearbyDogsResponse(nearbyDogs, pendingProposals, acceptedProposals);
     }
 
     /**
@@ -370,6 +395,22 @@ public class WalkService {
                 // 양방향 met_dogs upsert
                 upsertMetDog(myRecord, fromRecord.getDogId());
                 upsertMetDog(fromRecord, myRecord.getDogId());
+
+                // 제안자(fromWalkRecordId)에게 수락 알림 저장 (30분 TTL)
+                Dog myDog = dogRepository.findById(myRecord.getDogId()).orElse(null);
+                if (myDog != null) {
+                    try {
+                        String acceptKey = ACCEPTED_KEY_PREFIX + fromWalkRecordId;
+                        String acceptValue = objectMapper.writeValueAsString(Map.of(
+                                "dogId", myDog.getId(),
+                                "name", myDog.getName(),
+                                "breed", myDog.getBreed(),
+                                "profileImageUrl", myDog.getProfileImageUrl() != null ? myDog.getProfileImageUrl() : ""
+                        ));
+                        redisTemplate.opsForHash().put(acceptKey, proposalId, acceptValue);
+                        redisTemplate.expire(acceptKey, 30, TimeUnit.MINUTES);
+                    } catch (Exception ignored) {}
+                }
             } catch (ProposalNotFoundException | WalkNotFoundException e) {
                 throw e;
             } catch (Exception e) {

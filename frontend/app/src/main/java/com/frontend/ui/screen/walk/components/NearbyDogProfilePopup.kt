@@ -59,6 +59,8 @@ fun NearbyDogProfilePopup(
     nearbyDog: NearbyDogResponse,
     profile: DogProfileResponse?,
     isLoading: Boolean,
+    proposalSent: Boolean = false,
+    isSendingProposal: Boolean = false,
     onDismiss: () -> Unit,
     onPropose: () -> Unit,
 ) {
@@ -196,25 +198,33 @@ fun NearbyDogProfilePopup(
 
                 // ── 함께 산책 제안 버튼 ─────────────────────────────────────
                 Button(
-                    onClick = onPropose,
+                    onClick = { if (!proposalSent && !isSendingProposal) onPropose() },
+                    enabled = !proposalSent && !isSendingProposal,
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(54.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = PointGreen),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = if (proposalSent) Color(0xFF9E9E9E) else PointGreen,
+                        disabledContainerColor = if (proposalSent) Color(0xFF9E9E9E) else Color(0xFFBDBDBD),
+                    ),
                     shape = RoundedCornerShape(14.dp)
                 ) {
-                    Icon(
-                        imageVector = Icons.AutoMirrored.Filled.DirectionsWalk,
-                        contentDescription = null,
-                        tint = Color.White
-                    )
-                    Spacer(Modifier.width(8.dp))
-                    Text(
-                        text = "함께 산책 제안",
-                        color = Color.White,
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 16.sp
-                    )
+                    if (isSendingProposal) {
+                        CircularProgressIndicator(color = Color.White, modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
+                    } else {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.DirectionsWalk,
+                            contentDescription = null,
+                            tint = Color.White
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        Text(
+                            text = if (proposalSent) "제안 전송됨" else "함께 산책 제안",
+                            color = Color.White,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 16.sp
+                        )
+                    }
                 }
             }
         }

@@ -3,7 +3,9 @@ package com.frontend.data.remote
 import com.frontend.domain.model.ApiResponse
 import com.frontend.domain.model.LocationBatchRequest
 import com.frontend.domain.model.NearbyDogsResponse
+import com.frontend.domain.model.RespondProposalRequest
 import com.frontend.domain.model.SaveLocationRequest
+import com.frontend.domain.model.SendProposalRequest
 import com.frontend.domain.model.StartWalkRequest
 import com.frontend.domain.model.StartWalkResponse
 import com.frontend.domain.model.FeedbackRequest
@@ -88,6 +90,21 @@ interface WalkApi {
     suspend fun updateFeedback(
         @Header("Authorization") authorization: String,
         @Body request: FeedbackRequest,
+    ): ApiResponse<Unit>
+
+    /** S14P21E108-171: 함께 산책 제안 전송 — POST /api/v1/walks/proposals */
+    @POST("walks/proposals")
+    suspend fun sendProposal(
+        @Header("Authorization") authorization: String,
+        @Body request: SendProposalRequest,
+    ): ApiResponse<Map<String, String>>
+
+    /** S14P21E108-171: 산책 제안 수락/거절 — PATCH /api/v1/walks/proposals/{proposalId} */
+    @PATCH("walks/proposals/{proposalId}")
+    suspend fun respondToProposal(
+        @Header("Authorization") authorization: String,
+        @Path("proposalId") proposalId: String,
+        @Body request: RespondProposalRequest,
     ): ApiResponse<Unit>
 
     /** W1-03: 주변 강아지 조회 — GET /api/v1/walks/nearby-dogs */

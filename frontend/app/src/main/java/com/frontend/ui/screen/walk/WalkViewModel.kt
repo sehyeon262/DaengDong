@@ -12,6 +12,7 @@ import com.frontend.data.local.TokenDataStore
 import com.frontend.data.repository.DogRepository
 import com.frontend.data.repository.WalkRepository
 import com.frontend.domain.model.NearbyDogResponse
+import com.frontend.domain.model.PendingProposalInfo
 import com.frontend.domain.model.DangerLocation
 import com.frontend.domain.model.DangerReason
 import com.frontend.domain.model.LocationBatchRequest
@@ -532,7 +533,7 @@ class WalkViewModel @Inject constructor(
 
     // ── 소셜 산책 — 주변 강아지 ───────────────────────────────────────────────
 
-    /** 주변 강아지 단건 조회 */
+    /** 주변 강아지 + 제안 폴링 */
     private fun loadNearbyDogs() {
         val walkId = currentWalkId ?: run {
             android.util.Log.d("WalkVM", "loadNearbyDogs skip: walkId null")
@@ -543,13 +544,18 @@ class WalkViewModel @Inject constructor(
             return
         }
         viewModelScope.launch {
-            walkRepository.fetchNearbyDogs(
+            walkRepository.fetchNearbyDogsResponse(
                 lat = pos.latitude,
                 lon = pos.longitude,
                 myWalkRecordId = walkId,
-            ).onSuccess { dogs ->
-                android.util.Log.d("WalkVM", "nearbyDogs 조회 성공: ${dogs.size}마리")
-                _state.update { it.copy(nearbyDogs = dogs) }
+            ).onSuccess { response ->
+                android.util.Log.d("WalkVM", "nearbyDogs 조회 성공: ${response.nearbyDogs.size}마리, " +
+                    "pending=${response.pendingProposals.size}, accepted=${response.acceptedProposals.size}")
+                _state.update { it.copy(
+                    nearbyDogs = response.nearbyDogs,
+                    pendingProposals = response.pendingProposals,
+                    acceptedProposals = response.acceptedProposals,
+                ) }
             }.onFailure { e ->
                 android.util.Log.e("WalkVM", "nearbyDogs 조회 실패: ${e.message}", e)
             }
@@ -597,6 +603,66 @@ class WalkViewModel @Inject constructor(
                     _state.update { it.copy(isDogProfileLoading = false) }
                 }
         }
+    }
+
+    // ── 함께 산책 제안 ─────────────────────────────────────────────────────────
+
+    /** 팝업에서 "함께 산책 제안" 버튼 클릭 */
+    fun sendProposal(toWalkRecordId: Long, toDogId: Long) {
+        val fromWalkRecordId = currentWalkId ?: return
+        _state.update { it.copy(isSendingProposal = true) }
+        viewModelScope.launch {
+            walkRepository.sendProposal(fromWalkRecordId, toWalkRecordId)
+                .onSuccess {
+                    android.util.Log.d("WalkVM", "산책 제안 전송 완료")
+                    _state.update { it.copy(isSendingProposal = false, proposalSentDogId = toDogId) }
+                }
+                .onFailure { e ->
+                    android.util.Log.e("WalkVM", "산책 제안 실패: ${e.message}")
+                    _state.update { it.copy(isSendingProposal = false) }
+                }
+        }
+    }
+
+    /** 받은 제안 수락 */
+    fun acceptProposal(proposal: PendingProposalInfo) {
+        val myWalkRecordId = currentWalkId ?: run {
+            android.util.Log.e("WalkVM", "acceptProposal 실패: currentWalkId null")
+            return
+        }
+        // 낙관적 업데이트 — 버튼 누르면 즉시 다이얼로그 닫기
+        _state.update { it.copy(
+            pendingProposals = it.pendingProposals.filter { p -> p.proposalId != proposal.proposalId }
+        ) }
+        viewModelScope.launch {
+            walkRepository.respondToProposal(proposal.proposalId, "ACCEPT", myWalkRecordId)
+                .onSuccess { android.util.Log.d("WalkVM", "제안 수락 완료") }
+                .onFailure { e -> android.util.Log.e("WalkVM", "제안 수락 API 실패: ${e.message}") }
+        }
+    }
+
+    /** 받은 제안 거절 */
+    fun rejectProposal(proposal: PendingProposalInfo) {
+        val myWalkRecordId = currentWalkId ?: run {
+            android.util.Log.e("WalkVM", "rejectProposal 실패: currentWalkId null")
+            return
+        }
+        // 낙관적 업데이트 — 버튼 누르면 즉시 다이얼로그 닫기
+        _state.update { it.copy(
+            pendingProposals = it.pendingProposals.filter { p -> p.proposalId != proposal.proposalId }
+        ) }
+        viewModelScope.launch {
+            walkRepository.respondToProposal(proposal.proposalId, "REJECT", myWalkRecordId)
+                .onSuccess { android.util.Log.d("WalkVM", "제안 거절 완료") }
+                .onFailure { e -> android.util.Log.e("WalkVM", "제안 거절 API 실패: ${e.message}") }
+        }
+    }
+
+    /** 수락 알림 확인 (dismissed) */
+    fun dismissAcceptedProposal(proposalId: String) {
+        _state.update { it.copy(
+            acceptedProposals = it.acceptedProposals.filter { a -> a.proposalId != proposalId }
+        ) }
     }
 
     // ── 위험 구역 신고 ─────────────────────────────────────────────────────────

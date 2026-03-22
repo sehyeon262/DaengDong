@@ -3,8 +3,10 @@ package com.frontend.ui.screen.walk
 import com.frontend.domain.model.DangerLocation
 import com.frontend.domain.model.DangerReason
 import com.frontend.domain.model.DangerZone
+import com.frontend.domain.model.AcceptedProposalInfo
 import com.frontend.domain.model.DogProfileResponse
 import com.frontend.domain.model.NearbyDogResponse
+import com.frontend.domain.model.PendingProposalInfo
 import com.frontend.domain.model.Place
 import com.frontend.domain.model.RecommendedRoute
 
@@ -55,6 +57,12 @@ data class WalkState(
     val selectedNearbyDog: NearbyDogResponse? = null,      // 마커 클릭된 강아지
     val dogPublicProfile: DogProfileResponse? = null,      // 공개 프로필 응답
     val isDogProfileLoading: Boolean = false,
+
+    // ── 함께 산책 제안 ─────────────────────────────────────────────────────────
+    val isSendingProposal: Boolean = false,                 // 제안 전송 중 여부
+    val proposalSentDogId: Long? = null,                   // 제안 보낸 강아지 ID (버튼 상태용)
+    val pendingProposals: List<PendingProposalInfo> = emptyList(),   // 받은 제안 목록
+    val acceptedProposals: List<AcceptedProposalInfo> = emptyList(), // 수락된 제안 알림
 
     // ── 위험 구역 신고 ────────────────────────────────────────────────────────
     val isSelectingDangerZone: Boolean = false,       // 위치 선택 모드 여부

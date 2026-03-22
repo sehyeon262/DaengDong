@@ -5,7 +5,10 @@ import com.frontend.data.remote.WalkApi
 import com.frontend.domain.model.FeedbackRequest
 import com.frontend.domain.model.MetDogResponse
 import com.frontend.domain.model.NearbyDogResponse
+import com.frontend.domain.model.NearbyDogsResponse
+import com.frontend.domain.model.RespondProposalRequest
 import com.frontend.domain.model.SaveLocationRequest
+import com.frontend.domain.model.SendProposalRequest
 import com.frontend.domain.model.LocationBatchRequest
 import com.frontend.domain.model.StartWalkRequest
 import com.frontend.domain.model.WalkDetailResponse
@@ -125,8 +128,7 @@ class WalkRepository @Inject constructor(
     }
 
     /**
-     * 주변 강아지 조회 API 호출.
-     * @return Result<List<NearbyDogResponse>>
+     * 주변 강아지 + 제안 목록 조회 (pending / accepted 포함)
      */
     suspend fun fetchNearbyDogs(
         lat: Double,
@@ -146,5 +148,47 @@ class WalkRepository @Inject constructor(
             myWalkRecordId = myWalkRecordId,
         )
         response.data?.nearbyDogs ?: emptyList()
+    }
+
+    suspend fun fetchNearbyDogsResponse(
+        lat: Double,
+        lon: Double,
+        myWalkRecordId: Long,
+    ): Result<NearbyDogsResponse> = runCatching {
+        val token = tokenDataStore.getAccessToken().first()
+            ?: throw Exception("로그인이 필요합니다")
+        val dogId = tokenDataStore.getDogId().first()
+            ?: throw Exception("강아지 정보가 없습니다")
+
+        val response = walkApi.getNearbyDogs(
+            authorization = "Bearer $token",
+            lat = lat,
+            lon = lon,
+            myDogId = dogId,
+            myWalkRecordId = myWalkRecordId,
+        )
+        response.data ?: throw Exception("응답 없음")
+    }
+
+    /** 함께 산책 제안 전송 */
+    suspend fun sendProposal(fromWalkRecordId: Long, toWalkRecordId: Long): Result<String> = runCatching {
+        val token = tokenDataStore.getAccessToken().first()
+            ?: throw Exception("로그인이 필요합니다")
+        val response = walkApi.sendProposal(
+            authorization = "Bearer $token",
+            request = SendProposalRequest(fromWalkRecordId, toWalkRecordId),
+        )
+        response.data?.get("proposalId") ?: throw Exception("proposalId 없음")
+    }
+
+    /** 산책 제안 수락/거절 */
+    suspend fun respondToProposal(proposalId: String, action: String, myWalkRecordId: Long): Result<Unit> = runCatching {
+        val token = tokenDataStore.getAccessToken().first()
+            ?: throw Exception("로그인이 필요합니다")
+        walkApi.respondToProposal(
+            authorization = "Bearer $token",
+            proposalId = proposalId,
+            request = RespondProposalRequest(action, myWalkRecordId),
+        )
     }
 }
