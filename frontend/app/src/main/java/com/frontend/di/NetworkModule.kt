@@ -6,6 +6,7 @@ import com.frontend.data.remote.DogApi
 import com.frontend.data.remote.HomeApi
 import com.frontend.data.remote.PlaceApi
 import com.frontend.data.remote.RecordApi
+import com.frontend.data.remote.RouteApi
 import com.frontend.data.remote.WalkApi
 import com.frontend.util.Constants
 import dagger.Module
@@ -82,5 +83,11 @@ object NetworkModule {
     @Singleton
     fun providePlaceApi(retrofit: Retrofit): PlaceApi {
         return retrofit.create(PlaceApi::class.java)
+    }
+
+    @Provides
+    @Singleton
+    fun provideRouteApi(retrofit: Retrofit): RouteApi {
+        return retrofit.create(RouteApi::class.java)
     }
 }

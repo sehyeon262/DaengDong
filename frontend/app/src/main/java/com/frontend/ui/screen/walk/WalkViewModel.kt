@@ -12,10 +12,12 @@ import com.frontend.domain.model.DangerLocation
 import com.frontend.domain.model.DangerReason
 import com.frontend.domain.model.LocationBatchRequest
 import com.frontend.domain.model.Place
+import com.frontend.domain.model.RecommendedRoute
 import com.frontend.domain.model.WalkRoute
 import com.frontend.domain.usecase.EndWalkUseCase
 import com.frontend.domain.usecase.GetPlaceDetailUseCase
 import com.frontend.domain.usecase.GetPlacesUseCase
+import com.frontend.domain.usecase.GetRecommendedRoutesUseCase
 import com.frontend.domain.usecase.ReportDangerZoneUseCase
 import com.frontend.domain.usecase.SaveLocationsUseCase
 import com.frontend.domain.usecase.StartFreeWalkUseCase
@@ -46,6 +48,7 @@ class WalkViewModel @Inject constructor(
     private val reportDangerZoneUseCase: ReportDangerZoneUseCase,
     private val getPlacesUseCase: GetPlacesUseCase,
     private val getPlaceDetailUseCase: GetPlaceDetailUseCase,
+    private val getRecommendedRoutesUseCase: GetRecommendedRoutesUseCase,
     private val startFreeWalkUseCase: StartFreeWalkUseCase,
     private val saveLocationsUseCase: SaveLocationsUseCase,
     private val endWalkUseCase: EndWalkUseCase
@@ -157,33 +160,89 @@ class WalkViewModel @Inject constructor(
     }
 
     // ── 산책 경로 ──────────────────────────────────────────────────────────────
-    val routes = listOf(
-        WalkRoute(
-            title = "자유 산책",
-            subtitle = "자유롭게 산책해요"
-        ),
-        WalkRoute(
-            title = "공원 & 카페 트레일",
-            subtitle = "가볍게 걷기 좋은 길",
-            distanceKm = 2.5f,
-            durationMin = 40
-        ),
-        WalkRoute(
-            title = "공원 산책로",
-            subtitle = "조용한 산책을 즐겨요",
-            distanceKm = 1.8f,
-            durationMin = 30
-        ),
-        WalkRoute(
-            title = "강변 둘레길",
-            subtitle = "탁 트인 뷰를 즐겨요",
-            distanceKm = 3.2f,
-            durationMin = 55
-        )
+
+    // 자유 산책 (첫 번째 고정 옵션)
+    private val freeWalkRoute = WalkRoute(
+        title = "자유 산책",
+        subtitle = "자유롭게 산책해요"
     )
+
+    /**
+     * 전체 경로 목록 반환 (자유 산책 + 추천 경로들)
+     * UI에서 사용
+     */
+    fun getDisplayRoutes(): List<WalkRoute> {
+        val recommended = _state.value.recommendedRoutes.map { route ->
+            WalkRoute(
+                title = route.name,
+                subtitle = route.getSubtitle(),
+                distanceKm = route.distanceKm(),
+                durationMin = route.estimatedMinutes
+            )
+        }
+        return listOf(freeWalkRoute) + recommended
+    }
+
+    /**
+     * 현재 선택된 추천 경로 반환 (자유 산책이면 null)
+     */
+    fun getSelectedRecommendedRoute(): RecommendedRoute? {
+        val index = _state.value.selectedRouteIndex
+        if (index == 0) return null  // 자유 산책
+        val recommendedIndex = index - 1
+        return _state.value.recommendedRoutes.getOrNull(recommendedIndex)
+    }
 
     fun selectRoute(index: Int) {
         _state.update { it.copy(selectedRouteIndex = index) }
+    }
+
+    /** 추천 경로 표시 토글 */
+    fun toggleRecommendedRouteVisibility() {
+        _state.update { it.copy(showRecommendedRoute = !it.showRecommendedRoute) }
+    }
+
+    /**
+     * 현재 위치 기반 추천 경로 로드
+     * - 초기 로드 또는 위치 변경 시 호출
+     * - 한 번 로드 후 캐시하여 재사용
+     */
+    fun loadRecommendedRoutes(latitude: Double, longitude: Double) {
+        // 이미 로드했거나 로딩 중이면 skip
+        if (_state.value.recommendedRoutes.isNotEmpty() || _state.value.isRoutesLoading) return
+
+        viewModelScope.launch {
+            _state.update { it.copy(isRoutesLoading = true, routesError = null) }
+
+            getRecommendedRoutesUseCase(latitude, longitude)
+                .onSuccess { response ->
+                    _state.update {
+                        it.copy(
+                            recommendedRoutes = response.routes,
+                            fallbackLevel = response.fallbackLevel,
+                            fallbackMessage = response.fallbackMessage,
+                            isRoutesLoading = false,
+                            routesError = null
+                        )
+                    }
+                }
+                .onFailure { e ->
+                    _state.update {
+                        it.copy(
+                            isRoutesLoading = false,
+                            routesError = e.message
+                        )
+                    }
+                }
+        }
+    }
+
+    /**
+     * 추천 경로 강제 새로고침
+     */
+    fun refreshRecommendedRoutes(latitude: Double, longitude: Double) {
+        _state.update { it.copy(recommendedRoutes = emptyList()) }
+        loadRecommendedRoutes(latitude, longitude)
     }
 
     // ── 필터 ───────────────────────────────────────────────────────────────────
@@ -311,7 +370,7 @@ class WalkViewModel @Inject constructor(
         // 요약 데이터 캡처 (상태 초기화 전)
         val summarySeconds = _state.value.elapsedSeconds
         val summaryDistance = _state.value.distanceMeters
-        val summaryRoute = routes.getOrNull(_state.value.selectedRouteIndex)?.title ?: "자유 산책"
+        val summaryRoute = getDisplayRoutes().getOrNull(_state.value.selectedRouteIndex)?.title ?: "자유 산책"
 
         val walkId = currentWalkId
         if (walkId == null) {
