@@ -17,6 +17,18 @@ def isManualBuild() {
     return currentBuild.getBuildCauses('hudson.model.Cause$UserIdCause').size() > 0
 }
 
+def isDevelopBranch() {
+    return env.BRANCH_NAME == 'develop' || 
+           env.GIT_BRANCH == 'origin/develop' || 
+           sh(script: 'git rev-parse --abbrev-ref HEAD', returnStdout: true).trim() == 'develop'
+}
+
+def isMainBranch() {
+    return env.BRANCH_NAME == 'main' || 
+           env.GIT_BRANCH == 'origin/main' || 
+           sh(script: 'git rev-parse --abbrev-ref HEAD', returnStdout: true).trim() == 'main'
+}
+
 pipeline {
     agent any 
     tools { jdk 'jdk17' }
@@ -34,6 +46,8 @@ pipeline {
             when {
                 anyOf {
                     changeset "backend/**"
+                    changeset "docker-compose-dev.yaml"
+                    changeset "docker-compose-prod.yaml"
                     expression { return isManualBuild() }
                 }
             }
@@ -60,8 +74,7 @@ pipeline {
             steps {
                 dir('backend') {
                     script {
-                        def isMain = (env.BRANCH_NAME == 'main' || env.GIT_BRANCH == 'origin/main')
-                        sh "docker build -t backend-app-${isMain ? 'prod' : 'dev'} ."
+                        sh "docker build -t backend-app-${isMainBranch() ? 'prod' : 'dev'} ."
                     }
                 }
             }
@@ -75,10 +88,7 @@ pipeline {
                         changeset "docker-compose-dev.yaml"
                         expression { return isManualBuild() }
                     }
-                    anyOf {
-                        branch 'develop'
-                        expression { return sh(script: 'git rev-parse --abbrev-ref HEAD', returnStdout: true).trim() == 'develop' }
-                    }
+                    expression { return isDevelopBranch() }
                 }
             } 
             steps {
@@ -99,10 +109,7 @@ pipeline {
                         changeset "docker-compose-prod.yaml"
                         expression { return isManualBuild() }
                     }
-                    anyOf {
-                        branch 'main'
-                        expression { return sh(script: 'git rev-parse --abbrev-ref HEAD', returnStdout: true).trim() == 'main' }
-                    }
+                    expression { return isMainBranch() }
                 }
             }
             steps {

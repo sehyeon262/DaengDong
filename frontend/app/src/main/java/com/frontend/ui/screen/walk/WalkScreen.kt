@@ -22,6 +22,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.DirectionsWalk
 import androidx.compose.material.icons.filled.FilterAlt
 import androidx.compose.material.icons.filled.GpsFixed
+import androidx.compose.material.icons.filled.Route
+import androidx.compose.material.icons.outlined.Route
 import androidx.compose.material.icons.filled.LocalFireDepartment
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.Pets
@@ -79,6 +81,7 @@ import com.frontend.domain.model.DangerZone
 import com.frontend.domain.model.NearbyDogResponse
 import com.frontend.ui.component.MapOverlayButton
 import com.frontend.ui.screen.walk.components.DangerReportModal
+import com.frontend.ui.screen.walk.components.NearbyDogProfilePopup
 import com.frontend.ui.screen.walk.components.PlaceDetailBottomSheet
 import com.frontend.ui.screen.walk.components.WalkFilterBottomSheet
 import com.frontend.ui.screen.walk.components.WalkRouteCard
@@ -112,7 +115,7 @@ fun WalkScreen(
     viewModel: WalkViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsState()
-    val routes = viewModel.routes
+    val routes = viewModel.getDisplayRoutes()
     val context = LocalContext.current
     val configuration = LocalConfiguration.current
     val screenWidth = configuration.screenWidthDp.dp
@@ -127,9 +130,12 @@ fun WalkScreen(
     // GPS 버튼으로 트래킹 활성화 여부 (사용자가 지도를 드래그하면 자동 해제)
     var isTrackingActive by remember { mutableStateOf(false) }
 
-    // 산책 경로 폴리라인
+    // 산책 경로 폴리라인 (실제 산책 중 GPS 트래킹)
     val routePoints by viewModel.routePoints.collectAsState()
     var routePolyline by remember { mutableStateOf<Polyline?>(null) }
+
+    // 추천 경로 미리보기 폴리라인
+    var recommendedRoutePolyline by remember { mutableStateOf<Polyline?>(null) }
 
     // 위험 구역 마커 목록 (강아지 마커와 분리 관리)
     val dangerZoneLabels = remember { mutableStateListOf<Label>() }
@@ -187,7 +193,6 @@ fun WalkScreen(
         val map = kakaoMap ?: return@LaunchedEffect
 
         if (currentLocationLabel == null) {
-            // 최초: 카메라 이동 + 마커 생성 + TrackingManager 시작
             // 최초: 카메라 이동 + 마커 생성 (트래킹은 GPS 버튼으로만 활성화)
             map.moveCamera(CameraUpdateFactory.newCenterPosition(pos, 15))
             val bitmap = rotateBitmap(createDogMarkerBitmap(context), azimuth)
@@ -197,6 +202,9 @@ fun WalkScreen(
             if (label != null) {
                 map.trackingManager?.startTracking(label)
             }
+
+            // 최초 위치 수신 시 추천 경로 로드
+            viewModel.loadRecommendedRoutes(pos.latitude, pos.longitude)
         } else {
             // 이후: moveTo()로 이동 (마커 사라짐 없이)
             currentLocationLabel?.moveTo(pos)
@@ -280,7 +288,7 @@ fun WalkScreen(
         }
     }
 
-    // 산책 경로 폴리라인 실시간 업데이트
+    // 산책 경로 폴리라인 실시간 업데이트 (GPS 트래킹)
     LaunchedEffect(routePoints, kakaoMap) {
         val map = kakaoMap ?: return@LaunchedEffect
 
@@ -307,6 +315,60 @@ fun WalkScreen(
                 PolylineOptions.from(mapPoints, style)
             )
         }
+    }
+
+    // 추천 경로 미리보기 폴리라인 (선택된 경로 변경 시 업데이트)
+    LaunchedEffect(state.selectedRouteIndex, state.recommendedRoutes, state.showRecommendedRoute, kakaoMap) {
+        val map = kakaoMap ?: return@LaunchedEffect
+
+        // 경로 표시 OFF이면 폴리라인 제거
+        if (!state.showRecommendedRoute) {
+            recommendedRoutePolyline?.let {
+                map.shapeManager?.layer?.remove(it)
+                recommendedRoutePolyline = null
+            }
+            return@LaunchedEffect
+        }
+
+        // 선택된 추천 경로 가져오기 (자유 산책이면 null)
+        val selectedRoute = viewModel.getSelectedRecommendedRoute()
+
+        // 추천 경로가 없으면 폴리라인 제거
+        if (selectedRoute == null) {
+            recommendedRoutePolyline?.let {
+                map.shapeManager?.layer?.remove(it)
+                recommendedRoutePolyline = null
+            }
+            return@LaunchedEffect
+        }
+
+        // 경로 포인트 가져오기 (actualPathPoints 우선, 없으면 polyline)
+        val pathPoints = selectedRoute.getPathPoints()
+        if (pathPoints.size < 2) {
+            recommendedRoutePolyline?.let {
+                map.shapeManager?.layer?.remove(it)
+                recommendedRoutePolyline = null
+            }
+            return@LaunchedEffect
+        }
+
+        // LatLngPoint를 KakaoMap LatLng로 변환
+        val latLngList = pathPoints.map { LatLng.from(it.latitude, it.longitude) }
+        val mapPoints = MapPoints.fromLatLng(latLngList)
+
+        // 기존 폴리라인 제거 후 새로 생성 (경로 전환 시 깔끔하게)
+        recommendedRoutePolyline?.let {
+            map.shapeManager?.layer?.remove(it)
+        }
+
+        // 추천 경로 스타일: 파란색 점선 느낌
+        val style = PolylineStyle.from(
+            12f,                                             // lineWidth
+            android.graphics.Color.argb(200, 66, 133, 244)  // 파란색 #4285F4
+        )
+        recommendedRoutePolyline = map.shapeManager?.layer?.addPolyline(
+            PolylineOptions.from(mapPoints, style)
+        )
     }
 
     // 장소 목록 변경 시: 마커 전체 교체 (PLACE 필터 ON → API 응답 도착)
@@ -343,8 +405,13 @@ fun WalkScreen(
                 viewModel.loadPlacesByPosition(center.latitude, center.longitude)
             }
         }
-        // 장소 마커 클릭 시 상세 바텀시트 표시
+        // 마커 클릭 시 처리 (주변 강아지 / 장소 구분)
         map.setOnLabelClickListener { _, _, label ->
+            val dog = label.tag as? NearbyDogResponse
+            if (dog != null) {
+                viewModel.selectNearbyDog(dog)
+                return@setOnLabelClickListener true
+            }
             val placeId = label.tag as? Long
             val place = viewModel.state.value.places.find { it.id == placeId }
             if (place != null) viewModel.selectPlace(place)
@@ -516,6 +583,12 @@ fun WalkScreen(
                     }
                 }
             )
+            // 추천 경로 표시 토글 버튼
+            MapOverlayButton(
+                icon = if (state.showRecommendedRoute) Icons.Filled.Route else Icons.Outlined.Route,
+                contentDescription = if (state.showRecommendedRoute) "경로 숨기기" else "경로 보기",
+                onClick = { viewModel.toggleRecommendedRouteVisibility() }
+            )
             MapOverlayButton(
                 icon = Icons.Filled.FilterAlt,
                 contentDescription = "필터",
@@ -538,6 +611,17 @@ fun WalkScreen(
             PlaceDetailBottomSheet(
                 place = place,
                 onDismiss = { viewModel.dismissPlaceDetail() }
+            )
+        }
+
+        // ── 8. 주변 강아지 공개 프로필 팝업 ─────────────────────────────
+        state.selectedNearbyDog?.let { dog ->
+            NearbyDogProfilePopup(
+                nearbyDog = dog,
+                profile = state.dogPublicProfile,
+                isLoading = state.isDogProfileLoading,
+                onDismiss = { viewModel.dismissDogProfile() },
+                onPropose = { /* TODO: S14P21E108-171 함께 산책 요청 */ }
             )
         }
 
@@ -1085,21 +1169,58 @@ private fun rotateBitmap(source: android.graphics.Bitmap, degrees: Float): andro
 // ── 주변 강아지 마커 추가 ─────────────────────────────────────────────────────
 private val nearbyDogDrawables = listOf(R.drawable.husky, R.drawable.poodle, R.drawable.french)
 
-private fun addNearbyDogMarker(
+private suspend fun addNearbyDogMarker(
     context: android.content.Context,
     kakaoMap: KakaoMap,
     dog: com.frontend.domain.model.NearbyDogResponse,
 ): Label? {
     val position = LatLng.from(dog.latitude, dog.longitude)
-    val drawableRes = nearbyDogDrawables[dog.dogId.toInt() % nearbyDogDrawables.size]
-    val source = android.graphics.BitmapFactory.decodeResource(context.resources, drawableRes)
-    val targetHeight = 72
-    val targetWidth = (targetHeight * source.width.toFloat() / source.height).toInt()
-    val scaled = android.graphics.Bitmap.createScaledBitmap(source, targetWidth, targetHeight, true)
-    val style = LabelStyle.from(scaled).setAnchorPoint(0.5f, 0.5f)
+    val markerSize = 80
+
+    val bitmap = if (!dog.profileImageUrl.isNullOrBlank()) {
+        try {
+            val loader = coil.ImageLoader(context)
+            val request = coil.request.ImageRequest.Builder(context)
+                .data(dog.profileImageUrl)
+                .allowHardware(false)
+                .build()
+            val result = loader.execute(request)
+            val src = (result.drawable as? android.graphics.drawable.BitmapDrawable)?.bitmap
+            if (src != null) createCircularMarkerBitmap(src, markerSize)
+            else fallbackMarkerBitmap(context, dog.dogId, markerSize)
+        } catch (e: Exception) {
+            fallbackMarkerBitmap(context, dog.dogId, markerSize)
+        }
+    } else {
+        fallbackMarkerBitmap(context, dog.dogId, markerSize)
+    }
+
+    val style = LabelStyle.from(bitmap).setAnchorPoint(0.5f, 0.5f)
     val styles = LabelStyles.from(style)
-    val options = LabelOptions.from(position).setStyles(styles)
+    val options = LabelOptions.from(position).setStyles(styles).setTag(dog)
     return kakaoMap.labelManager?.layer?.addLabel(options)
+}
+
+private fun fallbackMarkerBitmap(
+    context: android.content.Context,
+    dogId: Long,
+    size: Int,
+): android.graphics.Bitmap {
+    val drawableRes = nearbyDogDrawables[dogId.toInt() % nearbyDogDrawables.size]
+    val source = android.graphics.BitmapFactory.decodeResource(context.resources, drawableRes)
+    val targetWidth = (size * source.width.toFloat() / source.height).toInt()
+    return android.graphics.Bitmap.createScaledBitmap(source, targetWidth, size, true)
+}
+
+private fun createCircularMarkerBitmap(source: android.graphics.Bitmap, size: Int): android.graphics.Bitmap {
+    val output = android.graphics.Bitmap.createBitmap(size, size, android.graphics.Bitmap.Config.ARGB_8888)
+    val canvas = android.graphics.Canvas(output)
+    val paint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG)
+    val scaled = android.graphics.Bitmap.createScaledBitmap(source, size, size, true)
+    canvas.drawCircle(size / 2f, size / 2f, size / 2f, paint)
+    paint.xfermode = android.graphics.PorterDuffXfermode(android.graphics.PorterDuff.Mode.SRC_IN)
+    canvas.drawBitmap(scaled, 0f, 0f, paint)
+    return output
 }
 
 // ── 강아지 마커용 비트맵 생성 ─────────────────────────────────────────────────

@@ -9,15 +9,19 @@ import android.os.Looper
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.frontend.data.local.TokenDataStore
+import com.frontend.data.repository.DogRepository
 import com.frontend.data.repository.WalkRepository
+import com.frontend.domain.model.NearbyDogResponse
 import com.frontend.domain.model.DangerLocation
 import com.frontend.domain.model.DangerReason
 import com.frontend.domain.model.LocationBatchRequest
 import com.frontend.domain.model.Place
+import com.frontend.domain.model.RecommendedRoute
 import com.frontend.domain.model.WalkRoute
 import com.frontend.domain.usecase.EndWalkUseCase
 import com.frontend.domain.usecase.GetPlaceDetailUseCase
 import com.frontend.domain.usecase.GetPlacesUseCase
+import com.frontend.domain.usecase.GetRecommendedRoutesUseCase
 import com.frontend.domain.usecase.ReportDangerZoneUseCase
 import com.frontend.domain.usecase.SaveLocationsUseCase
 import com.frontend.domain.usecase.StartFreeWalkUseCase
@@ -50,7 +54,9 @@ class WalkViewModel @Inject constructor(
     private val getPlacesUseCase: GetPlacesUseCase,
     private val walkRepository: WalkRepository,
     private val tokenDataStore: TokenDataStore,
+    private val dogRepository: DogRepository,
     private val getPlaceDetailUseCase: GetPlaceDetailUseCase,
+    private val getRecommendedRoutesUseCase: GetRecommendedRoutesUseCase,
     private val startFreeWalkUseCase: StartFreeWalkUseCase,
     private val saveLocationsUseCase: SaveLocationsUseCase,
     private val endWalkUseCase: EndWalkUseCase
@@ -151,7 +157,7 @@ class WalkViewModel @Inject constructor(
 
     fun startLocationTracking() {
         val request = LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, 3000L)
-            .setMinUpdateDistanceMeters(5f)
+            // setMinUpdateDistanceMeters 제거: 정지 상태에서도 GPS 업데이트 허용
             .build()
         try {
             fusedLocationClient.requestLocationUpdates(request, locationCallback, Looper.getMainLooper())
@@ -171,33 +177,89 @@ class WalkViewModel @Inject constructor(
     }
 
     // ── 산책 경로 ──────────────────────────────────────────────────────────────
-    val routes = listOf(
-        WalkRoute(
-            title = "자유 산책",
-            subtitle = "자유롭게 산책해요"
-        ),
-        WalkRoute(
-            title = "공원 & 카페 트레일",
-            subtitle = "가볍게 걷기 좋은 길",
-            distanceKm = 2.5f,
-            durationMin = 40
-        ),
-        WalkRoute(
-            title = "공원 산책로",
-            subtitle = "조용한 산책을 즐겨요",
-            distanceKm = 1.8f,
-            durationMin = 30
-        ),
-        WalkRoute(
-            title = "강변 둘레길",
-            subtitle = "탁 트인 뷰를 즐겨요",
-            distanceKm = 3.2f,
-            durationMin = 55
-        )
+
+    // 자유 산책 (첫 번째 고정 옵션)
+    private val freeWalkRoute = WalkRoute(
+        title = "자유 산책",
+        subtitle = "자유롭게 산책해요"
     )
+
+    /**
+     * 전체 경로 목록 반환 (자유 산책 + 추천 경로들)
+     * UI에서 사용
+     */
+    fun getDisplayRoutes(): List<WalkRoute> {
+        val recommended = _state.value.recommendedRoutes.map { route ->
+            WalkRoute(
+                title = route.name,
+                subtitle = route.getSubtitle(),
+                distanceKm = route.distanceKm(),
+                durationMin = route.estimatedMinutes
+            )
+        }
+        return listOf(freeWalkRoute) + recommended
+    }
+
+    /**
+     * 현재 선택된 추천 경로 반환 (자유 산책이면 null)
+     */
+    fun getSelectedRecommendedRoute(): RecommendedRoute? {
+        val index = _state.value.selectedRouteIndex
+        if (index == 0) return null  // 자유 산책
+        val recommendedIndex = index - 1
+        return _state.value.recommendedRoutes.getOrNull(recommendedIndex)
+    }
 
     fun selectRoute(index: Int) {
         _state.update { it.copy(selectedRouteIndex = index) }
+    }
+
+    /** 추천 경로 표시 토글 */
+    fun toggleRecommendedRouteVisibility() {
+        _state.update { it.copy(showRecommendedRoute = !it.showRecommendedRoute) }
+    }
+
+    /**
+     * 현재 위치 기반 추천 경로 로드
+     * - 초기 로드 또는 위치 변경 시 호출
+     * - 한 번 로드 후 캐시하여 재사용
+     */
+    fun loadRecommendedRoutes(latitude: Double, longitude: Double) {
+        // 이미 로드했거나 로딩 중이면 skip
+        if (_state.value.recommendedRoutes.isNotEmpty() || _state.value.isRoutesLoading) return
+
+        viewModelScope.launch {
+            _state.update { it.copy(isRoutesLoading = true, routesError = null) }
+
+            getRecommendedRoutesUseCase(latitude, longitude)
+                .onSuccess { response ->
+                    _state.update {
+                        it.copy(
+                            recommendedRoutes = response.routes,
+                            fallbackLevel = response.fallbackLevel,
+                            fallbackMessage = response.fallbackMessage,
+                            isRoutesLoading = false,
+                            routesError = null
+                        )
+                    }
+                }
+                .onFailure { e ->
+                    _state.update {
+                        it.copy(
+                            isRoutesLoading = false,
+                            routesError = e.message
+                        )
+                    }
+                }
+        }
+    }
+
+    /**
+     * 추천 경로 강제 새로고침
+     */
+    fun refreshRecommendedRoutes(latitude: Double, longitude: Double) {
+        _state.update { it.copy(recommendedRoutes = emptyList()) }
+        loadRecommendedRoutes(latitude, longitude)
     }
 
     // ── 필터 ───────────────────────────────────────────────────────────────────
@@ -312,8 +374,13 @@ class WalkViewModel @Inject constructor(
                     currentWalkId = walkId
                     _state.update { it.copy(currentWalkId = walkId) }
                     startBatchSending(walkId)
+                    // NEARBY_DOG 필터가 이미 활성화된 경우 폴링 시작
+                    if (WalkFilterType.NEARBY_DOG in _state.value.activeFilters) {
+                        startNearbyDogsPolling()
+                    }
                 }
                 .onFailure { e ->
+                    android.util.Log.w("WalkViewModel", "산책 시작 API 실패: ${e.message}")
                     // 서버 실패해도 UI는 산책 중 상태 유지 (GPS 배치만 못 보냄)
                     _state.update { it.copy(walkError = e.message) }
                 }
@@ -333,7 +400,7 @@ class WalkViewModel @Inject constructor(
 
         val summarySeconds = _state.value.elapsedSeconds
         val summaryDistance = _state.value.distanceMeters
-        val summaryRoute = routes.getOrNull(_state.value.selectedRouteIndex)?.title ?: "자유 산책"
+        val summaryRoute = getDisplayRoutes().getOrNull(_state.value.selectedRouteIndex)?.title ?: "자유 산책"
 
         val walkId = currentWalkId
         if (walkId == null) {
@@ -467,15 +534,24 @@ class WalkViewModel @Inject constructor(
 
     /** 주변 강아지 단건 조회 */
     private fun loadNearbyDogs() {
-        val walkId = currentWalkId ?: return
-        val pos = _currentPosition.value ?: return
+        val walkId = currentWalkId ?: run {
+            android.util.Log.d("WalkVM", "loadNearbyDogs skip: walkId null")
+            return
+        }
+        val pos = _currentPosition.value ?: run {
+            android.util.Log.d("WalkVM", "loadNearbyDogs skip: GPS null")
+            return
+        }
         viewModelScope.launch {
             walkRepository.fetchNearbyDogs(
                 lat = pos.latitude,
                 lon = pos.longitude,
                 myWalkRecordId = walkId,
             ).onSuccess { dogs ->
+                android.util.Log.d("WalkVM", "nearbyDogs 조회 성공: ${dogs.size}마리")
                 _state.update { it.copy(nearbyDogs = dogs) }
+            }.onFailure { e ->
+                android.util.Log.e("WalkVM", "nearbyDogs 조회 실패: ${e.message}", e)
             }
         }
     }
@@ -495,6 +571,32 @@ class WalkViewModel @Inject constructor(
     private fun stopNearbyDogsPolling() {
         nearbyDogsJob?.cancel()
         nearbyDogsJob = null
+    }
+
+    // ── 강아지 공개 프로필 팝업 ────────────────────────────────────────────────
+
+    /** 마커 클릭 → 강아지 선택 후 공개 프로필 로드 */
+    fun selectNearbyDog(dog: NearbyDogResponse) {
+        _state.update { it.copy(selectedNearbyDog = dog, dogPublicProfile = null, isDogProfileLoading = true) }
+        loadDogPublicProfile(dog.dogId)
+    }
+
+    /** 팝업 닫기 */
+    fun dismissDogProfile() {
+        _state.update { it.copy(selectedNearbyDog = null, dogPublicProfile = null, isDogProfileLoading = false) }
+    }
+
+    private fun loadDogPublicProfile(dogId: Long) {
+        viewModelScope.launch {
+            dogRepository.fetchPublicDogProfile(dogId)
+                .onSuccess { profile ->
+                    _state.update { it.copy(dogPublicProfile = profile, isDogProfileLoading = false) }
+                }
+                .onFailure { e ->
+                    android.util.Log.e("WalkVM", "공개 프로필 로드 실패: ${e.message}")
+                    _state.update { it.copy(isDogProfileLoading = false) }
+                }
+        }
     }
 
     // ── 위험 구역 신고 ─────────────────────────────────────────────────────────
