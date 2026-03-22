@@ -9,7 +9,9 @@ import android.os.Looper
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.frontend.data.local.TokenDataStore
+import com.frontend.data.repository.DogRepository
 import com.frontend.data.repository.WalkRepository
+import com.frontend.domain.model.NearbyDogResponse
 import com.frontend.domain.model.DangerLocation
 import com.frontend.domain.model.DangerReason
 import com.frontend.domain.model.LocationBatchRequest
@@ -52,6 +54,7 @@ class WalkViewModel @Inject constructor(
     private val getPlacesUseCase: GetPlacesUseCase,
     private val walkRepository: WalkRepository,
     private val tokenDataStore: TokenDataStore,
+    private val dogRepository: DogRepository,
     private val getPlaceDetailUseCase: GetPlaceDetailUseCase,
     private val getRecommendedRoutesUseCase: GetRecommendedRoutesUseCase,
     private val startFreeWalkUseCase: StartFreeWalkUseCase,
@@ -568,6 +571,32 @@ class WalkViewModel @Inject constructor(
     private fun stopNearbyDogsPolling() {
         nearbyDogsJob?.cancel()
         nearbyDogsJob = null
+    }
+
+    // ── 강아지 공개 프로필 팝업 ────────────────────────────────────────────────
+
+    /** 마커 클릭 → 강아지 선택 후 공개 프로필 로드 */
+    fun selectNearbyDog(dog: NearbyDogResponse) {
+        _state.update { it.copy(selectedNearbyDog = dog, dogPublicProfile = null, isDogProfileLoading = true) }
+        loadDogPublicProfile(dog.dogId)
+    }
+
+    /** 팝업 닫기 */
+    fun dismissDogProfile() {
+        _state.update { it.copy(selectedNearbyDog = null, dogPublicProfile = null, isDogProfileLoading = false) }
+    }
+
+    private fun loadDogPublicProfile(dogId: Long) {
+        viewModelScope.launch {
+            dogRepository.fetchPublicDogProfile(dogId)
+                .onSuccess { profile ->
+                    _state.update { it.copy(dogPublicProfile = profile, isDogProfileLoading = false) }
+                }
+                .onFailure { e ->
+                    android.util.Log.e("WalkVM", "공개 프로필 로드 실패: ${e.message}")
+                    _state.update { it.copy(isDogProfileLoading = false) }
+                }
+        }
     }
 
     // ── 위험 구역 신고 ─────────────────────────────────────────────────────────

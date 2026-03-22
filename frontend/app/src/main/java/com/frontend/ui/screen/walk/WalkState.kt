@@ -3,6 +3,7 @@ package com.frontend.ui.screen.walk
 import com.frontend.domain.model.DangerLocation
 import com.frontend.domain.model.DangerReason
 import com.frontend.domain.model.DangerZone
+import com.frontend.domain.model.DogProfileResponse
 import com.frontend.domain.model.NearbyDogResponse
 import com.frontend.domain.model.Place
 import com.frontend.domain.model.RecommendedRoute
@@ -49,6 +50,11 @@ data class WalkState(
 
     // ── 주변 강아지 ───────────────────────────────────────────────────────────
     val nearbyDogs: List<NearbyDogResponse> = emptyList(), // 주변 강아지 목록
+
+    // ── 강아지 공개 프로필 팝업 ────────────────────────────────────────────────
+    val selectedNearbyDog: NearbyDogResponse? = null,      // 마커 클릭된 강아지
+    val dogPublicProfile: DogProfileResponse? = null,      // 공개 프로필 응답
+    val isDogProfileLoading: Boolean = false,
 
     // ── 위험 구역 신고 ────────────────────────────────────────────────────────
     val isSelectingDangerZone: Boolean = false,       // 위치 선택 모드 여부

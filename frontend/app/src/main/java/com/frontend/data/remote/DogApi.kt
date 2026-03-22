@@ -39,4 +39,10 @@ interface DogApi {
         @Path("dogId") dogId: Long,
         @Body request: UpdateTraitsRequest
     ): ApiResponse<Unit>
+
+    @GET("dogs/{dogId}/public")
+    suspend fun getPublicDogProfile(
+        @Header("Authorization") authorization: String,
+        @Path("dogId") dogId: Long
+    ): ApiResponse<DogProfileResponse>
 }
