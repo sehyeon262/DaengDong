@@ -4,10 +4,19 @@ import com.frontend.domain.model.DangerLocation
 import com.frontend.domain.model.DangerReason
 import com.frontend.domain.model.DangerZone
 import com.frontend.domain.model.Place
+import com.frontend.domain.model.RecommendedRoute
 
 data class WalkState(
     val selectedRouteIndex: Int = 0,
     val showFilterSheet: Boolean = false,
+
+    // ── 추천 경로 ────────────────────────────────────────────────────────────
+    val recommendedRoutes: List<RecommendedRoute> = emptyList(),  // API에서 받은 추천 경로 목록
+    val isRoutesLoading: Boolean = false,                          // 경로 로딩 중 여부
+    val routesError: String? = null,                               // 경로 로딩 에러
+    val fallbackLevel: String? = null,                             // NORMAL, REDUCED, WALK_ONLY
+    val fallbackMessage: String? = null,                           // 폴백 안내 메시지
+    val showRecommendedRoute: Boolean = true,                      // 추천 경로 표시 여부 (토글)
 
     // 다중 선택 필터 (각 항목을 독립적으로 on/off)
     val activeFilters: Set<WalkFilterType> = emptySet(),
