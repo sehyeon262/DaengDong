@@ -1,6 +1,5 @@
 package com.e108.be.domain.route.repository;
 
-import com.e108.be.domain.route.dto.response.RouteType;
 import com.e108.be.domain.route.entity.RouteSelectionLog;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
@@ -12,7 +11,6 @@ public interface RouteSelectionLogRepository extends JpaRepository<RouteSelectio
 
     /**
      * 사용자의 경로 유형별 선택 횟수
-     * 예: SHORT=15, RECOMMENDED=30, EXPLORE=5
      */
     @Query("""
         SELECT r.selectedType, COUNT(r)
@@ -24,7 +22,6 @@ public interface RouteSelectionLogRepository extends JpaRepository<RouteSelectio
 
     /**
      * 사용자의 시간대별 선택 횟수
-     * 예: 7시=10, 8시=15, 19시=20
      */
     @Query("""
         SELECT r.hourOfDay, COUNT(r)
@@ -46,7 +43,15 @@ public interface RouteSelectionLogRepository extends JpaRepository<RouteSelectio
     Double findAvgDistanceByMemberId(@Param("memberId") Long memberId);
 
     /**
-     * 사용자의 총 선택 로그 수
+     * 사용자의 날씨별 경로 유형 선택 횟수
      */
+    @Query("""
+        SELECT r.weatherCondition, r.selectedType, COUNT(r)
+        FROM RouteSelectionLog r
+        WHERE r.memberId = :memberId AND r.weatherCondition IS NOT NULL
+        GROUP BY r.weatherCondition, r.selectedType
+        """)
+    List<Object[]> countByMemberIdGroupByWeatherAndType(@Param("memberId") Long memberId);
+
     long countByMemberId(Long memberId);
 }

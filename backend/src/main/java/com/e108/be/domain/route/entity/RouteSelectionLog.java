@@ -8,10 +8,13 @@ import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 
+import java.util.ArrayList;
+import java.util.List;
+
 /**
  * 경로 선택 로그
  *
- * 사용자가 추천된 3개 경로 중 어떤 경로를 선택했는지 기록한다.
+ * 사용자가 추천된 경로 중 어떤 경로를 선택했는지 기록한다.
  * 이 데이터를 기반으로 스코어링 가중치를 학습하여
  * 개인화된 경로 추천을 제공한다.
  */
@@ -31,46 +34,45 @@ public class RouteSelectionLog extends BaseEntity {
     @Column(name = "dog_id")
     private Long dogId;
 
-    // 선택된 경로 유형
     @Enumerated(EnumType.STRING)
     @Column(name = "selected_type", nullable = false, length = 20)
     private RouteType selectedType;
 
-    // 요청 시 위치
-    @Column(nullable = false)
-    private double latitude;
+    @Column(name = "selected_distance_m")
+    private int selectedDistanceM;
 
-    @Column(nullable = false)
-    private double longitude;
-
-    // 컨텍스트 정보 (패턴 분석용)
     @Column(name = "hour_of_day")
     private int hourOfDay;
 
     @Column(name = "day_of_week")
     private int dayOfWeek;
 
-    // 선택된 경로의 총 거리 (미터)
-    @Column(name = "selected_distance_m")
-    private int selectedDistanceM;
+    @Column(name = "weather_condition", length = 20)
+    private String weatherCondition;
 
-    // 선택된 경로의 장소 수
-    @Column(name = "selected_place_count")
-    private int selectedPlaceCount;
+    @Column(name = "temperature")
+    private Double temperature;
+
+    @OneToMany(mappedBy = "selectionLog", cascade = CascadeType.ALL, orphanRemoval = true)
+    private List<RouteSelectionPlace> selectedPlaces = new ArrayList<>();
 
     @Builder
     public RouteSelectionLog(Long memberId, Long dogId, RouteType selectedType,
-                              double latitude, double longitude,
+                              int selectedDistanceM,
                               int hourOfDay, int dayOfWeek,
-                              int selectedDistanceM, int selectedPlaceCount) {
+                              String weatherCondition, Double temperature) {
         this.memberId = memberId;
         this.dogId = dogId;
         this.selectedType = selectedType;
-        this.latitude = latitude;
-        this.longitude = longitude;
+        this.selectedDistanceM = selectedDistanceM;
         this.hourOfDay = hourOfDay;
         this.dayOfWeek = dayOfWeek;
-        this.selectedDistanceM = selectedDistanceM;
-        this.selectedPlaceCount = selectedPlaceCount;
+        this.weatherCondition = weatherCondition;
+        this.temperature = temperature;
+    }
+
+    public void addPlace(RouteSelectionPlace place) {
+        this.selectedPlaces.add(place);
+        place.assignLog(this);
     }
 }
