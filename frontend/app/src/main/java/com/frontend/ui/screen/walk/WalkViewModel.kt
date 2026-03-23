@@ -21,6 +21,7 @@ import com.frontend.domain.model.Place
 import com.frontend.domain.model.RecommendedRoute
 import com.frontend.domain.model.WalkRoute
 import com.frontend.domain.usecase.EndWalkUseCase
+import com.frontend.domain.usecase.GetDangerZonesUseCase
 import com.frontend.domain.usecase.GetPlaceDetailUseCase
 import com.frontend.domain.usecase.GetPlacesUseCase
 import com.frontend.domain.usecase.GetRecommendedRoutesUseCase
@@ -54,6 +55,7 @@ import kotlin.math.sqrt
 class WalkViewModel @Inject constructor(
     @ApplicationContext private val context: Context,
     private val reportDangerZoneUseCase: ReportDangerZoneUseCase,
+    private val getDangerZonesUseCase: GetDangerZonesUseCase,
     private val getPlacesUseCase: GetPlacesUseCase,
     private val walkRepository: WalkRepository,
     private val tokenDataStore: TokenDataStore,
@@ -75,6 +77,9 @@ class WalkViewModel @Inject constructor(
     private var currentWalkId: Long? = null
     // 산책 시작 API 응답을 기다리기 위한 Deferred (endWalk에서 대기 가능)
     private var walkIdDeferred: CompletableDeferred<Long?>? = null
+
+    // ── 위험구역 최초 로드 여부 (위치 수신 후 1회만 로드) ───────────────────────
+    private var dangerZonesLoaded = false
 
     // ── 산책 경로 포인트 (지도 경로 표시용) ────────────────────────────────────
     private val _routePoints = MutableStateFlow<List<LatLng>>(emptyList())
@@ -139,6 +144,12 @@ class WalkViewModel @Inject constructor(
             result.lastLocation?.let { loc ->
                 val newLatLng = LatLng.from(loc.latitude, loc.longitude)
                 _currentPosition.value = newLatLng
+
+                // 첫 위치 수신 시 주변 위험구역을 서버에서 로드
+                if (!dangerZonesLoaded) {
+                    dangerZonesLoaded = true
+                    loadDangerZones(loc.latitude, loc.longitude)
+                }
 
                 // 산책 중이고 일시정지가 아닐 때만 GPS 포인트 기록
                 if (_state.value.isWalking && !_state.value.isPaused) {
@@ -699,6 +710,24 @@ class WalkViewModel @Inject constructor(
     }
 
     // ── 위험 구역 신고 ─────────────────────────────────────────────────────────
+
+    /** 서버에서 주변 위험 구역을 불러와 지도에 표시 */
+    fun loadDangerZones(latitude: Double, longitude: Double) {
+        viewModelScope.launch {
+            getDangerZonesUseCase(latitude, longitude)
+                .onSuccess { zones ->
+                    // 기존 세션 신고분과 서버 데이터 병합 (id 기준 중복 제거)
+                    _state.update { current ->
+                        val existingIds = current.dangerZones.map { it.id }.toSet()
+                        val newZones = zones.filter { it.id !in existingIds }
+                        current.copy(dangerZones = current.dangerZones + newZones)
+                    }
+                }
+                .onFailure { e ->
+                    android.util.Log.w("WalkViewModel", "위험구역 로드 실패: ${e.message}")
+                }
+        }
+    }
 
     /** 위치 선택 모드 진입 */
     fun startDangerZoneSelection() {
