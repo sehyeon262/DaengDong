@@ -2,12 +2,14 @@ package com.frontend.di
 
 import com.frontend.data.local.TokenDataStore
 import com.frontend.data.remote.AuthApi
+import com.frontend.data.remote.BadgeApi
 import com.frontend.data.remote.DogApi
 import com.frontend.data.remote.HomeApi
 import com.frontend.data.remote.PlaceApi
 import com.frontend.data.remote.RecordApi
 import com.frontend.data.remote.RouteApi
 import com.frontend.data.repository.AuthRepository
+import com.frontend.data.repository.BadgeRepository
 import com.frontend.data.repository.DogRepository
 import com.frontend.data.repository.HomeRepository
 import com.frontend.data.repository.PlaceRepository
@@ -75,5 +77,14 @@ object RepositoryModule {
         tokenDataStore: TokenDataStore
     ): RouteRepository {
         return RouteRepository(routeApi, tokenDataStore)
+    }
+
+    @Provides
+    @Singleton
+    fun provideBadgeRepository(
+        badgeApi: BadgeApi,
+        tokenDataStore: TokenDataStore
+    ): BadgeRepository {
+        return BadgeRepository(badgeApi, tokenDataStore)
     }
 }

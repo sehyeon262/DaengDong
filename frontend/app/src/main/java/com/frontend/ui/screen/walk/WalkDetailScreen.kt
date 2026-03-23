@@ -392,7 +392,8 @@ private fun WalkStatsCard(detail: WalkDetailResponse) {
                 iconBgColor = statIconBg,
                 iconTint = PointGreen,
                 label = "산책 시간",
-                value = "${detail.durationMinutes}분"
+                value = if (detail.durationMinutes > 0) "${detail.durationMinutes}분"
+                       else "${detail.durationSeconds}초"
             )
             // 구분선
             Box(

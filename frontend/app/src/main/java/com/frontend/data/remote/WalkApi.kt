@@ -52,7 +52,7 @@ interface WalkApi {
     suspend fun endWalk(
         @Header("Authorization") authorization: String,
         @Path("walkId") walkId: Long,
-    ): ApiResponse<Unit>
+    ): ApiResponse<com.frontend.domain.model.EndWalkResponse>
 
     /** 산책 상세 조회 — GET /api/v1/walks/{walkId} */
     @GET("walks/{walkId}")

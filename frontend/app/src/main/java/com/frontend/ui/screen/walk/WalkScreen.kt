@@ -113,6 +113,7 @@ import com.kakao.vectormap.shape.PolylineStyle
 @Composable
 fun WalkScreen(
     onNavigateToRecord: () -> Unit = {},
+    onNavigateToWalkDetail: (Long) -> Unit = {},
     onNavigateToHome: () -> Unit = {},
     viewModel: WalkViewModel = hiltViewModel(),
 ) {
@@ -666,14 +667,27 @@ fun WalkScreen(
                 state = state,
                 onRating = { viewModel.setWalkRating(it) },
                 onNavigateToRecord = {
+                    val walkId = state.summaryWalkId
                     viewModel.dismissWalkSummary()
-                    onNavigateToRecord()
+                    if (walkId != null) {
+                        onNavigateToWalkDetail(walkId)
+                    } else {
+                        onNavigateToRecord()
+                    }
                 },
                 onNavigateToHome = {
                     viewModel.dismissWalkSummary()
                     onNavigateToHome()
                 },
                 onDismiss = { viewModel.dismissWalkSummary() }
+            )
+        }
+
+        // ── 8. 배지 획득 팝업 ────────────────────────────────────────
+        if (state.newBadges.isNotEmpty()) {
+            BadgeEarnedDialog(
+                badges = state.newBadges,
+                onDismiss = { viewModel.dismissNewBadges() }
             )
         }
     }
@@ -1251,4 +1265,92 @@ private fun createDogMarkerBitmap(context: android.content.Context): android.gra
     val aspectRatio = source.width.toFloat() / source.height.toFloat()
     val targetWidth = (targetHeight * aspectRatio).toInt()
     return source.scale(targetWidth, targetHeight)
+}
+
+// ── 배지 획득 팝업 ───────────────────────────────────────────────────────────
+@Composable
+private fun BadgeEarnedDialog(
+    badges: List<com.frontend.domain.model.NewBadgeInfo>,
+    onDismiss: () -> Unit
+) {
+    val badge = badges.first()
+
+    androidx.compose.ui.window.Dialog(onDismissRequest = onDismiss) {
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            shape = RoundedCornerShape(20.dp),
+            colors = CardDefaults.cardColors(containerColor = Color.White)
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(24.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Text(
+                    "배지를 획득했어요!",
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = TextMain
+                )
+
+                Spacer(Modifier.height(20.dp))
+
+                val badgeDrawable = when (badge.badgeId) {
+                    1L -> R.drawable.badge1
+                    2L -> R.drawable.badge2
+                    3L -> R.drawable.badge3
+                    4L -> R.drawable.badge4
+                    5L -> R.drawable.badge5
+                    6L -> R.drawable.badge6
+                    7L -> R.drawable.badge7
+                    8L -> R.drawable.badge8
+                    9L -> R.drawable.badge9
+                    else -> R.drawable.badge1
+                }
+
+                Image(
+                    painter = painterResource(badgeDrawable),
+                    contentDescription = badge.badgeName,
+                    modifier = Modifier.size(120.dp),
+                    contentScale = ContentScale.Crop
+                )
+
+                Spacer(Modifier.height(16.dp))
+
+                Text(
+                    badge.badgeName,
+                    fontSize = 20.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = TextMain
+                )
+
+                Spacer(Modifier.height(8.dp))
+
+                Text(
+                    badge.description,
+                    fontSize = 14.sp,
+                    color = com.frontend.ui.theme.TextGray,
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                )
+
+                Spacer(Modifier.height(20.dp))
+
+                Button(
+                    onClick = onDismiss,
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = PointGreen)
+                ) {
+                    Text(
+                        "확인했어요!",
+                        color = Color.White,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                }
+            }
+        }
+    }
 }

@@ -5,6 +5,7 @@ data class WalkDetailResponse(
     val startTime: String,       // "2026-03-12T16:30:00"
     val endTime: String?,
     val durationMinutes: Int,
+    val durationSeconds: Int = 0,  // 총 산책 시간(초)
     val distanceKm: Double,
     val calories: Double,
     val photoUrls: List<String>,
