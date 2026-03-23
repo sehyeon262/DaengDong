@@ -12,5 +12,7 @@ object Routes {
     const val MET_DOGS = "met_dogs/{dogId}"
 
     fun walkDetail(walkId: Long) = "walk_detail/$walkId"
+    const val BADGES = "badges"
+
     fun metDogs(dogId: Long) = "met_dogs/$dogId"
 }

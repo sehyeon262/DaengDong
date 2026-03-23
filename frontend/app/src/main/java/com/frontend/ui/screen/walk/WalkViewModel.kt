@@ -34,6 +34,7 @@ import com.google.android.gms.location.Priority
 import com.kakao.vectormap.LatLng
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -71,6 +72,8 @@ class WalkViewModel @Inject constructor(
 
     // ── 현재 산책 ID (산책 시작 후 서버에서 발급) ──────────────────────────────
     private var currentWalkId: Long? = null
+    // 산책 시작 API 응답을 기다리기 위한 Deferred (endWalk에서 대기 가능)
+    private var walkIdDeferred: CompletableDeferred<Long?>? = null
 
     // ── 산책 경로 포인트 (지도 경로 표시용) ────────────────────────────────────
     private val _routePoints = MutableStateFlow<List<LatLng>>(emptyList())
@@ -368,12 +371,16 @@ class WalkViewModel @Inject constructor(
         pendingPoints.clear()
         startWalkTimer()
 
-        // 백그라운드 서버 요청
+        // 백그라운드 서버 요청 — CompletableDeferred로 endWalk에서 대기 가능
+        val deferred = CompletableDeferred<Long?>()
+        walkIdDeferred = deferred
         viewModelScope.launch {
             startFreeWalkUseCase()
                 .onSuccess { walkId ->
+
                     currentWalkId = walkId
                     _state.update { it.copy(currentWalkId = walkId) }
+                    deferred.complete(walkId)
                     startBatchSending(walkId)
                     // NEARBY_DOG 필터가 이미 활성화된 경우 폴링 시작
                     if (WalkFilterType.NEARBY_DOG in _state.value.activeFilters) {
@@ -381,9 +388,9 @@ class WalkViewModel @Inject constructor(
                     }
                 }
                 .onFailure { e ->
-                    android.util.Log.w("WalkViewModel", "산책 시작 API 실패: ${e.message}")
-                    // 서버 실패해도 UI는 산책 중 상태 유지 (GPS 배치만 못 보냄)
-                    _state.update { it.copy(walkError = e.message) }
+
+                    deferred.complete(null)
+                    _state.update { it.copy(walkError = "산책 시작 실패: ${e.message}") }
                 }
         }
     }
@@ -403,10 +410,47 @@ class WalkViewModel @Inject constructor(
         val summaryDistance = _state.value.distanceMeters
         val summaryRoute = getDisplayRoutes().getOrNull(_state.value.selectedRouteIndex)?.title ?: "자유 산책"
 
-        val walkId = currentWalkId
-        if (walkId == null) {
+        viewModelScope.launch {
+            // currentWalkId가 아직 null이면 산책 시작 API 응답을 대기
+            var walkId = currentWalkId
+            if (walkId == null) {
+                walkId = walkIdDeferred?.await()
+            }
+
+            if (walkId == null) {
+                batchSendJob?.cancel()
+                pendingPoints.clear()
+                _state.update {
+                    it.copy(
+                        isWalking = false,
+                        isPaused = false,
+                        elapsedSeconds = 0,
+                        distanceMeters = 0.0,
+                        walkError = "산책 시작에 실패하여 기록이 저장되지 않았습니다.",
+                        currentWalkId = null,
+                        nearbyDogs = emptyList(),
+                        isWalkSummaryVisible = true,
+                        summaryElapsedSeconds = summarySeconds,
+                        summaryDistanceMeters = summaryDistance,
+                        summaryRouteName = summaryRoute,
+                        summaryRating = 0,
+                    )
+                }
+                return@launch
+            }
+
             batchSendJob?.cancel()
+            val remaining = pendingPoints.toList()
             pendingPoints.clear()
+            if (remaining.size >= 2) {
+                saveLocationsUseCase(walkId, remaining)
+            }
+
+            val result = endWalkUseCase(walkId)
+            currentWalkId = null
+            walkIdDeferred = null
+            val newBadges = result.getOrDefault(emptyList())
+
             _state.update {
                 it.copy(
                     isWalking = false,
@@ -417,46 +461,14 @@ class WalkViewModel @Inject constructor(
                     currentWalkId = null,
                     nearbyDogs = emptyList(),
                     isWalkSummaryVisible = true,
+                    summaryWalkId = walkId,
                     summaryElapsedSeconds = summarySeconds,
                     summaryDistanceMeters = summaryDistance,
                     summaryRouteName = summaryRoute,
                     summaryRating = 0,
+                    newBadges = newBadges,
                 )
             }
-            return
-        }
-
-        viewModelScope.launch {
-            batchSendJob?.cancel()
-            val remaining = pendingPoints.toList()
-            pendingPoints.clear()
-            if (remaining.size >= 2) {
-                saveLocationsUseCase(walkId, remaining)
-            }
-
-            endWalkUseCase(walkId)
-                .onSuccess {
-                    currentWalkId = null
-                    _state.update {
-                        it.copy(
-                            isWalking = false,
-                            isPaused = false,
-                            elapsedSeconds = 0,
-                            distanceMeters = 0.0,
-                            walkError = null,
-                            currentWalkId = null,
-                            nearbyDogs = emptyList(),
-                            isWalkSummaryVisible = true,
-                            summaryElapsedSeconds = summarySeconds,
-                            summaryDistanceMeters = summaryDistance,
-                            summaryRouteName = summaryRoute,
-                            summaryRating = 0,
-                        )
-                    }
-                }
-                .onFailure { e ->
-                    _state.update { it.copy(walkError = e.message) }
-                }
         }
     }
 
@@ -471,12 +483,18 @@ class WalkViewModel @Inject constructor(
         _state.update {
             it.copy(
                 isWalkSummaryVisible = false,
+                summaryWalkId = null,
                 summaryElapsedSeconds = 0,
                 summaryDistanceMeters = 0.0,
                 summaryRouteName = "",
                 summaryRating = 0,
             )
         }
+    }
+
+    /** 배지 획득 알림 닫기 */
+    fun dismissNewBadges() {
+        _state.update { it.copy(newBadges = emptyList()) }
     }
 
     /** 일시정지 */
@@ -535,29 +553,19 @@ class WalkViewModel @Inject constructor(
 
     /** 주변 강아지 + 제안 폴링 */
     private fun loadNearbyDogs() {
-        val walkId = currentWalkId ?: run {
-            android.util.Log.d("WalkVM", "loadNearbyDogs skip: walkId null")
-            return
-        }
-        val pos = _currentPosition.value ?: run {
-            android.util.Log.d("WalkVM", "loadNearbyDogs skip: GPS null")
-            return
-        }
+        val walkId = currentWalkId ?: return
+        val pos = _currentPosition.value ?: return
         viewModelScope.launch {
             walkRepository.fetchNearbyDogsResponse(
                 lat = pos.latitude,
                 lon = pos.longitude,
                 myWalkRecordId = walkId,
             ).onSuccess { response ->
-                android.util.Log.d("WalkVM", "nearbyDogs 조회 성공: ${response.nearbyDogs.size}마리, " +
-                    "pending=${response.pendingProposals.size}, accepted=${response.acceptedProposals.size}")
                 _state.update { it.copy(
                     nearbyDogs = response.nearbyDogs,
                     pendingProposals = response.pendingProposals,
                     acceptedProposals = response.acceptedProposals,
                 ) }
-            }.onFailure { e ->
-                android.util.Log.e("WalkVM", "nearbyDogs 조회 실패: ${e.message}", e)
             }
         }
     }
@@ -599,7 +607,6 @@ class WalkViewModel @Inject constructor(
                     _state.update { it.copy(dogPublicProfile = profile, isDogProfileLoading = false) }
                 }
                 .onFailure { e ->
-                    android.util.Log.e("WalkVM", "공개 프로필 로드 실패: ${e.message}")
                     _state.update { it.copy(isDogProfileLoading = false) }
                 }
         }
@@ -614,11 +621,9 @@ class WalkViewModel @Inject constructor(
         viewModelScope.launch {
             walkRepository.sendProposal(fromWalkRecordId, toWalkRecordId)
                 .onSuccess {
-                    android.util.Log.d("WalkVM", "산책 제안 전송 완료")
                     _state.update { it.copy(isSendingProposal = false, proposalSentDogId = toDogId) }
                 }
-                .onFailure { e ->
-                    android.util.Log.e("WalkVM", "산책 제안 실패: ${e.message}")
+                .onFailure {
                     _state.update { it.copy(isSendingProposal = false) }
                 }
         }
@@ -626,35 +631,23 @@ class WalkViewModel @Inject constructor(
 
     /** 받은 제안 수락 */
     fun acceptProposal(proposal: PendingProposalInfo) {
-        val myWalkRecordId = currentWalkId ?: run {
-            android.util.Log.e("WalkVM", "acceptProposal 실패: currentWalkId null")
-            return
-        }
-        // 낙관적 업데이트 — 버튼 누르면 즉시 다이얼로그 닫기
+        val myWalkRecordId = currentWalkId ?: return
         _state.update { it.copy(
             pendingProposals = it.pendingProposals.filter { p -> p.proposalId != proposal.proposalId }
         ) }
         viewModelScope.launch {
             walkRepository.respondToProposal(proposal.proposalId, "ACCEPT", myWalkRecordId)
-                .onSuccess { android.util.Log.d("WalkVM", "제안 수락 완료") }
-                .onFailure { e -> android.util.Log.e("WalkVM", "제안 수락 API 실패: ${e.message}") }
         }
     }
 
     /** 받은 제안 거절 */
     fun rejectProposal(proposal: PendingProposalInfo) {
-        val myWalkRecordId = currentWalkId ?: run {
-            android.util.Log.e("WalkVM", "rejectProposal 실패: currentWalkId null")
-            return
-        }
-        // 낙관적 업데이트 — 버튼 누르면 즉시 다이얼로그 닫기
+        val myWalkRecordId = currentWalkId ?: return
         _state.update { it.copy(
             pendingProposals = it.pendingProposals.filter { p -> p.proposalId != proposal.proposalId }
         ) }
         viewModelScope.launch {
             walkRepository.respondToProposal(proposal.proposalId, "REJECT", myWalkRecordId)
-                .onSuccess { android.util.Log.d("WalkVM", "제안 거절 완료") }
-                .onFailure { e -> android.util.Log.e("WalkVM", "제안 거절 API 실패: ${e.message}") }
         }
     }
 
@@ -737,7 +730,7 @@ class WalkViewModel @Inject constructor(
             } else null
 
             try {
-                val dangerZone = reportDangerZoneUseCase(
+                val result = reportDangerZoneUseCase(
                     walkId = currentWalkId,
                     location = location,
                     reason = reason,
@@ -746,14 +739,15 @@ class WalkViewModel @Inject constructor(
 
                 _state.update {
                     it.copy(
-                        dangerZones = it.dangerZones + dangerZone,
+                        dangerZones = it.dangerZones + result.dangerZone,
                         isSelectingDangerZone = false,
                         selectedLocation = null,
                         isDangerReportDialogOpen = false,
                         selectedDangerReason = null,
                         customDangerReason = "",
                         isLoading = false,
-                        error = null
+                        error = null,
+                        newBadges = it.newBadges + result.newBadges
                     )
                 }
             } catch (e: Exception) {

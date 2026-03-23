@@ -55,4 +55,6 @@ public interface RiskReportRepository extends JpaRepository<RiskReport, Long> {
             @Param("latitude") double latitude,
             @Param("description") String description
     );
+
+    long countByUserId(Long userId);
 }

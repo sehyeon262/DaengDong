@@ -3,8 +3,10 @@ package com.frontend.ui.screen.dog
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.frontend.data.local.TokenDataStore
+import com.frontend.data.repository.BadgeRepository
 import com.frontend.data.repository.DogRepository
 import com.frontend.data.repository.WalkRepository
+import com.frontend.domain.model.BadgeProgressResponse
 import com.frontend.domain.model.DogProfileResponse
 import com.frontend.domain.model.MetDogResponse
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -20,6 +22,7 @@ data class DogProfileState(
     val isLoading: Boolean = false,
     val profile: DogProfileResponse? = null,
     val recentMetDog: MetDogResponse? = null,
+    val earnedBadges: List<BadgeProgressResponse> = emptyList(),
     val dogId: Long? = null,
     val error: String? = null
 )
@@ -28,6 +31,7 @@ data class DogProfileState(
 class DogProfileViewModel @Inject constructor(
     private val dogRepository: DogRepository,
     private val walkRepository: WalkRepository,
+    private val badgeRepository: BadgeRepository,
     private val tokenDataStore: TokenDataStore
 ) : ViewModel() {
 
@@ -50,6 +54,13 @@ class DogProfileViewModel @Inject constructor(
                 walkRepository.getMetDogs(dogId).onSuccess { metDogs ->
                     _state.update { it.copy(recentMetDog = metDogs.firstOrNull()) }
                 }
+
+                // 달성한 배지 로드
+                try {
+                    val badges = badgeRepository.getBadgeProgress()
+                    val earned = badges.filter { it.earned || it.currentValue >= it.targetValue }
+                    _state.update { it.copy(earnedBadges = earned) }
+                } catch (_: Exception) { }
             } catch (e: Exception) {
                 _state.update { it.copy(isLoading = false, error = e.message ?: "오류가 발생했습니다") }
             }

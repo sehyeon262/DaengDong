@@ -1,6 +1,7 @@
 package com.frontend.di
 
 import com.frontend.data.remote.AuthApi
+import com.frontend.data.remote.BadgeApi
 import com.frontend.data.remote.DangerZoneApi
 import com.frontend.data.remote.DogApi
 import com.frontend.data.remote.HomeApi
@@ -89,5 +90,11 @@ object NetworkModule {
     @Singleton
     fun provideRouteApi(retrofit: Retrofit): RouteApi {
         return retrofit.create(RouteApi::class.java)
+    }
+
+    @Provides
+    @Singleton
+    fun provideBadgeApi(retrofit: Retrofit): BadgeApi {
+        return retrofit.create(BadgeApi::class.java)
     }
 }

@@ -1,5 +1,6 @@
 package com.frontend.ui.screen.dog
 
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -34,6 +35,7 @@ import coil.compose.AsyncImage
 import com.frontend.R
 import com.frontend.domain.model.DogProfileResponse
 import com.frontend.navigation.Routes
+import com.frontend.ui.theme.Background
 import com.frontend.ui.theme.PointGreen
 import com.frontend.ui.theme.TextGray
 import com.frontend.ui.theme.TextMain
@@ -50,11 +52,6 @@ private val TRAIT_COLORS = listOf(
 )
 private const val MOCK_WALK_MINUTES = 45
 private const val MOCK_WALK_KM = 1.2
-private val BADGE_COLOR_SETS = listOf(
-    listOf(Color(0xFFFF8A65), Color(0xFFFFB74D), Color(0xFF81C784)),
-    listOf(Color(0xFF4DB6AC), Color(0xFFAED581), Color(0xFF7986CB)),
-    listOf(Color(0xFF64B5F6), Color(0xFF4DD0E1), Color(0xFF9575CD)),
-)
 
 private fun calculateAge(birthDateStr: String): Int {
     return try {
@@ -92,7 +89,7 @@ fun DogProfileScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color(0xFFFAF6EE))
+            .background(Background)
     ) {
         Row(
             modifier = Modifier
@@ -121,10 +118,14 @@ fun DogProfileScreen(
             state.profile != null -> DogProfileContent(
                 profile = state.profile!!,
                 recentMetDog = state.recentMetDog,
+                earnedBadges = state.earnedBadges,
                 onMetDogsClick = {
                     state.dogId?.let { dogId ->
                         navController.navigate(Routes.metDogs(dogId))
                     }
+                },
+                onBadgesClick = {
+                    navController.navigate(Routes.BADGES)
                 }
             )
         }
@@ -135,7 +136,9 @@ fun DogProfileScreen(
 private fun DogProfileContent(
     profile: DogProfileResponse,
     recentMetDog: com.frontend.domain.model.MetDogResponse?,
-    onMetDogsClick: () -> Unit
+    earnedBadges: List<com.frontend.domain.model.BadgeProgressResponse>,
+    onMetDogsClick: () -> Unit,
+    onBadgesClick: () -> Unit = {}
 ) {
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
@@ -146,7 +149,7 @@ private fun DogProfileContent(
         item { TraitsSection(profile.traits.orEmpty()) }
         item { WalkStatsSection() }
         item { RecentFriendSection(recentMetDog, onMetDogsClick) }
-        item { BadgeSection() }
+        item { BadgeSection(earnedBadges, onBadgesClick) }
         item { Spacer(Modifier.height(8.dp)) }
     }
 }
@@ -358,17 +361,56 @@ private fun formatLastMetDate(dateTimeStr: String): String {
 }
 
 @Composable
-private fun BadgeSection() {
+private fun BadgeSection(
+    earnedBadges: List<com.frontend.domain.model.BadgeProgressResponse>,
+    onBadgesClick: () -> Unit
+) {
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        Text("나의 뱃지", fontSize = 16.sp, fontWeight = FontWeight.SemiBold, color = TextMain)
-        LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            items(BADGE_COLOR_SETS) { colors ->
-                Box(
-                    modifier = Modifier
-                        .size(80.dp)
-                        .background(Brush.radialGradient(colors), CircleShape)
-                        .border(1.dp, Color.White.copy(alpha = 0.5f), CircleShape)
-                )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text("나의 뱃지", fontSize = 16.sp, fontWeight = FontWeight.SemiBold, color = TextMain)
+            Text(
+                "전체보기 >",
+                fontSize = 13.sp,
+                color = PointGreen,
+                modifier = Modifier.clickable(onClick = onBadgesClick)
+            )
+        }
+        if (earnedBadges.isEmpty()) {
+            Text(
+                "아직 획득한 배지가 없어요",
+                fontSize = 13.sp,
+                color = TextGray,
+                modifier = Modifier.clickable(onClick = onBadgesClick)
+            )
+        } else {
+            LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                items(earnedBadges) { badge ->
+                    val drawableRes = when (badge.badgeId) {
+                        1L -> R.drawable.badge1
+                        2L -> R.drawable.badge2
+                        3L -> R.drawable.badge3
+                        4L -> R.drawable.badge4
+                        5L -> R.drawable.badge5
+                        6L -> R.drawable.badge6
+                        7L -> R.drawable.badge7
+                        8L -> R.drawable.badge8
+                        9L -> R.drawable.badge9
+                        else -> R.drawable.badge1
+                    }
+                    Image(
+                        painter = painterResource(drawableRes),
+                        contentDescription = badge.badgeName,
+                        modifier = Modifier
+                            .size(70.dp)
+                            .clip(CircleShape)
+                            .clickable(onClick = onBadgesClick),
+                        contentScale = ContentScale.Crop
+                    )
+                }
             }
         }
     }

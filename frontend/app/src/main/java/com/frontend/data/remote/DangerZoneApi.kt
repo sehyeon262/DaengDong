@@ -13,5 +13,5 @@ interface DangerZoneApi {
     suspend fun reportDangerZone(
         @Header("Authorization") authorization: String,
         @Body request: ReportDangerZoneRequest
-    ): ApiResponse<Unit>
+    ): ApiResponse<com.frontend.domain.model.DangerZoneApiResponse>
 }
