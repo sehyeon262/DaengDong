@@ -50,6 +50,7 @@ public class WalkService {
 
     private static final String PROPOSAL_KEY_PREFIX  = "walk:proposals:";
     private static final String ACCEPTED_KEY_PREFIX  = "walk:accepted:";
+    private static final String REJECTED_KEY_PREFIX  = "walk:rejected:";
     private static final double EARTH_RADIUS_M      = 6_371_000.0;
     private static final double CALORIE_FACTOR      = 0.8;
 
@@ -362,7 +363,33 @@ public class WalkService {
             }
         }
 
-        return new NearbyDogsResponse(nearbyDogs, pendingProposals, acceptedProposals);
+        // 내가 보낸 제안이 거절됐는지 조회
+        List<RejectedProposalResponse> rejectedProposals = new ArrayList<>();
+        if (myWalkRecordId != null) {
+            String rejectKey = REJECTED_KEY_PREFIX + myWalkRecordId;
+            Map<Object, Object> rejectedEntries = redisTemplate.opsForHash().entries(rejectKey);
+            for (Map.Entry<Object, Object> entry : rejectedEntries.entrySet()) {
+                try {
+                    String proposalId = entry.getKey().toString();
+                    Map<String, Object> data = objectMapper.readValue(
+                            entry.getValue().toString(),
+                            new TypeReference<Map<String, Object>>() {}
+                    );
+                    Long dogId = Long.valueOf(data.get("dogId").toString());
+                    String name = data.get("name").toString();
+                    String breed = data.get("breed").toString();
+                    String profileImageUrl = data.containsKey("profileImageUrl")
+                            ? data.get("profileImageUrl").toString() : null;
+                    rejectedProposals.add(new RejectedProposalResponse(proposalId, dogId, name, breed, profileImageUrl));
+                    // 읽었으면 삭제 (1회성 알림)
+                    redisTemplate.opsForHash().delete(rejectKey, proposalId);
+                } catch (Exception e) {
+                    log.warn("[nearbyDogs] rejectedProposal Redis 파싱 오류: {}", e.getMessage());
+                }
+            }
+        }
+
+        return new NearbyDogsResponse(nearbyDogs, pendingProposals, acceptedProposals, rejectedProposals);
     }
 
     /**
@@ -449,6 +476,35 @@ public class WalkService {
                 throw e;
             } catch (Exception e) {
                 throw new RuntimeException("제안 수락 처리 실패", e);
+            }
+        }
+
+        // REJECT: 제안자에게 거절 알림 저장 (30분 TTL)
+        if (ProposalAction.REJECT == request.getAction()) {
+            try {
+                Map<String, Object> data = objectMapper.readValue(
+                        raw.toString(),
+                        new TypeReference<Map<String, Object>>() {}
+                );
+                Long fromWalkRecordId = Long.valueOf(data.get("fromWalkRecordId").toString());
+
+                WalkRecord myRecord = walkRecordRepository.findById(request.getMyWalkRecordId()).orElse(null);
+                if (myRecord != null) {
+                    Dog myDog = dogRepository.findById(myRecord.getDogId()).orElse(null);
+                    if (myDog != null) {
+                        String rejectKey = REJECTED_KEY_PREFIX + fromWalkRecordId;
+                        String rejectValue = objectMapper.writeValueAsString(Map.of(
+                                "dogId", myDog.getId(),
+                                "name", myDog.getName(),
+                                "breed", myDog.getBreed(),
+                                "profileImageUrl", myDog.getProfileImageUrl() != null ? myDog.getProfileImageUrl() : ""
+                        ));
+                        redisTemplate.opsForHash().put(rejectKey, proposalId, rejectValue);
+                        redisTemplate.expire(rejectKey, 30, TimeUnit.MINUTES);
+                    }
+                }
+            } catch (Exception e) {
+                log.warn("[respondToProposal] 거절 알림 Redis 저장 오류: {}", e.getMessage());
             }
         }
 
