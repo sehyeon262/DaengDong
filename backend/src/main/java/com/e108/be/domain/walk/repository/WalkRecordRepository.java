@@ -63,4 +63,25 @@ public interface WalkRecordRepository extends JpaRepository<WalkRecord, Long> {
             WHERE id = :walkId AND route_line IS NOT NULL
             """, nativeQuery = true)
     List<Object[]> getLastPoint(@Param("walkId") Long walkId);
+
+    // ── 배지용 카운트 쿼리 ──
+
+    @Query("SELECT COUNT(w) FROM WalkRecord w WHERE w.dogId IN :dogIds AND w.walkStatus = com.e108.be.domain.walk.entity.WalkStatus.COMPLETED")
+    long countCompletedWalksByDogIds(@Param("dogIds") List<Long> dogIds);
+
+    @Query(value = "SELECT COUNT(*) FROM walk_records WHERE dog_id IN (:dogIds) AND walk_status = 'COMPLETED' AND route_line IS NOT NULL", nativeQuery = true)
+    long countWalksWithRoute(@Param("dogIds") List<Long> dogIds);
+
+    @Query(value = """
+            SELECT COUNT(*) FROM walk_records w
+            JOIN diaries d ON d.walk_id = w.id
+            WHERE w.dog_id IN (:dogIds)
+              AND w.walk_status = 'COMPLETED'
+              AND w.photo_urls IS NOT NULL
+              AND w.photo_urls::text != '[]'
+            """, nativeQuery = true)
+    long countWalksWithPhotoAndDiary(@Param("dogIds") List<Long> dogIds);
+
+    @Query(value = "SELECT COALESCE(SUM(json_array_length(photo_urls)), 0) FROM walk_records WHERE dog_id IN (:dogIds) AND photo_urls IS NOT NULL", nativeQuery = true)
+    long countTotalPhotos(@Param("dogIds") List<Long> dogIds);
 }

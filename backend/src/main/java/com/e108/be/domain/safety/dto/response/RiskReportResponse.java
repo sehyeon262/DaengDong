@@ -1,10 +1,12 @@
 package com.e108.be.domain.safety.dto.response;
 
+import com.e108.be.domain.badge.dto.response.BadgeResponse;
 import com.e108.be.domain.safety.entity.RiskReport;
 import lombok.Builder;
 import lombok.Getter;
 
 import java.time.LocalDateTime;
+import java.util.List;
 
 @Getter
 @Builder
@@ -16,14 +18,8 @@ public class RiskReportResponse {
     private Double longitude;
     private String description;
     private LocalDateTime createdAt;
+    private List<BadgeResponse> newBadges;
 
-    /**
-     * RiskReport 엔티티 → RiskReportResponse 변환
-     *
-     * PostGIS Point 좌표 추출:
-     *   location.getX() → 경도 (longitude)
-     *   location.getY() → 위도 (latitude)
-     */
     public static RiskReportResponse from(RiskReport riskReport) {
         return RiskReportResponse.builder()
                 .riskReportId(riskReport.getId())
@@ -32,6 +28,18 @@ public class RiskReportResponse {
                 .longitude(riskReport.getLocation().getX())
                 .description(riskReport.getDescription())
                 .createdAt(riskReport.getCreatedAt())
+                .build();
+    }
+
+    public static RiskReportResponse from(RiskReport riskReport, List<BadgeResponse> newBadges) {
+        return RiskReportResponse.builder()
+                .riskReportId(riskReport.getId())
+                .walkSessionId(riskReport.getWalkSessionId())
+                .latitude(riskReport.getLocation().getY())
+                .longitude(riskReport.getLocation().getX())
+                .description(riskReport.getDescription())
+                .createdAt(riskReport.getCreatedAt())
+                .newBadges(newBadges)
                 .build();
     }
 }

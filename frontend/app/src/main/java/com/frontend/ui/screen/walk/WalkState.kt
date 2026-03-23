@@ -6,6 +6,7 @@ import com.frontend.domain.model.DangerZone
 import com.frontend.domain.model.AcceptedProposalInfo
 import com.frontend.domain.model.DogProfileResponse
 import com.frontend.domain.model.NearbyDogResponse
+import com.frontend.domain.model.NewBadgeInfo
 import com.frontend.domain.model.PendingProposalInfo
 import com.frontend.domain.model.Place
 import com.frontend.domain.model.RecommendedRoute
@@ -41,6 +42,7 @@ data class WalkState(
 
     // ── 산책 요약 (종료 후 표시) ──────────────────────────────────────────────
     val isWalkSummaryVisible: Boolean = false,
+    val summaryWalkId: Long? = null,      // 종료된 산책 ID (일기 보러가기용)
     val summaryElapsedSeconds: Int = 0,
     val summaryDistanceMeters: Double = 0.0,
     val summaryRouteName: String = "",
@@ -64,6 +66,10 @@ data class WalkState(
     val pendingProposals: List<PendingProposalInfo> = emptyList(),   // 받은 제안 목록
     val acceptedProposals: List<AcceptedProposalInfo> = emptyList(), // 수락된 제안 알림
 
+    // ── 비선호 강아지 경고 (S14P21E108-175) ─────────────────────────────────
+    val warningDog: NearbyDogResponse? = null,             // 현재 경고 표시 중인 비선호 강아지
+    val shownWarningDogIds: Set<Long> = emptySet(),        // 이미 경고를 띄운 dogId (중복 방지)
+
     // ── 위험 구역 신고 ────────────────────────────────────────────────────────
     val isSelectingDangerZone: Boolean = false,       // 위치 선택 모드 여부
     val selectedLocation: DangerLocation? = null,     // 선택된 좌표 (지도 중심)
@@ -72,5 +78,8 @@ data class WalkState(
     val customDangerReason: String = "",              // "기타" 직접 입력 텍스트
     val dangerZones: List<DangerZone> = emptyList(),  // 신고 완료된 위험 구역 목록
     val isLoading: Boolean = false,                   // 제출 중 여부
-    val error: String? = null                         // 에러 메시지 (없으면 null)
+    val error: String? = null,                        // 에러 메시지 (없으면 null)
+
+    // ── 배지 획득 알림 ──────────────────────────────────────────────────────
+    val newBadges: List<NewBadgeInfo> = emptyList()   // 새로 획득한 배지 목록
 )

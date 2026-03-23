@@ -75,14 +75,15 @@ class WalkRepository @Inject constructor(
      * W1-06: 산책 종료 API 호출
      * @return Result<Unit>
      */
-    suspend fun endWalk(walkId: Long): Result<Unit> = runCatching {
+    suspend fun endWalk(walkId: Long): Result<List<com.frontend.domain.model.NewBadgeInfo>> = runCatching {
         val token = tokenDataStore.getAccessToken().first()
             ?: throw Exception("로그인이 필요합니다")
 
-        walkApi.endWalk(
+        val response = walkApi.endWalk(
             authorization = "Bearer $token",
             walkId = walkId,
         )
+        response.data?.newBadges ?: emptyList()
     }
 
     /** 산책 상세 조회 (일기 + 사진 포함) */

@@ -1,5 +1,7 @@
 package com.e108.be.domain.walk.service;
 
+import com.e108.be.domain.badge.dto.response.BadgeResponse;
+import com.e108.be.domain.badge.service.BadgeService;
 import com.e108.be.domain.diary.entity.Diary;
 import com.e108.be.domain.diary.repository.DiaryRepository;
 import com.e108.be.domain.diary.service.DiaryService;
@@ -59,11 +61,17 @@ public class WalkService {
     private final DiaryRepository diaryRepository;
     private final S3Service s3Service;
     private final ObjectMapper objectMapper;
+    private final BadgeService badgeService;
 
     @Transactional
     public StartWalkResponse startWalk(StartWalkRequest request) {
+        // 기존 IN_PROGRESS 산책이 있으면 자동 강제 종료 (stuck 방지)
         walkRecordRepository.findByDogIdAndWalkStatus(request.getDogId(), WalkStatus.IN_PROGRESS)
-                .ifPresent(w -> { throw new WalkAlreadyInProgressException(); });
+                .ifPresent(w -> {
+                    log.warn("[startWalk] 기존 IN_PROGRESS 산책 강제 종료: walkId={}", w.getId());
+                    w.end(w.getTotalDistance() != null ? w.getTotalDistance() : BigDecimal.ZERO,
+                          w.getCalories() != null ? w.getCalories() : BigDecimal.ZERO);
+                });
 
         WalkRecord walkRecord = WalkRecord.builder()
                 .dogId(request.getDogId())
@@ -135,10 +143,21 @@ public class WalkService {
 
         walkRecord.end(totalDistance, calories);
 
-        // 일기 생성 트리거 (300m 이상일 때만)
-        diaryService.createDiaryIfEligible(walkId, walkRecord.getDogId(), totalDistance);
+        // 일기 생성 트리거 — 트랜잭션 커밋 후 비동기 실행
+        final Long dogIdForDiary = walkRecord.getDogId();
+        diaryService.createDiaryIfEligible(walkId, dogIdForDiary, totalDistance);
 
-        return EndWalkResponse.from(walkRecord);
+        // 배지 체크 — 실패해도 산책 종료는 정상 처리
+        List<BadgeResponse> newBadges = new ArrayList<>();
+        try {
+            if (dog != null) {
+                newBadges = badgeService.checkWalkEndBadges(dog.getUser().getId());
+            }
+        } catch (Exception e) {
+            log.error("[endWalk] 배지 체크 중 에러 발생 (산책 종료는 정상 처리됨): walkId={}", walkId, e);
+        }
+
+        return EndWalkResponse.from(walkRecord, newBadges);
     }
 
     /**
@@ -230,20 +249,24 @@ public class WalkService {
     public NearbyDogsResponse getNearbyDogs(double lat, double lon, double radius,
                                              Long myDogId, Long myWalkRecordId) {
         List<WalkRecord> inProgressWalks = walkRecordRepository.findAllByWalkStatus(WalkStatus.IN_PROGRESS);
-        log.info("[nearbyDogs] IN_PROGRESS {}개 조회됨. myDogId={}, lat={}, lon={}, radius={}",
+        log.debug("[nearbyDogs] IN_PROGRESS {}개 조회됨. myDogId={}, lat={}, lon={}, radius={}",
                 inProgressWalks.size(), myDogId, lat, lon, radius);
         List<NearbyDogResponse> nearbyDogs = new ArrayList<>();
 
+        // 내 피드백 목록 일괄 로드 (N+1 방지) — myDogId가 없으면 빈 맵
+        Map<Long, String> myFeedbackMap = new java.util.HashMap<>();
+        if (myDogId != null) {
+            metDogRepository.findAllBySourceDogId(myDogId)
+                    .forEach(md -> myFeedbackMap.put(md.getTargetDogId(), md.getFeedback().name()));
+        }
+
         for (WalkRecord walk : inProgressWalks) {
             if (walk.getDogId().equals(myDogId)) {
-                log.info("[nearbyDogs] walkId={} dogId={} → 내 강아지, skip", walk.getId(), walk.getDogId());
                 continue;
             }
 
             List<Object[]> lastPointList = walkRecordRepository.getLastPoint(walk.getId());
             if (lastPointList == null || lastPointList.isEmpty()) {
-                log.info("[nearbyDogs] walkId={} dogId={} → route_line NULL (GPS 미저장), skip",
-                        walk.getId(), walk.getDogId());
                 continue;
             }
             Object[] lastPoint = lastPointList.get(0);
@@ -257,10 +280,7 @@ public class WalkService {
             double dogLon = ((Number) lastPoint[1]).doubleValue();
 
             double distance = haversine(lat, lon, dogLat, dogLon);
-            log.info("[nearbyDogs] walkId={} dogId={} → dogLat={}, dogLon={}, distance={}m",
-                    walk.getId(), walk.getDogId(), dogLat, dogLon, distance);
             if (distance > radius) {
-                log.info("[nearbyDogs] walkId={} → 거리 초과({}m > {}m), skip", walk.getId(), distance, radius);
                 continue;
             }
 
@@ -268,6 +288,7 @@ public class WalkService {
             if (dogOpt.isEmpty()) continue;
             Dog dog = dogOpt.get();
 
+            String feedback = myFeedbackMap.get(dog.getId());
             nearbyDogs.add(new NearbyDogResponse(
                     dog.getId(),
                     dog.getName(),
@@ -276,10 +297,11 @@ public class WalkService {
                     dogLat,
                     dogLon,
                     Math.round(distance * 10.0) / 10.0,
-                    walk.getId()
+                    walk.getId(),
+                    feedback
             ));
         }
-        log.info("[nearbyDogs] 최종 결과: {}마리", nearbyDogs.size());
+        log.debug("[nearbyDogs] 최종 결과: {}마리", nearbyDogs.size());
 
         // 내게 온 pending proposals 조회
         List<PendingProposalResponse> pendingProposals = new ArrayList<>();
@@ -400,6 +422,12 @@ public class WalkService {
                 upsertMetDog(myRecord, fromRecord.getDogId());
                 upsertMetDog(fromRecord, myRecord.getDogId());
 
+                // 배지 체크 (양쪽 사용자)
+                Dog myDogForBadge = dogRepository.findById(myRecord.getDogId()).orElse(null);
+                Dog fromDogForBadge = dogRepository.findById(fromRecord.getDogId()).orElse(null);
+                if (myDogForBadge != null) badgeService.checkMeetBadges(myDogForBadge.getUser().getId());
+                if (fromDogForBadge != null) badgeService.checkMeetBadges(fromDogForBadge.getUser().getId());
+
                 // 제안자(fromWalkRecordId)에게 수락 알림 저장 (30분 TTL)
                 Dog myDog = dogRepository.findById(myRecord.getDogId()).orElse(null);
                 if (myDog != null) {
@@ -445,6 +473,12 @@ public class WalkService {
             upsertMetDog(myRecord, targetRecord.getDogId());
             upsertMetDog(targetRecord, myRecord.getDogId());
         }
+
+        // 배지 체크
+        Dog myDog = dogRepository.findById(myRecord.getDogId()).orElse(null);
+        if (myDog != null) {
+            badgeService.checkMeetBadges(myDog.getUser().getId());
+        }
     }
 
     /**
@@ -456,9 +490,14 @@ public class WalkService {
         WalkRecord myRecord = walkRecordRepository.findById(request.getMyWalkRecordId())
                 .orElseThrow(WalkNotFoundException::new);
 
+        // met_dogs 레코드가 없으면 보통으로 자동 생성 후 피드백 갱신 (upsert)
         MetDog metDog = metDogRepository
                 .findBySourceDogIdAndTargetDogId(myRecord.getDogId(), request.getTargetDogId())
-                .orElseThrow(MetDogNotFoundException::new);
+                .orElseGet(() -> metDogRepository.save(MetDog.builder()
+                        .latestWalkRecord(myRecord)
+                        .targetDogId(request.getTargetDogId())
+                        .feedback(Feedback.보통)
+                        .build()));
 
         metDog.updateFeedback(request.getFeedback());
     }

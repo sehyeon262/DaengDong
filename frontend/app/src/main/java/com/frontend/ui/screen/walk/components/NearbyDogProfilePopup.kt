@@ -16,8 +16,13 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.DirectionsWalk
 import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.ThumbDown
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -63,9 +68,15 @@ fun NearbyDogProfilePopup(
     isSendingProposal: Boolean = false,
     onDismiss: () -> Unit,
     onPropose: () -> Unit,
+    onFeedback: (String) -> Unit = {},
 ) {
     val sheetState = rememberModalBottomSheetState()
     val fallbackDrawable = dogFallbackDrawables[nearbyDog.dogId.toInt() % dogFallbackDrawables.size]
+
+    // 버튼 상태 — API에서 받은 현재 피드백으로 초기화
+    var selectedFeedback by remember(nearbyDog.dogId) {
+        mutableStateOf(nearbyDog.feedback ?: "보통")
+    }
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -149,21 +160,40 @@ fun NearbyDogProfilePopup(
                         }
                     }
 
-                    // 좋아요 / 비선호 버튼
+                    // 좋아요 / 싫어요 버튼
                     Row {
-                        IconButton(onClick = { /* TODO: S14P21E108-172 피드백 */ }) {
+                        // 좋아요 버튼
+                        IconButton(onClick = {
+                            val next = if (selectedFeedback == "좋아요") "보통" else "좋아요"
+                            selectedFeedback = next
+                            onFeedback(next)
+                        }) {
                             Icon(
-                                imageVector = Icons.Default.Favorite,
+                                imageVector = if (selectedFeedback == "좋아요")
+                                    Icons.Default.Favorite
+                                else
+                                    Icons.Default.FavoriteBorder,
                                 contentDescription = "좋아요",
-                                tint = Color(0xFFFF5C8D),
+                                tint = if (selectedFeedback == "좋아요")
+                                    Color(0xFFFF5C8D)
+                                else
+                                    Color.LightGray,
                                 modifier = Modifier.size(26.dp)
                             )
                         }
-                        IconButton(onClick = { /* TODO: S14P21E108-172 비선호 */ }) {
+                        // 싫어요 버튼
+                        IconButton(onClick = {
+                            val next = if (selectedFeedback == "싫어요") "보통" else "싫어요"
+                            selectedFeedback = next
+                            onFeedback(next)
+                        }) {
                             Icon(
                                 imageVector = Icons.Default.ThumbDown,
-                                contentDescription = "비선호",
-                                tint = Color.LightGray,
+                                contentDescription = "싫어요",
+                                tint = if (selectedFeedback == "싫어요")
+                                    Color(0xFFFF6B6B)
+                                else
+                                    Color.LightGray,
                                 modifier = Modifier.size(26.dp)
                             )
                         }

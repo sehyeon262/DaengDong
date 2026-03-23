@@ -81,6 +81,7 @@ import com.frontend.domain.model.DangerZone
 import com.frontend.domain.model.NearbyDogResponse
 import com.frontend.ui.component.MapOverlayButton
 import com.frontend.ui.screen.walk.components.DangerReportModal
+import com.frontend.ui.screen.walk.components.DogWarningDialog
 import com.frontend.ui.screen.walk.components.NearbyDogProfilePopup
 import com.frontend.ui.screen.walk.components.PlaceDetailBottomSheet
 import com.frontend.ui.screen.walk.components.ProposalAcceptedDialog
@@ -113,6 +114,7 @@ import com.kakao.vectormap.shape.PolylineStyle
 @Composable
 fun WalkScreen(
     onNavigateToRecord: () -> Unit = {},
+    onNavigateToWalkDetail: (Long) -> Unit = {},
     onNavigateToHome: () -> Unit = {},
     viewModel: WalkViewModel = hiltViewModel(),
 ) {
@@ -625,7 +627,8 @@ fun WalkScreen(
                 proposalSent = state.proposalSentDogId == dog.dogId,
                 isSendingProposal = state.isSendingProposal,
                 onDismiss = { viewModel.dismissDogProfile() },
-                onPropose = { viewModel.sendProposal(dog.walkRecordId, dog.dogId) }
+                onPropose = { viewModel.sendProposal(dog.walkRecordId, dog.dogId) },
+                onFeedback = { feedback -> viewModel.updateFeedback(dog.dogId, feedback) },
             )
         }
 
@@ -643,6 +646,14 @@ fun WalkScreen(
             ProposalAcceptedDialog(
                 accepted = accepted,
                 onDismiss = { viewModel.dismissAcceptedProposal(accepted.proposalId) }
+            )
+        }
+
+        // ── 11. 비선호 강아지 경고 다이얼로그 (S14P21E108-175) ──────────
+        state.warningDog?.let { dog ->
+            DogWarningDialog(
+                dog = dog,
+                onDismiss = { viewModel.dismissWarning() },
             )
         }
 
@@ -666,14 +677,27 @@ fun WalkScreen(
                 state = state,
                 onRating = { viewModel.setWalkRating(it) },
                 onNavigateToRecord = {
+                    val walkId = state.summaryWalkId
                     viewModel.dismissWalkSummary()
-                    onNavigateToRecord()
+                    if (walkId != null) {
+                        onNavigateToWalkDetail(walkId)
+                    } else {
+                        onNavigateToRecord()
+                    }
                 },
                 onNavigateToHome = {
                     viewModel.dismissWalkSummary()
                     onNavigateToHome()
                 },
                 onDismiss = { viewModel.dismissWalkSummary() }
+            )
+        }
+
+        // ── 8. 배지 획득 팝업 ────────────────────────────────────────
+        if (state.newBadges.isNotEmpty()) {
+            BadgeEarnedDialog(
+                badges = state.newBadges,
+                onDismiss = { viewModel.dismissNewBadges() }
             )
         }
     }
@@ -1197,8 +1221,9 @@ private suspend fun addNearbyDogMarker(
 ): Label? {
     val position = LatLng.from(dog.latitude, dog.longitude)
     val markerSize = 80
+    val isDisliked = dog.feedback == "싫어요"
 
-    val bitmap = if (!dog.profileImageUrl.isNullOrBlank()) {
+    val circleBitmap = if (!dog.profileImageUrl.isNullOrBlank()) {
         try {
             val loader = coil.ImageLoader(context)
             val request = coil.request.ImageRequest.Builder(context)
@@ -1216,10 +1241,43 @@ private suspend fun addNearbyDogMarker(
         fallbackMarkerBitmap(context, dog.dogId, markerSize)
     }
 
-    val style = LabelStyle.from(bitmap).setAnchorPoint(0.5f, 0.5f)
+    // 비선호 강아지는 빨간 테두리 + 외곽 글로우 효과 적용
+    val finalBitmap = if (isDisliked) addDislikedRing(circleBitmap) else circleBitmap
+
+    val style = LabelStyle.from(finalBitmap).setAnchorPoint(0.5f, 0.5f)
     val styles = LabelStyles.from(style)
     val options = LabelOptions.from(position).setStyles(styles).setTag(dog)
     return kakaoMap.labelManager?.layer?.addLabel(options)
+}
+
+/**
+ * 비선호 강아지 마커 — 빨간 반투명 외곽 원(글로우) + 빨간 테두리를 덧그림
+ */
+private fun addDislikedRing(src: android.graphics.Bitmap): android.graphics.Bitmap {
+    val glowPadding = 18   // 외곽 글로우 여백
+    val borderWidth = 5    // 빨간 테두리 두께
+    val total = src.width + glowPadding * 2
+    val output = android.graphics.Bitmap.createBitmap(total, total, android.graphics.Bitmap.Config.ARGB_8888)
+    val canvas = android.graphics.Canvas(output)
+
+    // 1) 반투명 빨간 글로우 원
+    val glowPaint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+        color = android.graphics.Color.argb(80, 255, 80, 80)
+    }
+    canvas.drawCircle(total / 2f, total / 2f, total / 2f, glowPaint)
+
+    // 2) 불투명 빨간 테두리 원
+    val borderPaint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+        color = android.graphics.Color.argb(220, 255, 80, 80)
+    }
+    val radius = src.width / 2f + borderWidth
+    canvas.drawCircle(total / 2f, total / 2f, radius, borderPaint)
+
+    // 3) 원본 이미지 중앙에 합성
+    val imgPaint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG)
+    canvas.drawBitmap(src, glowPadding.toFloat(), glowPadding.toFloat(), imgPaint)
+
+    return output
 }
 
 private fun fallbackMarkerBitmap(
@@ -1251,4 +1309,92 @@ private fun createDogMarkerBitmap(context: android.content.Context): android.gra
     val aspectRatio = source.width.toFloat() / source.height.toFloat()
     val targetWidth = (targetHeight * aspectRatio).toInt()
     return source.scale(targetWidth, targetHeight)
+}
+
+// ── 배지 획득 팝업 ───────────────────────────────────────────────────────────
+@Composable
+private fun BadgeEarnedDialog(
+    badges: List<com.frontend.domain.model.NewBadgeInfo>,
+    onDismiss: () -> Unit
+) {
+    val badge = badges.first()
+
+    androidx.compose.ui.window.Dialog(onDismissRequest = onDismiss) {
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            shape = RoundedCornerShape(20.dp),
+            colors = CardDefaults.cardColors(containerColor = Color.White)
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(24.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Text(
+                    "배지를 획득했어요!",
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = TextMain
+                )
+
+                Spacer(Modifier.height(20.dp))
+
+                val badgeDrawable = when (badge.badgeId) {
+                    1L -> R.drawable.badge1
+                    2L -> R.drawable.badge2
+                    3L -> R.drawable.badge3
+                    4L -> R.drawable.badge4
+                    5L -> R.drawable.badge5
+                    6L -> R.drawable.badge6
+                    7L -> R.drawable.badge7
+                    8L -> R.drawable.badge8
+                    9L -> R.drawable.badge9
+                    else -> R.drawable.badge1
+                }
+
+                Image(
+                    painter = painterResource(badgeDrawable),
+                    contentDescription = badge.badgeName,
+                    modifier = Modifier.size(120.dp),
+                    contentScale = ContentScale.Crop
+                )
+
+                Spacer(Modifier.height(16.dp))
+
+                Text(
+                    badge.badgeName,
+                    fontSize = 20.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = TextMain
+                )
+
+                Spacer(Modifier.height(8.dp))
+
+                Text(
+                    badge.description,
+                    fontSize = 14.sp,
+                    color = com.frontend.ui.theme.TextGray,
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                )
+
+                Spacer(Modifier.height(20.dp))
+
+                Button(
+                    onClick = onDismiss,
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = PointGreen)
+                ) {
+                    Text(
+                        "확인했어요!",
+                        color = Color.White,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                }
+            }
+        }
+    }
 }
