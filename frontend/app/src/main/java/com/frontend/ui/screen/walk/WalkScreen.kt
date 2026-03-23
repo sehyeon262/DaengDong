@@ -81,6 +81,7 @@ import com.frontend.domain.model.DangerZone
 import com.frontend.domain.model.NearbyDogResponse
 import com.frontend.ui.component.MapOverlayButton
 import com.frontend.ui.screen.walk.components.DangerReportModal
+import com.frontend.ui.screen.walk.components.DogWarningDialog
 import com.frontend.ui.screen.walk.components.NearbyDogProfilePopup
 import com.frontend.ui.screen.walk.components.PlaceDetailBottomSheet
 import com.frontend.ui.screen.walk.components.ProposalAcceptedDialog
@@ -626,7 +627,8 @@ fun WalkScreen(
                 proposalSent = state.proposalSentDogId == dog.dogId,
                 isSendingProposal = state.isSendingProposal,
                 onDismiss = { viewModel.dismissDogProfile() },
-                onPropose = { viewModel.sendProposal(dog.walkRecordId, dog.dogId) }
+                onPropose = { viewModel.sendProposal(dog.walkRecordId, dog.dogId) },
+                onFeedback = { feedback -> viewModel.updateFeedback(dog.dogId, feedback) },
             )
         }
 
@@ -644,6 +646,14 @@ fun WalkScreen(
             ProposalAcceptedDialog(
                 accepted = accepted,
                 onDismiss = { viewModel.dismissAcceptedProposal(accepted.proposalId) }
+            )
+        }
+
+        // ── 11. 비선호 강아지 경고 다이얼로그 (S14P21E108-175) ──────────
+        state.warningDog?.let { dog ->
+            DogWarningDialog(
+                dog = dog,
+                onDismiss = { viewModel.dismissWarning() },
             )
         }
 
@@ -1211,8 +1221,9 @@ private suspend fun addNearbyDogMarker(
 ): Label? {
     val position = LatLng.from(dog.latitude, dog.longitude)
     val markerSize = 80
+    val isDisliked = dog.feedback == "싫어요"
 
-    val bitmap = if (!dog.profileImageUrl.isNullOrBlank()) {
+    val circleBitmap = if (!dog.profileImageUrl.isNullOrBlank()) {
         try {
             val loader = coil.ImageLoader(context)
             val request = coil.request.ImageRequest.Builder(context)
@@ -1230,10 +1241,43 @@ private suspend fun addNearbyDogMarker(
         fallbackMarkerBitmap(context, dog.dogId, markerSize)
     }
 
-    val style = LabelStyle.from(bitmap).setAnchorPoint(0.5f, 0.5f)
+    // 비선호 강아지는 빨간 테두리 + 외곽 글로우 효과 적용
+    val finalBitmap = if (isDisliked) addDislikedRing(circleBitmap) else circleBitmap
+
+    val style = LabelStyle.from(finalBitmap).setAnchorPoint(0.5f, 0.5f)
     val styles = LabelStyles.from(style)
     val options = LabelOptions.from(position).setStyles(styles).setTag(dog)
     return kakaoMap.labelManager?.layer?.addLabel(options)
+}
+
+/**
+ * 비선호 강아지 마커 — 빨간 반투명 외곽 원(글로우) + 빨간 테두리를 덧그림
+ */
+private fun addDislikedRing(src: android.graphics.Bitmap): android.graphics.Bitmap {
+    val glowPadding = 18   // 외곽 글로우 여백
+    val borderWidth = 5    // 빨간 테두리 두께
+    val total = src.width + glowPadding * 2
+    val output = android.graphics.Bitmap.createBitmap(total, total, android.graphics.Bitmap.Config.ARGB_8888)
+    val canvas = android.graphics.Canvas(output)
+
+    // 1) 반투명 빨간 글로우 원
+    val glowPaint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+        color = android.graphics.Color.argb(80, 255, 80, 80)
+    }
+    canvas.drawCircle(total / 2f, total / 2f, total / 2f, glowPaint)
+
+    // 2) 불투명 빨간 테두리 원
+    val borderPaint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+        color = android.graphics.Color.argb(220, 255, 80, 80)
+    }
+    val radius = src.width / 2f + borderWidth
+    canvas.drawCircle(total / 2f, total / 2f, radius, borderPaint)
+
+    // 3) 원본 이미지 중앙에 합성
+    val imgPaint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG)
+    canvas.drawBitmap(src, glowPadding.toFloat(), glowPadding.toFloat(), imgPaint)
+
+    return output
 }
 
 private fun fallbackMarkerBitmap(

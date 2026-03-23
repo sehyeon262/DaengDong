@@ -253,6 +253,13 @@ public class WalkService {
                 inProgressWalks.size(), myDogId, lat, lon, radius);
         List<NearbyDogResponse> nearbyDogs = new ArrayList<>();
 
+        // 내 피드백 목록 일괄 로드 (N+1 방지) — myDogId가 없으면 빈 맵
+        Map<Long, String> myFeedbackMap = new java.util.HashMap<>();
+        if (myDogId != null) {
+            metDogRepository.findAllBySourceDogId(myDogId)
+                    .forEach(md -> myFeedbackMap.put(md.getTargetDogId(), md.getFeedback().name()));
+        }
+
         for (WalkRecord walk : inProgressWalks) {
             if (walk.getDogId().equals(myDogId)) {
                 continue;
@@ -281,6 +288,7 @@ public class WalkService {
             if (dogOpt.isEmpty()) continue;
             Dog dog = dogOpt.get();
 
+            String feedback = myFeedbackMap.get(dog.getId());
             nearbyDogs.add(new NearbyDogResponse(
                     dog.getId(),
                     dog.getName(),
@@ -289,7 +297,8 @@ public class WalkService {
                     dogLat,
                     dogLon,
                     Math.round(distance * 10.0) / 10.0,
-                    walk.getId()
+                    walk.getId(),
+                    feedback
             ));
         }
         log.debug("[nearbyDogs] 최종 결과: {}마리", nearbyDogs.size());
@@ -481,9 +490,14 @@ public class WalkService {
         WalkRecord myRecord = walkRecordRepository.findById(request.getMyWalkRecordId())
                 .orElseThrow(WalkNotFoundException::new);
 
+        // met_dogs 레코드가 없으면 보통으로 자동 생성 후 피드백 갱신 (upsert)
         MetDog metDog = metDogRepository
                 .findBySourceDogIdAndTargetDogId(myRecord.getDogId(), request.getTargetDogId())
-                .orElseThrow(MetDogNotFoundException::new);
+                .orElseGet(() -> metDogRepository.save(MetDog.builder()
+                        .latestWalkRecord(myRecord)
+                        .targetDogId(request.getTargetDogId())
+                        .feedback(Feedback.보통)
+                        .build()));
 
         metDog.updateFeedback(request.getFeedback());
     }

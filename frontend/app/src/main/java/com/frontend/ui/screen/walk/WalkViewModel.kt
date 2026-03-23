@@ -11,6 +11,7 @@ import androidx.lifecycle.viewModelScope
 import com.frontend.data.local.TokenDataStore
 import com.frontend.data.repository.DogRepository
 import com.frontend.data.repository.WalkRepository
+import com.frontend.domain.model.FeedbackRequest
 import com.frontend.domain.model.NearbyDogResponse
 import com.frontend.domain.model.PendingProposalInfo
 import com.frontend.domain.model.DangerLocation
@@ -561,13 +562,36 @@ class WalkViewModel @Inject constructor(
                 lon = pos.longitude,
                 myWalkRecordId = walkId,
             ).onSuccess { response ->
-                _state.update { it.copy(
-                    nearbyDogs = response.nearbyDogs,
-                    pendingProposals = response.pendingProposals,
-                    acceptedProposals = response.acceptedProposals,
-                ) }
+                android.util.Log.d("WalkVM", "nearbyDogs 조회 성공: ${response.nearbyDogs.size}마리")
+                _state.update {
+                    it.copy(
+                        nearbyDogs = response.nearbyDogs,
+                        pendingProposals = response.pendingProposals,
+                        acceptedProposals = response.acceptedProposals,
+                    )
+                }
+
+                // 비선호 강아지가 주변에 있으면 경고 (세션 내 강아지당 1회)
+                val shownIds = _state.value.shownWarningDogIds
+                val dislikedDog = response.nearbyDogs
+                    .firstOrNull { it.feedback == "싫어요" && it.dogId !in shownIds }
+                if (dislikedDog != null) {
+                    _state.update {
+                        it.copy(
+                            warningDog = dislikedDog,
+                            shownWarningDogIds = it.shownWarningDogIds + dislikedDog.dogId,
+                        )
+                    }
+                }
+            }.onFailure { e ->
+                android.util.Log.e("WalkVM", "nearbyDogs 조회 실패: ${e.message}", e)
             }
         }
+    }
+
+    /** 비선호 강아지 경고 다이얼로그 닫기 */
+    fun dismissWarning() {
+        _state.update { it.copy(warningDog = null) }
     }
 
     /** 5초 간격 폴링 시작 */
@@ -598,6 +622,22 @@ class WalkViewModel @Inject constructor(
     /** 팝업 닫기 */
     fun dismissDogProfile() {
         _state.update { it.copy(selectedNearbyDog = null, dogPublicProfile = null, isDogProfileLoading = false) }
+    }
+
+    /** 궁합 피드백 저장 — 좋아요 / 보통 / 싫어요 */
+    fun updateFeedback(targetDogId: Long, feedback: String) {
+        val walkId = currentWalkId ?: return
+        viewModelScope.launch {
+            walkRepository.updateFeedback(
+                FeedbackRequest(
+                    targetDogId = targetDogId,
+                    myWalkRecordId = walkId,
+                    feedback = feedback,
+                )
+            ).onFailure { e ->
+                android.util.Log.e("WalkVM", "피드백 저장 실패: ${e.message}", e)
+            }
+        }
     }
 
     private fun loadDogPublicProfile(dogId: Long) {

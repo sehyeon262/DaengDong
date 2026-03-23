@@ -9,6 +9,7 @@ data class NearbyDogResponse(
     val longitude: Double,
     val distanceM: Double,
     val walkRecordId: Long,
+    val feedback: String? = null,  // "좋아요" | "보통" | "싫어요" | null
 )
 
 data class PendingProposalInfo(
