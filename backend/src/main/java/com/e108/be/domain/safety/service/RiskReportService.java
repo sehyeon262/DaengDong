@@ -1,5 +1,6 @@
 package com.e108.be.domain.safety.service;
 
+import com.e108.be.domain.badge.service.BadgeService;
 import com.e108.be.domain.safety.dto.request.CreateRiskReportRequest;
 import com.e108.be.domain.safety.dto.response.RiskReportResponse;
 import com.e108.be.domain.safety.entity.RiskReport;
@@ -30,6 +31,7 @@ public class RiskReportService {
 
     private final RiskReportRepository riskReportRepository;
     private final WalkRecordRepository walkRecordRepository;
+    private final BadgeService badgeService;
 
     /**
      * 위험 구역 신고 생성
@@ -66,7 +68,11 @@ public class RiskReportService {
                 .build();
 
         RiskReport saved = riskReportRepository.save(riskReport);
-        return RiskReportResponse.from(saved);
+
+        // 배지 체크
+        var newBadges = badgeService.checkRiskReportBadges(userId);
+
+        return RiskReportResponse.from(saved, newBadges);
     }
 
     /**
