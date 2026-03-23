@@ -66,6 +66,10 @@ data class WalkState(
     val pendingProposals: List<PendingProposalInfo> = emptyList(),   // 받은 제안 목록
     val acceptedProposals: List<AcceptedProposalInfo> = emptyList(), // 수락된 제안 알림
 
+    // ── 비선호 강아지 경고 (S14P21E108-175) ─────────────────────────────────
+    val warningDog: NearbyDogResponse? = null,             // 현재 경고 표시 중인 비선호 강아지
+    val shownWarningDogIds: Set<Long> = emptySet(),        // 이미 경고를 띄운 dogId (중복 방지)
+
     // ── 위험 구역 신고 ────────────────────────────────────────────────────────
     val isSelectingDangerZone: Boolean = false,       // 위치 선택 모드 여부
     val selectedLocation: DangerLocation? = null,     // 선택된 좌표 (지도 중심)
