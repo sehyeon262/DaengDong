@@ -57,6 +57,7 @@ fun CharacterSection(
     val showBest = walkStatus == "GREAT"
     val showSun = sky == "SUNNY" && walkStatus == "CAUTION" && temperature >= 28
     val showRain = sky in listOf("RAINY", "SNOWY")
+    val showDust = characterRes == R.drawable.dust
 
     // 애니메이션
     val infiniteTransition = rememberInfiniteTransition(label = "decoration")
@@ -105,6 +106,34 @@ fun CharacterSection(
             repeatMode = RepeatMode.Reverse
         ),
         label = "rainRight"
+    )
+    // dust 양쪽 둥둥 애니메이션
+    val dustLeftOffset by infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = -10f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(2000, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "dustLeft"
+    )
+    val dustRightOffset by infiniteTransition.animateFloat(
+        initialValue = -8f,
+        targetValue = 4f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(2400, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "dustRight"
+    )
+    val dustAlpha by infiniteTransition.animateFloat(
+        initialValue = 0.6f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(1800, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "dustAlpha"
     )
 
     Column(
@@ -199,6 +228,30 @@ fun CharacterSection(
                         .size(55.dp)
                         .align(Alignment.TopEnd)
                         .offset(x = (-8).dp, y = (40 + rainRightOffset).dp),
+                    contentScale = ContentScale.Fit
+                )
+            }
+
+            // DUST - 먼지 아이콘 양쪽
+            if (showDust) {
+                Image(
+                    painter = painterResource(id = R.drawable.dust_icon),
+                    contentDescription = "먼지 왼쪽",
+                    alpha = dustAlpha,
+                    modifier = Modifier
+                        .size(60.dp)
+                        .align(Alignment.CenterStart)
+                        .offset(x = 2.dp, y = (dustLeftOffset).dp),
+                    contentScale = ContentScale.Fit
+                )
+                Image(
+                    painter = painterResource(id = R.drawable.dust_icon),
+                    contentDescription = "먼지 오른쪽",
+                    alpha = dustAlpha,
+                    modifier = Modifier
+                        .size(50.dp)
+                        .align(Alignment.CenterEnd)
+                        .offset(x = (-4).dp, y = (dustRightOffset).dp),
                     contentScale = ContentScale.Fit
                 )
             }
