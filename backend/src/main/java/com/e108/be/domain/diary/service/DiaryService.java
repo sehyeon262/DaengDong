@@ -11,17 +11,22 @@ import com.e108.be.domain.walk.entity.WalkStatus;
 import com.e108.be.domain.walk.exception.WalkNotFoundException;
 import com.e108.be.domain.walk.repository.WalkRecordRepository;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.math.BigDecimal;
 
 @Service
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
+@Slf4j
 public class DiaryService {
 
-    private static final double MIN_DISTANCE_METERS = 300.0;
+    // TODO: 테스트 후 300.0으로 복원
+    private static final double MIN_DISTANCE_METERS = 0.0;
 
     private final DiaryRepository diaryRepository;
     private final WalkRecordRepository walkRecordRepository;
@@ -30,9 +35,10 @@ public class DiaryService {
 
     @Transactional
     public void createDiaryIfEligible(Long walkId, Long dogId, BigDecimal totalDistance) {
-        if (totalDistance == null || totalDistance.doubleValue() < MIN_DISTANCE_METERS) {
-            return;
-        }
+        // TODO: 테스트 후 원래 조건으로 복원
+        // if (totalDistance == null || totalDistance.doubleValue() < MIN_DISTANCE_METERS) {
+        //     return;
+        // }
         if (diaryRepository.existsByWalkId(walkId)) {
             return;
         }
@@ -43,7 +49,15 @@ public class DiaryService {
                 .build();
         diaryRepository.save(diary);
 
-        diaryGenerationWorker.generate(diary.getId(), walkId, dogId);
+        // 트랜잭션 커밋 후 비동기 일기 생성 (커밋 전에 호출하면 diary를 못 찾음)
+        final Long diaryId = diary.getId();
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCommit() {
+                log.info("트랜잭션 커밋 완료 → 일기 비동기 생성 시작: diaryId={}, walkId={}", diaryId, walkId);
+                diaryGenerationWorker.generate(diaryId, walkId, dogId);
+            }
+        });
     }
 
     /**
@@ -73,7 +87,14 @@ public class DiaryService {
                 .build();
         diaryRepository.save(diary);
 
-        diaryGenerationWorker.generate(diary.getId(), walkId, walk.getDogId());
+        final Long diaryId = diary.getId();
+        final Long dogIdForGen = walk.getDogId();
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCommit() {
+                diaryGenerationWorker.generate(diaryId, walkId, dogIdForGen);
+            }
+        });
     }
 
     public DiaryResponse getDiary(Long walkId) {

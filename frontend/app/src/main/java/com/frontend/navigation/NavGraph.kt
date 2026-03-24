@@ -16,6 +16,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import com.frontend.ui.screen.badge.BadgeScreen
 import com.frontend.ui.screen.dog.DogEditScreen
 import com.frontend.ui.screen.dog.DogProfileScreen
 import com.frontend.ui.screen.dog.MetDogsScreen
@@ -45,8 +46,8 @@ fun NavGraph() {
     ) { innerPadding ->
         NavHost(
             navController = navController,
-            // TODO: (로그인 우회 : Routes.WALK) (원래: Routes.SPLASH)
-            startDestination = Routes.WALK,
+            // TODO: (로그인 우회 : Routes.SPLASH) (원래: Routes.SPLASH)
+            startDestination = Routes.SPLASH,
             modifier = Modifier.padding(innerPadding)
         ) {
             composable(Routes.SPLASH) {
@@ -62,12 +63,19 @@ fun NavGraph() {
                 WalkScreen(
                     onNavigateToRecord = {
                         navController.navigate(Routes.RECORD) {
-                            popUpTo(Routes.WALK) { inclusive = false }
+                            popUpTo(Routes.HOME) { saveState = true }
+                            launchSingleTop = true
+                            restoreState = true
                         }
+                    },
+                    onNavigateToWalkDetail = { walkId ->
+                        navController.navigate(Routes.walkDetail(walkId))
                     },
                     onNavigateToHome = {
                         navController.navigate(Routes.HOME) {
-                            popUpTo(Routes.WALK) { inclusive = false }
+                            popUpTo(Routes.HOME) { saveState = true }
+                            launchSingleTop = true
+                            restoreState = true
                         }
                     }
                 )
@@ -81,6 +89,9 @@ fun NavGraph() {
             }
             composable(Routes.MY_INFO) {
                 DogProfileScreen(navController = navController)
+            }
+            composable(Routes.BADGES) {
+                BadgeScreen(navController = navController)
             }
             composable(Routes.DOG_EDIT) {
                 DogEditScreen(navController = navController)

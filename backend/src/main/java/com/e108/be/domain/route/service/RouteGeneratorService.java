@@ -2,8 +2,10 @@ package com.e108.be.domain.route.service;
 
 import com.e108.be.domain.place.repository.NearbyPlaceProjection;
 import com.e108.be.domain.route.dto.response.*;
+import com.e108.be.domain.route.service.TmapPathService.PathResult;
 import com.e108.be.domain.route.util.GeoUtils;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 import java.util.*;
@@ -26,7 +28,10 @@ import java.util.stream.Collectors;
  */
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class RouteGeneratorService {
+
+    private final TmapPathService tmapPathService;
 
     private static final int SHORT_PLACE_COUNT = 3;
     private static final int RECOMMEND_PLACE_COUNT = 5;
@@ -171,6 +176,9 @@ public class RouteGeneratorService {
      * 현재 위치에서 가장 가까운 미방문 장소를 순차적으로 방문한 뒤 출발지로 복귀한다.
      *
      * 출발지 → (가장 가까운) 장소1 → 장소2 → ... → 출발지
+     *
+     * TMAP API를 통해 실제 도로 기반 경로를 조회하고,
+     * 실패 시 기존 직선 경로를 fallback으로 사용한다.
      */
     private RouteDetailResponse buildLoop(
             double originLat, double originLon,
@@ -180,7 +188,7 @@ public class RouteGeneratorService {
         // Nearest Neighbor로 방문 순서 결정
         List<NearbyPlaceProjection> ordered = nearestNeighborOrder(originLat, originLon, places);
 
-        // polyline 좌표: 출발지 → 각 장소 → 출발지
+        // preview polyline 좌표: 출발지 → 각 장소 → 출발지 (직선 연결)
         List<LatLng> polyline = new ArrayList<>();
         polyline.add(new LatLng(originLat, originLon));
         for (NearbyPlaceProjection p : ordered) {
@@ -188,6 +196,7 @@ public class RouteGeneratorService {
         }
         polyline.add(new LatLng(originLat, originLon));
 
+        // 기본값: Haversine 직선 거리
         int totalDistanceM = calculateTotalDistance(polyline);
         int estimatedMinutes = (int) Math.ceil(totalDistanceM / 67.0); // 4km/h 기준
 
@@ -195,6 +204,28 @@ public class RouteGeneratorService {
                 .map(RoutePlaceResponse::from)
                 .toList();
 
+        // TMAP으로 실제 도보 경로 조회 시도
+        LatLng origin = new LatLng(originLat, originLon);
+        PathResult pathResult = tmapPathService.getWalkingPath(origin, placeResponses);
+
+        if (pathResult != null) {
+            // TMAP 성공: 실제 도로 기반 경로 사용
+            log.debug("TMAP 경로 적용: {} - {}m, {}분", name, pathResult.totalDistanceM(), pathResult.estimatedMinutes());
+            return RouteDetailResponse.builder()
+                    .name(name)
+                    .type(type)
+                    .totalDistanceM(pathResult.totalDistanceM())
+                    .estimatedMinutes(pathResult.estimatedMinutes())
+                    .places(placeResponses)
+                    .polyline(polyline) // 기존 직선 경로 (preview용 유지)
+                    .actualPathPoints(pathResult.pathPoints())
+                    .provider(pathResult.provider())
+                    .roadBased(pathResult.roadBased())
+                    .build();
+        }
+
+        // TMAP 실패: 기존 직선 경로 사용
+        log.debug("직선 경로 사용 (TMAP 실패 또는 비활성화): {}", name);
         return RouteDetailResponse.builder()
                 .name(name)
                 .type(type)
@@ -202,6 +233,8 @@ public class RouteGeneratorService {
                 .estimatedMinutes(estimatedMinutes)
                 .places(placeResponses)
                 .polyline(polyline)
+                .provider("preview")
+                .roadBased(false)
                 .build();
     }
 
@@ -252,7 +285,7 @@ public class RouteGeneratorService {
      * 방향 + 거리 기반 순수 산책 코스 생성
      *
      * 출발지 → 지정 방향/거리 지점 → 출발지 (왕복)
-     * TODO: Kakao 도보 길찾기 API 연동 시 실제 도보 경로로 교체
+     * TMAP API로 실제 도보 경로를 조회하고, 실패 시 직선 경로 사용
      */
     private RouteDetailResponse buildDirectionalWalk(
             double originLat, double originLon,
@@ -260,6 +293,7 @@ public class RouteGeneratorService {
 
         double[] destination = GeoUtils.destinationPoint(originLat, originLon, bearingDeg, distanceM);
 
+        // preview polyline (직선)
         List<LatLng> polyline = List.of(
                 new LatLng(originLat, originLon),
                 new LatLng(destination[0], destination[1]),
@@ -269,6 +303,27 @@ public class RouteGeneratorService {
         int totalDistanceM = (int) (distanceM * 2);
         int estimatedMinutes = (int) Math.ceil(totalDistanceM / 67.0);
 
+        // TMAP으로 실제 도보 경로 조회 시도
+        LatLng origin = new LatLng(originLat, originLon);
+        LatLng dest = new LatLng(destination[0], destination[1]);
+        PathResult pathResult = tmapPathService.getDirectionalWalkingPath(origin, dest);
+
+        if (pathResult != null) {
+            log.debug("TMAP 순수 산책 경로 적용: {} - {}m, {}분", name, pathResult.totalDistanceM(), pathResult.estimatedMinutes());
+            return RouteDetailResponse.builder()
+                    .name(name)
+                    .type(RouteType.WALK_ONLY)
+                    .totalDistanceM(pathResult.totalDistanceM())
+                    .estimatedMinutes(pathResult.estimatedMinutes())
+                    .places(List.of())
+                    .polyline(polyline)
+                    .actualPathPoints(pathResult.pathPoints())
+                    .provider(pathResult.provider())
+                    .roadBased(pathResult.roadBased())
+                    .build();
+        }
+
+        log.debug("직선 경로 사용 (순수 산책): {}", name);
         return RouteDetailResponse.builder()
                 .name(name)
                 .type(RouteType.WALK_ONLY)
@@ -276,6 +331,8 @@ public class RouteGeneratorService {
                 .estimatedMinutes(estimatedMinutes)
                 .places(List.of())
                 .polyline(polyline)
+                .provider("preview")
+                .roadBased(false)
                 .build();
     }
 

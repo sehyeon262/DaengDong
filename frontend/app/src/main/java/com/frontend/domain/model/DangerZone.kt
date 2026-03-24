@@ -19,3 +19,13 @@ data class DangerZone(
     val reason: DangerReason,
     val customReason: String? = null
 )
+
+/** 백엔드 RiskReportResponse와 매핑되는 서버 응답 DTO */
+data class RiskReportData(
+    val riskReportId: Long,
+    val walkSessionId: Long?,
+    val latitude: Double,
+    val longitude: Double,
+    val description: String,
+    val createdAt: String
+)

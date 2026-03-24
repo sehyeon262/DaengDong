@@ -40,4 +40,11 @@ class DogRepository @Inject constructor(
             ?: throw Exception("로그인이 필요합니다")
         dogApi.updateTraits("Bearer $token", dogId, UpdateTraitsRequest(traits))
     }
+
+    suspend fun fetchPublicDogProfile(dogId: Long): Result<DogProfileResponse> = runCatching {
+        val token = tokenDataStore.getAccessToken().first()
+            ?: throw Exception("로그인이 필요합니다")
+        val response = dogApi.getPublicDogProfile("Bearer $token", dogId)
+        response.data ?: throw Exception("강아지 정보를 불러올 수 없습니다")
+    }
 }

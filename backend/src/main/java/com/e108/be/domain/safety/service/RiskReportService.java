@@ -1,7 +1,10 @@
 package com.e108.be.domain.safety.service;
 
+import com.e108.be.domain.badge.service.BadgeService;
 import com.e108.be.domain.safety.dto.request.CreateRiskReportRequest;
 import com.e108.be.domain.safety.dto.response.RiskReportResponse;
+import java.util.List;
+import java.util.stream.Collectors;
 import com.e108.be.domain.safety.entity.RiskReport;
 import com.e108.be.domain.safety.exception.InvalidCoordinateException;
 import com.e108.be.domain.safety.exception.InvalidDescriptionException;
@@ -30,6 +33,7 @@ public class RiskReportService {
 
     private final RiskReportRepository riskReportRepository;
     private final WalkRecordRepository walkRecordRepository;
+    private final BadgeService badgeService;
 
     /**
      * 위험 구역 신고 생성
@@ -66,7 +70,23 @@ public class RiskReportService {
                 .build();
 
         RiskReport saved = riskReportRepository.save(riskReport);
-        return RiskReportResponse.from(saved);
+
+        // 배지 체크
+        var newBadges = badgeService.checkRiskReportBadges(userId);
+
+        return RiskReportResponse.from(saved, newBadges);
+    }
+
+    /**
+     * 현재 위치 기준 반경 내 위험 구역 목록 조회
+     * GET /api/v1/safety/risk-zones
+     */
+    public List<RiskReportResponse> getRiskZones(double latitude, double longitude, double radiusMeters) {
+        validateCoordinates(latitude, longitude);
+        return riskReportRepository.findWithinRadius(latitude, longitude, radiusMeters)
+                .stream()
+                .map(RiskReportResponse::from)
+                .collect(Collectors.toList());
     }
 
     /**

@@ -2,6 +2,12 @@ package com.frontend.ui.screen.walk
 
 import android.Manifest
 import android.content.pm.PackageManager
+import android.os.Build
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -23,6 +29,8 @@ import androidx.compose.material.icons.automirrored.filled.DirectionsWalk
 import androidx.compose.material.icons.filled.FilterAlt
 import androidx.compose.material.icons.filled.GpsFixed
 import androidx.compose.material.icons.filled.Navigation
+import androidx.compose.material.icons.filled.Route
+import androidx.compose.material.icons.outlined.Route
 import androidx.compose.material.icons.filled.LocalFireDepartment
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.Pets
@@ -77,8 +85,17 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.frontend.R
 import com.frontend.domain.model.DangerLocation
 import com.frontend.domain.model.DangerZone
+import com.frontend.domain.model.NearbyDogResponse
 import com.frontend.ui.component.MapOverlayButton
 import com.frontend.ui.screen.walk.components.DangerReportModal
+import com.frontend.ui.screen.walk.components.DogWarningDialog
+import com.frontend.ui.screen.walk.components.NearbyDogProfilePopup
+import com.frontend.ui.screen.walk.components.PlaceDetailBottomSheet
+import com.frontend.ui.screen.walk.components.ProposalAcceptedByMeDialog
+import com.frontend.ui.screen.walk.components.ProposalAcceptedDialog
+import com.frontend.ui.screen.walk.components.ProposalIncomingDialog
+import com.frontend.ui.screen.walk.components.ProposalRejectedByMeDialog
+import com.frontend.ui.screen.walk.components.ProposalRejectedDialog
 import com.frontend.ui.screen.walk.components.WalkFilterBottomSheet
 import com.frontend.ui.screen.walk.components.WalkRouteCard
 import com.frontend.ui.screen.walk.components.WalkSearchBar
@@ -108,11 +125,12 @@ import com.kakao.vectormap.shape.PolylineStyle
 @Composable
 fun WalkScreen(
     onNavigateToRecord: () -> Unit = {},
+    onNavigateToWalkDetail: (Long) -> Unit = {},
     onNavigateToHome: () -> Unit = {},
     viewModel: WalkViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsState()
-    val routes = viewModel.routes
+    val routes = viewModel.getDisplayRoutes()
     val context = LocalContext.current
     val configuration = LocalConfiguration.current
     val screenWidth = configuration.screenWidthDp.dp
@@ -129,15 +147,21 @@ fun WalkScreen(
     // GPS 버튼 모드: 0=꺼짐, 1=위치 추적, 2=방향 추적(heading up)
     var gpsMode by remember { mutableStateOf(0) }
 
-    // 산책 경로 폴리라인
+    // 산책 경로 폴리라인 (실제 산책 중 GPS 트래킹)
     val routePoints by viewModel.routePoints.collectAsState()
     var routePolyline by remember { mutableStateOf<Polyline?>(null) }
+
+    // 추천 경로 미리보기 폴리라인
+    var recommendedRoutePolyline by remember { mutableStateOf<Polyline?>(null) }
 
     // 위험 구역 마커 목록 (강아지 마커와 분리 관리)
     val dangerZoneLabels = remember { mutableStateListOf<Label>() }
 
     // 장소 마커 목록 (PLACE 필터 on/off 시 추가/제거)
     val placeLabels = remember { mutableStateListOf<Label>() }
+
+    // 주변 강아지 마커 목록
+    val nearbyDogLabels = remember { mutableStateListOf<Label>() }
 
     // 위치 권한 요청 launcher - 허용 시 위치 트래킹 시작
     val locationPermissionLauncher = rememberLauncherForActivityResult(
@@ -147,6 +171,43 @@ fun WalkScreen(
                 || permissions[Manifest.permission.ACCESS_COARSE_LOCATION] == true
         if (granted) {
             viewModel.startLocationTracking()
+        }
+    }
+
+    // 미디어 읽기 권한 요청 launcher (산책 중 카메라 사진 자동 감지용)
+    val mediaPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        if (granted) viewModel.retryPhotoObserverIfWalking()
+    }
+
+    // 알림 권한 요청 launcher (Android 13+ 비선호 강아지 알림용)
+    val notificationPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        android.util.Log.d("WalkScreen", "알림 권한 요청 결과: $granted")
+    }
+
+    // 산책 시작 시 미디어 권한 + 알림 권한 확인 및 요청
+    LaunchedEffect(state.isWalking) {
+        if (state.isWalking) {
+            // 미디어 권한 요청
+            val mediaPermission = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                Manifest.permission.READ_MEDIA_IMAGES
+            } else {
+                Manifest.permission.READ_EXTERNAL_STORAGE
+            }
+            val hasMediaPermission = ActivityCompat.checkSelfPermission(context, mediaPermission) == PackageManager.PERMISSION_GRANTED
+            if (!hasMediaPermission) {
+                mediaPermissionLauncher.launch(mediaPermission)
+            }
+
+            // 알림 권한 요청 (Android 13+)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                if (viewModel.needsNotificationPermission()) {
+                    notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                }
+            }
         }
     }
 
@@ -196,6 +257,9 @@ fun WalkScreen(
             if (label != null) {
                 map.trackingManager?.startTracking(label)
             }
+
+            // 최초 위치 수신 시 추천 경로 로드
+            viewModel.loadRecommendedRoutes(pos.latitude, pos.longitude)
         } else {
             // 이후: moveTo()로 이동 (마커 사라짐 없이)
             currentLocationLabel?.moveTo(pos)
@@ -276,6 +340,68 @@ fun WalkScreen(
         }
     }
 
+    // 주변 강아지 마커: NEARBY_DOG 필터 활성화 시에만 표시
+    // 알림 기능은 필터와 무관하게 ViewModel에서 처리
+    // avoidAlertCandidate 마커는 생성 시 강조된 글로우 효과 적용 (addNearbyDogMarker에서 처리)
+    LaunchedEffect(state.nearbyDogs, state.activeFilters, kakaoMap) {
+        val map = kakaoMap ?: return@LaunchedEffect
+
+        // 기존 마커 전부 제거
+        nearbyDogLabels.forEach { it.remove() }
+        nearbyDogLabels.clear()
+
+        // NEARBY_DOG 필터가 활성화된 경우에만 마커 표시
+        if (WalkFilterType.NEARBY_DOG !in state.activeFilters) {
+            return@LaunchedEffect
+        }
+
+        state.nearbyDogs.forEach { dog ->
+            val label = addNearbyDogMarker(context, map, dog)
+            if (label != null) nearbyDogLabels.add(label)
+        }
+    }
+
+    // 비선호 강아지 마커 pulse 애니메이션
+    // KakaoMap Label 런타임 스타일 변경을 통해 구현
+    val avoidAlertDogIds = remember(state.nearbyDogs) {
+        state.nearbyDogs.filter { it.avoidAlertCandidate }.map { it.dogId }.toSet()
+    }
+
+    // Pulse 애니메이션 (2초 주기, scale 0.95 ~ 1.05)
+    LaunchedEffect(avoidAlertDogIds, state.activeFilters, kakaoMap) {
+        val map = kakaoMap ?: return@LaunchedEffect
+        if (WalkFilterType.NEARBY_DOG !in state.activeFilters || avoidAlertDogIds.isEmpty()) {
+            return@LaunchedEffect
+        }
+
+        // 천천히 왕복하는 pulse 효과 (2초 사이클)
+        var phase = 0
+        while (true) {
+            kotlinx.coroutines.delay(50L)  // 20fps
+            phase = (phase + 1) % 40  // 40 frames = 2초
+
+            // sine wave로 부드러운 scale 변화: 0.92 ~ 1.08
+            val scale = 1.0f + 0.08f * kotlin.math.sin(phase * kotlin.math.PI.toFloat() / 20f)
+
+            // avoidAlertCandidate 마커 스타일 업데이트
+            nearbyDogLabels.forEach { label ->
+                val dog = label.tag as? NearbyDogResponse ?: return@forEach
+                if (dog.avoidAlertCandidate) {
+                    try {
+                        // 마커 비트맵 재생성하여 스타일 적용
+                        val markerSize = (80 * scale).toInt()
+                        val bitmap = createPulsingAvoidMarkerBitmap(context, dog, markerSize)
+                        val style = LabelStyle.from(bitmap).setAnchorPoint(0.5f, 0.5f)
+                        val styles = LabelStyles.from(style)
+                        label.changeStyles(styles)
+                    } catch (e: Exception) {
+                        // 스타일 변경 실패 시 무시 (마커가 제거된 경우 등)
+                    }
+                }
+            }
+        }
+    }
+
     // 새 위험 구역이 추가될 때마다 지도에 깃발 마커 그리기 (기존 마커 유지)
     LaunchedEffect(state.dangerZones, kakaoMap) {
         val map = kakaoMap ?: return@LaunchedEffect
@@ -286,7 +412,7 @@ fun WalkScreen(
         }
     }
 
-    // 산책 경로 폴리라인 실시간 업데이트
+    // 산책 경로 폴리라인 실시간 업데이트 (GPS 트래킹)
     LaunchedEffect(routePoints, kakaoMap) {
         val map = kakaoMap ?: return@LaunchedEffect
 
@@ -312,6 +438,108 @@ fun WalkScreen(
             routePolyline = map.shapeManager?.layer?.addPolyline(
                 PolylineOptions.from(mapPoints, style)
             )
+        }
+    }
+
+    // 추천 경로 미리보기 폴리라인 (선택된 경로 변경 시 업데이트)
+    LaunchedEffect(state.selectedRouteIndex, state.recommendedRoutes, state.showRecommendedRoute, kakaoMap) {
+        val map = kakaoMap ?: return@LaunchedEffect
+
+        // 경로 표시 OFF이면 폴리라인 제거
+        if (!state.showRecommendedRoute) {
+            recommendedRoutePolyline?.let {
+                map.shapeManager?.layer?.remove(it)
+                recommendedRoutePolyline = null
+            }
+            return@LaunchedEffect
+        }
+
+        // 선택된 추천 경로 가져오기 (자유 산책이면 null)
+        val selectedRoute = viewModel.getSelectedRecommendedRoute()
+
+        // 추천 경로가 없으면 폴리라인 제거
+        if (selectedRoute == null) {
+            recommendedRoutePolyline?.let {
+                map.shapeManager?.layer?.remove(it)
+                recommendedRoutePolyline = null
+            }
+            return@LaunchedEffect
+        }
+
+        // 경로 포인트 가져오기 (actualPathPoints 우선, 없으면 polyline)
+        val pathPoints = selectedRoute.getPathPoints()
+        if (pathPoints.size < 2) {
+            recommendedRoutePolyline?.let {
+                map.shapeManager?.layer?.remove(it)
+                recommendedRoutePolyline = null
+            }
+            return@LaunchedEffect
+        }
+
+        // LatLngPoint를 KakaoMap LatLng로 변환
+        val latLngList = pathPoints.map { LatLng.from(it.latitude, it.longitude) }
+        val mapPoints = MapPoints.fromLatLng(latLngList)
+
+        // 기존 폴리라인 제거 후 새로 생성 (경로 전환 시 깔끔하게)
+        recommendedRoutePolyline?.let {
+            map.shapeManager?.layer?.remove(it)
+        }
+
+        // 추천 경로 스타일: 파란색 점선 느낌
+        val style = PolylineStyle.from(
+            12f,                                             // lineWidth
+            android.graphics.Color.argb(200, 66, 133, 244)  // 파란색 #4285F4
+        )
+        recommendedRoutePolyline = map.shapeManager?.layer?.addPolyline(
+            PolylineOptions.from(mapPoints, style)
+        )
+    }
+
+    // 장소 목록 변경 시: 마커 전체 교체 (PLACE 필터 ON → API 응답 도착)
+    LaunchedEffect(state.places, kakaoMap) {
+        val map = kakaoMap ?: return@LaunchedEffect
+        placeLabels.forEach { map.labelManager?.layer?.remove(it) }
+        placeLabels.clear()
+        if (state.places.isEmpty()) return@LaunchedEffect
+        state.places.forEach { place ->
+            val label = addPlaceMarker(context, map, place)
+            if (label != null) placeLabels.add(label)
+        }
+    }
+
+    // PLACE 필터 ON/OFF 처리
+    LaunchedEffect(state.activeFilters, kakaoMap) {
+        val map = kakaoMap ?: return@LaunchedEffect
+        if (WalkFilterType.PLACE in state.activeFilters) {
+            val center = map.cameraPosition?.position ?: return@LaunchedEffect
+            viewModel.loadPlacesByPosition(center.latitude, center.longitude)
+        } else {
+            placeLabels.forEach { map.labelManager?.layer?.remove(it) }
+            placeLabels.clear()
+        }
+    }
+
+    // 카메라 이동 완료 시 장소 재조회 + 마커 클릭 리스너 등록
+    LaunchedEffect(kakaoMap) {
+        val map = kakaoMap ?: return@LaunchedEffect
+        // 지도 이동 시 PLACE 필터 ON이면 새 중심 좌표로 장소 재조회
+        map.setOnCameraMoveEndListener { _, cameraPosition, _ ->
+            if (WalkFilterType.PLACE in viewModel.state.value.activeFilters) {
+                val center = cameraPosition.position
+                viewModel.loadPlacesByPosition(center.latitude, center.longitude)
+            }
+        }
+        // 마커 클릭 시 처리 (주변 강아지 / 장소 구분)
+        map.setOnLabelClickListener { _, _, label ->
+            val dog = label.tag as? NearbyDogResponse
+            if (dog != null) {
+                viewModel.selectNearbyDog(dog)
+                return@setOnLabelClickListener true
+            }
+            val placeId = label.tag as? Long
+            val place = viewModel.state.value.places.find { it.id == placeId }
+            if (place != null) viewModel.selectPlace(place)
+            true
         }
     }
 
@@ -426,6 +654,7 @@ fun WalkScreen(
                     // 산책 시작 버튼
                     Button(
                         onClick = { viewModel.startFreeWalk() },
+                        enabled = !state.isWalking,
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(screenHeight * 0.067f)
@@ -501,6 +730,12 @@ fun WalkScreen(
                     }
                 }
             )
+            // 추천 경로 표시 토글 버튼
+            MapOverlayButton(
+                icon = if (state.showRecommendedRoute) Icons.Filled.Route else Icons.Outlined.Route,
+                contentDescription = if (state.showRecommendedRoute) "경로 숨기기" else "경로 보기",
+                onClick = { viewModel.toggleRecommendedRouteVisibility() }
+            )
             MapOverlayButton(
                 icon = Icons.Filled.FilterAlt,
                 contentDescription = "필터",
@@ -508,13 +743,82 @@ fun WalkScreen(
             )
         }
 
-        // ── 5. 필터 바텀시트 ────────────────────────────────────────────
+        // ── 5. `필터 바텀`시트 ────────────────────────────────────────────
         if (state.showFilterSheet) {
             WalkFilterBottomSheet(
                 activeFilters = state.pendingFilters,
                 onFilterToggle = { viewModel.toggleFilter(it) },
                 onApply = { viewModel.applyFilter() },
                 onDismiss = { viewModel.hideFilter() }
+            )
+        }
+
+        // ── 7. 장소 상세 바텀시트 ───────────────────────────────────────
+        state.selectedPlace?.let { place ->
+            PlaceDetailBottomSheet(
+                place = place,
+                onDismiss = { viewModel.dismissPlaceDetail() }
+            )
+        }
+
+        // ── 8. 주변 강아지 공개 프로필 팝업 ─────────────────────────────
+        state.selectedNearbyDog?.let { dog ->
+            NearbyDogProfilePopup(
+                nearbyDog = dog,
+                profile = state.dogPublicProfile,
+                isLoading = state.isDogProfileLoading,
+                proposalSent = state.proposalSentDogId == dog.dogId,
+                isSendingProposal = state.isSendingProposal,
+                onDismiss = { viewModel.dismissDogProfile() },
+                onPropose = { viewModel.sendProposal(dog.walkRecordId, dog.dogId) },
+                onFeedback = { feedback -> viewModel.updateFeedback(dog.dogId, feedback) },
+            )
+        }
+
+        // ── 9. 받은 산책 제안 다이얼로그 ────────────────────────────────
+        state.pendingProposals.firstOrNull()?.let { proposal ->
+            ProposalIncomingDialog(
+                proposal = proposal,
+                onAccept = { viewModel.acceptProposal(proposal) },
+                onReject = { viewModel.rejectProposal(proposal) }
+            )
+        }
+
+        // ── 10. 제안자 — 수락 알림 다이얼로그 (polling) ─────────────────
+        state.acceptedProposals.firstOrNull()?.let { accepted ->
+            ProposalAcceptedDialog(
+                accepted = accepted,
+                onDismiss = { viewModel.dismissAcceptedProposal(accepted.proposalId) }
+            )
+        }
+
+        // ── 10a. 제안자 — 거절 알림 다이얼로그 (polling) ─────────────────
+        state.rejectedProposals.firstOrNull()?.let { rejected ->
+            ProposalRejectedDialog(
+                rejected = rejected,
+                onDismiss = { viewModel.dismissRejectedProposal(rejected.proposalId) }
+            )
+        }
+
+        // ── 10b. 수락자 — 수락 완료 확인 모달 (optimistic) ───────────────
+        if (state.showAcceptedByMeDialog) {
+            ProposalAcceptedByMeDialog(
+                onDismiss = { viewModel.dismissAcceptedByMe() }
+            )
+        }
+
+        // ── 10c. 거절자 — 거절 완료 확인 모달 (optimistic) ───────────────
+        if (state.showRejectedByMeDialog) {
+            ProposalRejectedByMeDialog(
+                onDismiss = { viewModel.dismissRejectedByMe() }
+            )
+        }
+
+        // ── 11. 비선호 강아지 경고 다이얼로그 (S14P21E108-175) ──────────
+        state.warningDog?.let { dog ->
+            DogWarningDialog(
+                dog = dog,
+                onDismiss = { viewModel.dismissWarning() },
             )
         }
 
@@ -538,14 +842,27 @@ fun WalkScreen(
                 state = state,
                 onRating = { viewModel.setWalkRating(it) },
                 onNavigateToRecord = {
+                    val walkId = state.summaryWalkId
                     viewModel.dismissWalkSummary()
-                    onNavigateToRecord()
+                    if (walkId != null) {
+                        onNavigateToWalkDetail(walkId)
+                    } else {
+                        onNavigateToRecord()
+                    }
                 },
                 onNavigateToHome = {
                     viewModel.dismissWalkSummary()
                     onNavigateToHome()
                 },
                 onDismiss = { viewModel.dismissWalkSummary() }
+            )
+        }
+
+        // ── 8. 배지 획득 팝업 ────────────────────────────────────────
+        if (state.newBadges.isNotEmpty()) {
+            BadgeEarnedDialog(
+                badges = state.newBadges,
+                onDismiss = { viewModel.dismissNewBadges() }
             )
         }
     }
@@ -993,7 +1310,7 @@ private fun addPlaceMarker(
 
     val style = LabelStyle.from(scaled).setAnchorPoint(0.5f, 1.0f)  // 하단 중앙을 좌표에 맞춤
     val styles = LabelStyles.from(style)
-    val options = LabelOptions.from(position).setStyles(styles)
+    val options = LabelOptions.from(position).setStyles(styles).setTag(place.id)
     return kakaoMap.labelManager?.layer?.addLabel(options)
 }
 
@@ -1059,6 +1376,154 @@ private fun rotateBitmap(source: android.graphics.Bitmap, degrees: Float): andro
     return android.graphics.Bitmap.createBitmap(source, 0, 0, source.width, source.height, matrix, true)
 }
 
+// ── 주변 강아지 마커 추가 ─────────────────────────────────────────────────────
+private val nearbyDogDrawables = listOf(R.drawable.husky, R.drawable.poodle, R.drawable.french)
+
+private suspend fun addNearbyDogMarker(
+    context: android.content.Context,
+    kakaoMap: KakaoMap,
+    dog: com.frontend.domain.model.NearbyDogResponse,
+): Label? {
+    val position = LatLng.from(dog.latitude, dog.longitude)
+    val markerSize = 80
+    // avoidAlertCandidate 기반으로 비선호 강아지 판정 (기존 feedback 비교 대신)
+    val isDisliked = dog.avoidAlertCandidate
+
+    val circleBitmap = if (!dog.profileImageUrl.isNullOrBlank()) {
+        try {
+            val loader = coil.ImageLoader(context)
+            val request = coil.request.ImageRequest.Builder(context)
+                .data(dog.profileImageUrl)
+                .allowHardware(false)
+                .build()
+            val result = loader.execute(request)
+            val src = (result.drawable as? android.graphics.drawable.BitmapDrawable)?.bitmap
+            if (src != null) createCircularMarkerBitmap(src, markerSize)
+            else fallbackMarkerBitmap(context, dog.dogId, markerSize)
+        } catch (e: Exception) {
+            fallbackMarkerBitmap(context, dog.dogId, markerSize)
+        }
+    } else {
+        fallbackMarkerBitmap(context, dog.dogId, markerSize)
+    }
+
+    // 비선호 강아지는 빨간 테두리 + 외곽 글로우 효과 적용
+    val finalBitmap = if (isDisliked) addDislikedRing(circleBitmap) else circleBitmap
+
+    val style = LabelStyle.from(finalBitmap).setAnchorPoint(0.5f, 0.5f)
+    val styles = LabelStyles.from(style)
+    val options = LabelOptions.from(position).setStyles(styles).setTag(dog)
+    return kakaoMap.labelManager?.layer?.addLabel(options)
+}
+
+/**
+ * pulse 애니메이션용 비선호 강아지 마커 비트맵 생성
+ * - 글로우 강도가 동적으로 변하는 효과
+ */
+private fun createPulsingAvoidMarkerBitmap(
+    context: android.content.Context,
+    dog: NearbyDogResponse,
+    size: Int,
+): android.graphics.Bitmap {
+    // 기본 원형 마커 생성
+    val circleBitmap = if (!dog.profileImageUrl.isNullOrBlank()) {
+        try {
+            // 이미 로드된 이미지가 있다면 사용 (여기서는 fallback 사용)
+            fallbackMarkerBitmap(context, dog.dogId, size)
+        } catch (e: Exception) {
+            fallbackMarkerBitmap(context, dog.dogId, size)
+        }
+    } else {
+        fallbackMarkerBitmap(context, dog.dogId, size)
+    }
+
+    // 강조된 글로우 효과 적용
+    return addPulsingDislikedRing(circleBitmap, size)
+}
+
+/**
+ * pulse 애니메이션용 강조된 글로우 효과
+ */
+private fun addPulsingDislikedRing(src: android.graphics.Bitmap, targetSize: Int): android.graphics.Bitmap {
+    val glowPadding = 24   // 더 큰 글로우 여백
+    val borderWidth = 6    // 더 두꺼운 테두리
+    val total = targetSize + glowPadding * 2
+    val output = android.graphics.Bitmap.createBitmap(total, total, android.graphics.Bitmap.Config.ARGB_8888)
+    val canvas = android.graphics.Canvas(output)
+
+    // 1) 반투명 빨간 글로우 원 (더 진하게)
+    val glowPaint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+        color = android.graphics.Color.argb(100, 255, 60, 60)
+    }
+    canvas.drawCircle(total / 2f, total / 2f, total / 2f, glowPaint)
+
+    // 2) 불투명 빨간 테두리 원
+    val borderPaint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+        color = android.graphics.Color.argb(240, 255, 60, 60)
+    }
+    val scaled = android.graphics.Bitmap.createScaledBitmap(src, targetSize, targetSize, true)
+    val radius = targetSize / 2f + borderWidth
+    canvas.drawCircle(total / 2f, total / 2f, radius, borderPaint)
+
+    // 3) 원본 이미지 중앙에 합성
+    val imgPaint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG)
+    canvas.drawBitmap(scaled, glowPadding.toFloat(), glowPadding.toFloat(), imgPaint)
+
+    return output
+}
+
+/**
+ * 비선호 강아지 마커 — 빨간 반투명 외곽 원(글로우) + 빨간 테두리를 덧그림
+ */
+private fun addDislikedRing(src: android.graphics.Bitmap): android.graphics.Bitmap {
+    val glowPadding = 18   // 외곽 글로우 여백
+    val borderWidth = 5    // 빨간 테두리 두께
+    val total = src.width + glowPadding * 2
+    val output = android.graphics.Bitmap.createBitmap(total, total, android.graphics.Bitmap.Config.ARGB_8888)
+    val canvas = android.graphics.Canvas(output)
+
+    // 1) 반투명 빨간 글로우 원
+    val glowPaint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+        color = android.graphics.Color.argb(80, 255, 80, 80)
+    }
+    canvas.drawCircle(total / 2f, total / 2f, total / 2f, glowPaint)
+
+    // 2) 불투명 빨간 테두리 원
+    val borderPaint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+        color = android.graphics.Color.argb(220, 255, 80, 80)
+    }
+    val radius = src.width / 2f + borderWidth
+    canvas.drawCircle(total / 2f, total / 2f, radius, borderPaint)
+
+    // 3) 원본 이미지 중앙에 합성
+    val imgPaint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG)
+    canvas.drawBitmap(src, glowPadding.toFloat(), glowPadding.toFloat(), imgPaint)
+
+    return output
+}
+
+private fun fallbackMarkerBitmap(
+    context: android.content.Context,
+    dogId: Long,
+    size: Int,
+): android.graphics.Bitmap {
+    val drawableRes = nearbyDogDrawables[dogId.toInt() % nearbyDogDrawables.size]
+    val source = android.graphics.BitmapFactory.decodeResource(context.resources, drawableRes)
+    val targetWidth = (size * source.width.toFloat() / source.height).toInt()
+    return android.graphics.Bitmap.createScaledBitmap(source, targetWidth, size, true)
+}
+
+private fun createCircularMarkerBitmap(source: android.graphics.Bitmap, size: Int): android.graphics.Bitmap {
+    val output = android.graphics.Bitmap.createBitmap(size, size, android.graphics.Bitmap.Config.ARGB_8888)
+    val canvas = android.graphics.Canvas(output)
+    val paint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG)
+    val scaled = android.graphics.Bitmap.createScaledBitmap(source, size, size, true)
+    canvas.drawCircle(size / 2f, size / 2f, size / 2f, paint)
+    paint.xfermode = android.graphics.PorterDuffXfermode(android.graphics.PorterDuff.Mode.SRC_IN)
+    canvas.drawBitmap(scaled, 0f, 0f, paint)
+    return output
+}
+
 // ── 강아지 마커용 비트맵 생성 ─────────────────────────────────────────────────
 private fun createDogMarkerBitmap(context: android.content.Context): android.graphics.Bitmap {
     val targetHeight = 80  // Kakao Map은 픽셀 그대로 렌더링 → density 곱하지 않음
@@ -1066,4 +1531,92 @@ private fun createDogMarkerBitmap(context: android.content.Context): android.gra
     val aspectRatio = source.width.toFloat() / source.height.toFloat()
     val targetWidth = (targetHeight * aspectRatio).toInt()
     return source.scale(targetWidth, targetHeight)
+}
+
+// ── 배지 획득 팝업 ───────────────────────────────────────────────────────────
+@Composable
+private fun BadgeEarnedDialog(
+    badges: List<com.frontend.domain.model.NewBadgeInfo>,
+    onDismiss: () -> Unit
+) {
+    val badge = badges.first()
+
+    androidx.compose.ui.window.Dialog(onDismissRequest = onDismiss) {
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            shape = RoundedCornerShape(20.dp),
+            colors = CardDefaults.cardColors(containerColor = Color.White)
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(24.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Text(
+                    "배지를 획득했어요!",
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = TextMain
+                )
+
+                Spacer(Modifier.height(20.dp))
+
+                val badgeDrawable = when (badge.badgeId) {
+                    1L -> R.drawable.badge1
+                    2L -> R.drawable.badge2
+                    3L -> R.drawable.badge3
+                    4L -> R.drawable.badge4
+                    5L -> R.drawable.badge5
+                    6L -> R.drawable.badge6
+                    7L -> R.drawable.badge7
+                    8L -> R.drawable.badge8
+                    9L -> R.drawable.badge9
+                    else -> R.drawable.badge1
+                }
+
+                Image(
+                    painter = painterResource(badgeDrawable),
+                    contentDescription = badge.badgeName,
+                    modifier = Modifier.size(120.dp),
+                    contentScale = ContentScale.Crop
+                )
+
+                Spacer(Modifier.height(16.dp))
+
+                Text(
+                    badge.badgeName,
+                    fontSize = 20.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = TextMain
+                )
+
+                Spacer(Modifier.height(8.dp))
+
+                Text(
+                    badge.description,
+                    fontSize = 14.sp,
+                    color = com.frontend.ui.theme.TextGray,
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                )
+
+                Spacer(Modifier.height(20.dp))
+
+                Button(
+                    onClick = onDismiss,
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = PointGreen)
+                ) {
+                    Text(
+                        "확인했어요!",
+                        color = Color.White,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                }
+            }
+        }
+    }
 }

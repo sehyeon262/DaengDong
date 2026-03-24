@@ -12,8 +12,17 @@ spring:
     password: ${DB_PASSWORD}
     driver-class-name: org.postgresql.Driver
 
+  # 초기 데이터 로딩
+  sql:
+    init:
+      encoding: UTF-8
+      data-locations:
+        - classpath:sql/badges.sql
+      continue-on-error: true
+
   # 개발용 JPA 설정
   jpa:
+    defer-datasource-initialization: true
     hibernate:
       ddl-auto: update
     show-sql: true

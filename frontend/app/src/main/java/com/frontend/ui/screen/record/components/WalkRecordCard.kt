@@ -68,11 +68,14 @@ fun WalkRecordCard(
                     modifier = Modifier.size(80.dp)
                 )
             } else {
-                // 기본 아이콘
-                Text(
-                    text = "\uD83D\uDC3E",
-                    fontSize = 28.sp,
-                    modifier = Modifier.align(Alignment.Center)
+                // 기본 이미지
+                androidx.compose.foundation.Image(
+                    painter = androidx.compose.ui.res.painterResource(com.frontend.R.drawable.photo),
+                    contentDescription = "기본 사진",
+                    contentScale = ContentScale.Fit,
+                    modifier = Modifier
+                        .size(48.dp)
+                        .align(Alignment.Center)
                 )
             }
         }
@@ -122,7 +125,7 @@ fun WalkRecordCard(
                         tint = TextGray
                     )
                     Text(
-                        text = "${walk.distanceKm} km",
+                        text = "${"%.1f".format(walk.distanceKm)} km",
                         fontSize = 13.sp,
                         color = TextGray
                     )

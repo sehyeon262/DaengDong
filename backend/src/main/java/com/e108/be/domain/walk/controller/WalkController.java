@@ -7,6 +7,7 @@ import com.e108.be.domain.walk.dto.response.MetDogResponse;
 import com.e108.be.domain.walk.dto.response.NearbyDogsResponse;
 import com.e108.be.domain.walk.dto.response.ProposalResponse;
 import com.e108.be.domain.walk.dto.response.StartWalkResponse;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
@@ -39,20 +40,33 @@ public class WalkController {
     /**
      * W1-01 산책 시작
      * POST /api/v1/walks
+     *
+     * 경로 추천 기반 산책: selectedType을 포함하여 요청
+     * 자유 산책: selectedType을 null로 요청 (기존 호환)
+     *
+     * @param memberId JWT에서 추출한 회원 ID (경로 선택 로그 기록용)
+     * @param request  산책 시작 정보 + 경로 선택 정보 (선택)
      */
     @PostMapping
-    public ResTemplate<StartWalkResponse> startWalk(@RequestBody StartWalkRequest request) {
-        StartWalkResponse response = walkService.startWalk(request);
+    public ResTemplate<StartWalkResponse> startWalk(
+            @AuthenticationPrincipal Long memberId,
+            @RequestBody StartWalkRequest request) {
+        StartWalkResponse response = walkService.startWalk(memberId, request);
         return ResTemplate.success(HttpStatus.OK, "산책이 시작되었습니다.", response);
     }
 
     /**
      * R1-03 자유 산책 시작
      * POST /api/v1/walks/free-start
+     *
+     * @deprecated POST /api/v1/walks 로 통합됨. selectedType을 null로 보내면 자유 산책.
      */
+    @Deprecated
     @PostMapping("/free-start")
-    public ResTemplate<StartWalkResponse> startFreeWalk(@RequestBody StartWalkRequest request) {
-        StartWalkResponse response = walkService.startFreeWalk(request);
+    public ResTemplate<StartWalkResponse> startFreeWalk(
+            @AuthenticationPrincipal Long memberId,
+            @RequestBody StartWalkRequest request) {
+        StartWalkResponse response = walkService.startFreeWalk(memberId, request);
         return ResTemplate.success(HttpStatus.OK, "자유 산책이 시작되었습니다.", response);
     }
 

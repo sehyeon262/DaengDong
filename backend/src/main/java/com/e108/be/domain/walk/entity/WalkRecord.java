@@ -1,5 +1,6 @@
 package com.e108.be.domain.walk.entity;
 
+import com.e108.be.domain.route.dto.response.RouteType;
 import com.e108.be.global.common.entity.BaseEntity;
 import jakarta.persistence.*;
 import lombok.AccessLevel;
@@ -52,6 +53,15 @@ public class WalkRecord extends BaseEntity {
     @Column(name = "end_time")
     private LocalDateTime endTime;
 
+    /**
+     * 선택한 경로 유형 (경로 추천 기반 산책인 경우)
+     * null이면 자유 산책
+     * 성능 평가 지표: 경로 유형별 완주율/이탈율 분석에 활용
+     */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "route_type", length = 20)
+    private RouteType routeType;
+
     // 총 이동 거리 (단위: m)
     @Column(name = "total_distance", precision = 10, scale = 2)
     private BigDecimal totalDistance;
@@ -64,6 +74,14 @@ public class WalkRecord extends BaseEntity {
     @Column(name = "route_line", columnDefinition = "geography(LINESTRING, 4326)")
     private LineString routeLine;
 
+    // 추천 경로 (TMap 실도로 좌표) - 이탈률 계산용
+    @Column(name = "recommended_route", columnDefinition = "geography(LINESTRING, 4326)")
+    private LineString recommendedRoute;
+
+    // 경로 이탈률 (0.0 ~ 100.0, 단위: %)
+    @Column(name = "deviation_rate", precision = 5, scale = 2)
+    private BigDecimal deviationRate;
+
     // 소모 칼로리 (단위: kcal)
     @Column(name = "calories", precision = 10, scale = 2)
     private BigDecimal calories;
@@ -74,10 +92,11 @@ public class WalkRecord extends BaseEntity {
     private List<String> photoUrls;
 
     @Builder
-    public WalkRecord(Long dogId, WalkStatus walkStatus, LocalDateTime startTime) {
+    public WalkRecord(Long dogId, WalkStatus walkStatus, LocalDateTime startTime, RouteType routeType) {
         this.dogId = dogId;
         this.walkStatus = walkStatus;
         this.startTime = startTime;
+        this.routeType = routeType;
     }
 
     /**
@@ -118,5 +137,13 @@ public class WalkRecord extends BaseEntity {
 
     public void updatePhotoUrls(List<String> photoUrls) {
         this.photoUrls = photoUrls;
+    }
+
+    public void updateRecommendedRoute(LineString recommendedRoute) {
+        this.recommendedRoute = recommendedRoute;
+    }
+
+    public void updateDeviationRate(BigDecimal deviationRate) {
+        this.deviationRate = deviationRate;
     }
 }

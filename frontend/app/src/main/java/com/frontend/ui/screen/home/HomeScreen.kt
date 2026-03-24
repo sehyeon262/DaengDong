@@ -147,7 +147,8 @@ fun HomeScreen(
                         characterType = data.walk.characterType,
                         walkStatus = data.walk.walkStatus,
                         walkMessage = data.walk.walkMessage,
-                        temperature = data.weather?.temperature ?: 20
+                        temperature = data.weather?.temperature ?: 20,
+                        fineDustGrade = data.weather?.fineDustGrade ?: ""
                     )
                 }
 

@@ -5,6 +5,8 @@ import com.frontend.data.remote.DangerZoneApi
 import com.frontend.domain.model.DangerLocation
 import com.frontend.domain.model.DangerReason
 import com.frontend.domain.model.DangerZone
+import com.frontend.domain.model.DangerZoneResult
+import com.frontend.domain.model.NewBadgeInfo
 import com.frontend.domain.model.ReportDangerZoneRequest
 import kotlinx.coroutines.flow.first
 import javax.inject.Inject
@@ -16,42 +18,100 @@ class DangerZoneRepository @Inject constructor(
 
     /**
      * 위험 구역 신고 API 호출.
-     * - API 성공/실패 여부와 무관하게 DangerZone 객체를 반환해 지도 마커는 항상 표시됩니다.
-     * - 백엔드 API 응답이 ApiResponse<Unit>이므로 DangerZone은 요청 파라미터로 구성합니다.
-     * - id는 UI 마커 추적용 로컬 값입니다 (서버 ID 아님).
+     * - reason + customReason을 합쳐 백엔드 description 필드로 전송합니다.
+     * - walkId → walkSessionId 로 필드명 수정.
+     * - API 성공 시 서버 ID(riskReportId)를 DangerZone.id로 사용합니다.
+     * - API 실패 시에도 로컬 마커는 표시됩니다.
      */
     suspend fun reportDangerZone(
         walkId: Long?,
         location: DangerLocation,
         reason: DangerReason,
         customReason: String?
-    ): Result<DangerZone> = runCatching {
-        // API 호출 시도 (실패해도 로컬 마커는 표시)
+    ): Result<DangerZoneResult> = runCatching {
+        val description = if (customReason != null) {
+            "${reason.label}: $customReason"
+        } else {
+            reason.label
+        }
+
+        var newBadges: List<NewBadgeInfo> = emptyList()
+        var serverId: Long? = null
+
         try {
             val token = tokenDataStore.getAccessToken().first()
             if (token != null) {
-                dangerZoneApi.reportDangerZone(
+                val response = dangerZoneApi.reportDangerZone(
                     authorization = "Bearer $token",
                     request = ReportDangerZoneRequest(
-                        walkId = walkId,
+                        walkSessionId = walkId,
                         latitude = location.latitude,
                         longitude = location.longitude,
-                        reason = reason.name,
-                        customReason = customReason
+                        description = description
                     )
                 )
+                serverId = response.data?.riskReportId
+                newBadges = response.data?.newBadges ?: emptyList()
             }
         } catch (e: Exception) {
-            // API 실패 로그 (로컬 마커 표시는 계속 진행)
             android.util.Log.w("DangerZoneRepository", "API 신고 실패: ${e.message}")
         }
 
-        // API 응답이 Unit이므로 요청 정보로 DangerZone 구성 (마커 표시용)
-        DangerZone(
-            id = System.currentTimeMillis(),
-            location = location,
-            reason = reason,
-            customReason = customReason
+        DangerZoneResult(
+            dangerZone = DangerZone(
+                id = serverId ?: System.currentTimeMillis(),
+                location = location,
+                reason = reason,
+                customReason = customReason
+            ),
+            newBadges = newBadges
         )
+    }
+
+    /**
+     * 현재 위치 주변 위험 구역 목록 조회.
+     * 백엔드에서 서버 DB에 저장된 모든 위험 구역을 반환합니다.
+     */
+    suspend fun getDangerZones(
+        latitude: Double,
+        longitude: Double,
+        radiusMeters: Double = 5000.0
+    ): Result<List<DangerZone>> = runCatching {
+        val token = tokenDataStore.getAccessToken().first()
+            ?: error("로그인이 필요합니다.")
+
+        val response = dangerZoneApi.getDangerZones(
+            authorization = "Bearer $token",
+            latitude = latitude,
+            longitude = longitude,
+            radiusMeters = radiusMeters
+        )
+
+        (response.data ?: emptyList()).map { data ->
+            val (parsedReason, parsedCustomReason) = parseDescription(data.description)
+            DangerZone(
+                id = data.riskReportId,
+                location = DangerLocation(data.latitude, data.longitude),
+                reason = parsedReason,
+                customReason = parsedCustomReason
+            )
+        }
+    }
+
+    /**
+     * 저장된 description 문자열에서 DangerReason과 customReason을 복원합니다.
+     * 포맷: "${reason.label}: $customReason" 또는 "${reason.label}"
+     */
+    private fun parseDescription(description: String): Pair<DangerReason, String?> {
+        for (reason in DangerReason.entries) {
+            if (description.startsWith("${reason.label}: ")) {
+                val custom = description.removePrefix("${reason.label}: ").takeIf { it.isNotBlank() }
+                return Pair(reason, custom)
+            }
+            if (description == reason.label) {
+                return Pair(reason, null)
+            }
+        }
+        return Pair(DangerReason.OTHER, description)
     }
 }

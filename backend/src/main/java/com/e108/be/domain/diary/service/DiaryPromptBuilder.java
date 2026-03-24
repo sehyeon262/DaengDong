@@ -10,6 +10,7 @@ import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 @Component
 public class DiaryPromptBuilder {
@@ -34,7 +35,15 @@ public class DiaryPromptBuilder {
     private static final DateTimeFormatter DATE_FMT = DateTimeFormatter.ofPattern("yyyy년 M월 d일");
     private static final DateTimeFormatter TIME_FMT = DateTimeFormatter.ofPattern("a h시 mm분");
 
+    /**
+     * 하위 호환: 감정 분석 없이도 호출 가능
+     */
     public String buildUserPrompt(Dog dog, WalkRecord walk, WeatherService.WeatherData weather, List<String> nearbyPlaceNames) {
+        return buildUserPrompt(dog, walk, weather, nearbyPlaceNames, Map.of());
+    }
+
+    public String buildUserPrompt(Dog dog, WalkRecord walk, WeatherService.WeatherData weather,
+                                  List<String> nearbyPlaceNames, Map<String, EmotionResult> photoResults) {
         StringBuilder sb = new StringBuilder();
         sb.append("아래 산책 정보를 바탕으로 일기를 작성해주세요:\n\n");
 
@@ -81,8 +90,24 @@ public class DiaryPromptBuilder {
             sb.append("- 산책 장소: ").append(String.join(", ", nearbyPlaceNames)).append("\n");
         }
 
-        // 상황 힌트 생성
-        List<String> hints = buildSituationHints(walk, weather);
+        // 강아지 감정 분석 결과 (사진별)
+        if (photoResults != null && !photoResults.isEmpty()) {
+            sb.append("- 사진 속 강아지 표정 분석:\n");
+            int idx = 1;
+            for (Map.Entry<String, EmotionResult> entry : photoResults.entrySet()) {
+                EmotionResult r = entry.getValue();
+                sb.append("  - 사진").append(idx++).append(": ")
+                  .append(r.emotionTag())
+                  .append(" (").append(r.emotion()).append(", ")
+                  .append(String.format("신뢰도 %.0f%%", r.confidence() * 100)).append(")\n");
+            }
+        }
+
+        // 상황 힌트 생성 (대표 감정 사용)
+        EmotionResult bestEmotion = photoResults != null ? photoResults.values().stream()
+                .max((a, b) -> Float.compare(a.confidence(), b.confidence()))
+                .orElse(null) : null;
+        List<String> hints = buildSituationHints(walk, weather, bestEmotion);
         if (!hints.isEmpty()) {
             sb.append("\n[상황 힌트 - 아래 내용을 활용해서 구체적인 장면을 만들어주세요]\n");
             for (String hint : hints) {
@@ -96,7 +121,7 @@ public class DiaryPromptBuilder {
     /**
      * 산책 데이터 조합으로 그 산책에서만 느낄 수 있는 구체적 상황 힌트 생성
      */
-    private List<String> buildSituationHints(WalkRecord walk, WeatherService.WeatherData weather) {
+    private List<String> buildSituationHints(WalkRecord walk, WeatherService.WeatherData weather, EmotionResult emotionResult) {
         List<String> hints = new ArrayList<>();
 
         // 1. 시간대별 감각
@@ -169,6 +194,16 @@ public class DiaryPromptBuilder {
                 hints.add("사진 찍힘: 가만히 앉아서 포즈! 잘 나왔을까?");
             } else {
                 hints.add("사진 여러 장 찍힘: 자꾸 찍어서 가만히 있느라 힘들었지만, 나중에 보면 귀여울 거야!");
+            }
+        }
+
+        // 6. 강아지 감정 분석 결과 기반 힌트
+        if (emotionResult != null) {
+            switch (emotionResult.emotion()) {
+                case "happy" -> hints.add("사진 속 표정이 활짝 웃고 있어요! 꼬리를 신나게 흔들며 세상에서 제일 행복한 표정이에요");
+                case "relaxed" -> hints.add("사진 속 표정이 편안해요. 눈이 살짝 감기고 입꼬리가 올라가서 여유로운 모습이에요");
+                case "sad" -> hints.add("사진 속 표정이 조금 축 처져 있어요. 눈이 축축하고 귀가 살짝 내려가 있어요");
+                case "angry" -> hints.add("사진 속 표정이 긴장되어 있어요. 뭔가 경계하는 듯한 눈빛이에요");
             }
         }
 

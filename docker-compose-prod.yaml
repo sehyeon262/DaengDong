@@ -37,6 +37,7 @@ services:
       - AWS_ACCESS_KEY=${AWS_ACCESS_KEY}
       - AWS_SECRET_KEY=${AWS_SECRET_KEY}
       - GMS_KEY=${GMS_KEY}
+      - TMAP_APP_KEY=${TMAP_APP_KEY}
     networks:
       - e108-network-prod
       - ssafy-network

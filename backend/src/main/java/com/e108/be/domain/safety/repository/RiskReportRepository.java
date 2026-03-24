@@ -6,6 +6,8 @@ import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.util.List;
+
 /**
  * [RiskReport JPA Repository]
  *
@@ -54,5 +56,28 @@ public interface RiskReportRepository extends JpaRepository<RiskReport, Long> {
             @Param("longitude") double longitude,
             @Param("latitude") double latitude,
             @Param("description") String description
+    );
+
+    long countByUserId(Long userId);
+
+    /**
+     * 현재 위치 기준 반경 내 위험 구역 목록 조회
+     *
+     * ST_DWithin(geography, geography, meters) — PostGIS 지리 거리 필터
+     * is_deleted = false 조건으로 소프트딜리트된 레코드 제외
+     */
+    @Query(value = """
+            SELECT * FROM risk_reports
+            WHERE ST_DWithin(
+                location::geography,
+                ST_SetSRID(ST_MakePoint(:longitude, :latitude), 4326)::geography,
+                :radiusMeters
+            )
+            ORDER BY created_at DESC
+            """, nativeQuery = true)
+    List<RiskReport> findWithinRadius(
+            @Param("latitude") double latitude,
+            @Param("longitude") double longitude,
+            @Param("radiusMeters") double radiusMeters
     );
 }

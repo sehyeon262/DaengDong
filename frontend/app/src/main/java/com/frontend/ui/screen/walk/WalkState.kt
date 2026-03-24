@@ -3,11 +3,35 @@ package com.frontend.ui.screen.walk
 import com.frontend.domain.model.DangerLocation
 import com.frontend.domain.model.DangerReason
 import com.frontend.domain.model.DangerZone
+import com.frontend.domain.model.AcceptedProposalInfo
+import com.frontend.domain.model.DogProfileResponse
+import com.frontend.domain.model.NearbyDogResponse
+import com.frontend.domain.model.NewBadgeInfo
+import com.frontend.domain.model.PendingProposalInfo
+import com.frontend.domain.model.RejectedProposalInfo
 import com.frontend.domain.model.Place
+import com.frontend.domain.model.RecommendedRoute
+
+/**
+ * 비선호 강아지 알림 상태 추적용 데이터 클래스
+ * - 진입/이탈/쿨다운 기반으로 중복 알림 방지
+ */
+data class DogAlertState(
+    val lastAlertTimeMs: Long = 0L,         // 마지막 알림 발송 시간
+    val isInsideAlertRadius: Boolean = false, // 현재 알림 반경(50m) 안에 있는지
+)
 
 data class WalkState(
     val selectedRouteIndex: Int = 0,
     val showFilterSheet: Boolean = false,
+
+    // ── 추천 경로 ────────────────────────────────────────────────────────────
+    val recommendedRoutes: List<RecommendedRoute> = emptyList(),  // API에서 받은 추천 경로 목록
+    val isRoutesLoading: Boolean = false,                          // 경로 로딩 중 여부
+    val routesError: String? = null,                               // 경로 로딩 에러
+    val fallbackLevel: String? = null,                             // NORMAL, REDUCED, WALK_ONLY
+    val fallbackMessage: String? = null,                           // 폴백 안내 메시지
+    val showRecommendedRoute: Boolean = true,                      // 추천 경로 표시 여부 (토글)
 
     // 다중 선택 필터 (각 항목을 독립적으로 on/off)
     val activeFilters: Set<WalkFilterType> = emptySet(),
@@ -17,6 +41,7 @@ data class WalkState(
     // ── 장소 마커 ──────────────────────────────────────────────────────────────
     val places: List<Place> = emptyList(),            // 지도에 표시할 장소 목록
     val isPlacesLoading: Boolean = false,             // 장소 로딩 중 여부
+    val selectedPlace: Place? = null,                 // 클릭된 장소 (상세 바텀시트 표시용)
 
     // ── 자유 산책 ──────────────────────────────────────────────────────────────
     val isWalking: Boolean = false,       // 산책 진행 중 여부
@@ -27,10 +52,36 @@ data class WalkState(
 
     // ── 산책 요약 (종료 후 표시) ──────────────────────────────────────────────
     val isWalkSummaryVisible: Boolean = false,
+    val summaryWalkId: Long? = null,      // 종료된 산책 ID (일기 보러가기용)
     val summaryElapsedSeconds: Int = 0,
     val summaryDistanceMeters: Double = 0.0,
     val summaryRouteName: String = "",
     val summaryRating: Int = 0,           // 0 = 미평가, 1~5 = 별점
+
+    // ── 소셜 산책 상태 ────────────────────────────────────────────────────────
+    val currentWalkId: Long? = null,                  // 현재 산책 레코드 ID
+    val myDogId: Long? = null,                        // 내 강아지 ID
+
+    // ── 주변 강아지 ───────────────────────────────────────────────────────────
+    val nearbyDogs: List<NearbyDogResponse> = emptyList(), // 주변 강아지 목록
+
+    // ── 강아지 공개 프로필 팝업 ────────────────────────────────────────────────
+    val selectedNearbyDog: NearbyDogResponse? = null,      // 마커 클릭된 강아지
+    val dogPublicProfile: DogProfileResponse? = null,      // 공개 프로필 응답
+    val isDogProfileLoading: Boolean = false,
+
+    // ── 함께 산책 제안 ─────────────────────────────────────────────────────────
+    val isSendingProposal: Boolean = false,                 // 제안 전송 중 여부
+    val proposalSentDogId: Long? = null,                   // 제안 보낸 강아지 ID (버튼 상태용)
+    val pendingProposals: List<PendingProposalInfo> = emptyList(),   // 받은 제안 목록
+    val acceptedProposals: List<AcceptedProposalInfo> = emptyList(), // 수락된 제안 알림 (제안자용 polling)
+    val rejectedProposals: List<RejectedProposalInfo> = emptyList(), // 거절된 제안 알림 (제안자용 polling)
+    val showAcceptedByMeDialog: Boolean = false,  // 수락자 확인 모달 ("함께 산책하기를 수락했습니다")
+    val showRejectedByMeDialog: Boolean = false,  // 거절자 확인 모달 ("산책 거절 메시지를 보냈습니다")
+
+    // ── 비선호 강아지 경고 (S14P21E108-175) ─────────────────────────────────
+    val warningDog: NearbyDogResponse? = null,             // 현재 경고 표시 중인 비선호 강아지
+    val dogAlertStates: Map<Long, DogAlertState> = emptyMap(),  // 진입/이탈/쿨다운 기반 알림 상태
 
     // ── 위험 구역 신고 ────────────────────────────────────────────────────────
     val isSelectingDangerZone: Boolean = false,       // 위치 선택 모드 여부
@@ -40,5 +91,8 @@ data class WalkState(
     val customDangerReason: String = "",              // "기타" 직접 입력 텍스트
     val dangerZones: List<DangerZone> = emptyList(),  // 신고 완료된 위험 구역 목록
     val isLoading: Boolean = false,                   // 제출 중 여부
-    val error: String? = null                         // 에러 메시지 (없으면 null)
+    val error: String? = null,                        // 에러 메시지 (없으면 null)
+
+    // ── 배지 획득 알림 ──────────────────────────────────────────────────────
+    val newBadges: List<NewBadgeInfo> = emptyList()   // 새로 획득한 배지 목록
 )

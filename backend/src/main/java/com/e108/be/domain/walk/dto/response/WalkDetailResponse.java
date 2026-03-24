@@ -9,6 +9,7 @@ import lombok.Getter;
 import java.time.LocalDateTime;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 
 @Getter
 @Builder
@@ -19,6 +20,7 @@ public class WalkDetailResponse {
     private LocalDateTime startTime;
     private LocalDateTime endTime;
     private int durationMinutes;
+    private int durationSeconds;   // 총 산책 시간(초) — 1분 미만 산책도 표시 가능
     private double distanceKm;
     private double calories;
     private List<String> photoUrls;
@@ -35,15 +37,19 @@ public class WalkDetailResponse {
     public static class DiaryInfo {
         private Long diaryId;
         private String content;
+        private String emotionTag;
+        private Map<String, String> photoEmotions;  // { "사진URL": "즐거움" }
         private LocalDateTime createdAt;
     }
 
     public static WalkDetailResponse from(WalkRecord walk, Dog dog, Diary diary) {
         DiaryInfo diaryInfo = null;
-        if (diary != null && diary.getContent() != null) {
+        if (diary != null) {
             diaryInfo = DiaryInfo.builder()
                     .diaryId(diary.getId())
                     .content(diary.getContent())
+                    .emotionTag(diary.getEmotionTag())
+                    .photoEmotions(diary.getPhotoEmotions())
                     .createdAt(diary.getCreatedAt())
                     .build();
         }
@@ -53,6 +59,7 @@ public class WalkDetailResponse {
                 .startTime(walk.getStartTime())
                 .endTime(walk.getEndTime())
                 .durationMinutes(walk.getTotalDuration() != null ? walk.getTotalDuration() / 60 : 0)
+                .durationSeconds(walk.getTotalDuration() != null ? walk.getTotalDuration() : 0)
                 .distanceKm(walk.getTotalDistance() != null
                         ? walk.getTotalDistance().doubleValue() / 1000.0 : 0.0)
                 .calories(walk.getCalories() != null ? walk.getCalories().doubleValue() : 0.0)
