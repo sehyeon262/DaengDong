@@ -29,6 +29,9 @@ ENV TZ=Asia/Seoul
 # 빌드 결과물(jar)만 쏙 가져오기
 COPY --from=builder /app/build/libs/*.jar app.jar
 
+# 강아지 감정 분석 ONNX 모델
+COPY models/dog.onnx /app/models/dog.onnx
+
 # 프로파일 및 실행 옵션 유연화
 # 실행 시점에 환경변수나 옵션을 더 잘 먹게 하기 위한 설정
 ENTRYPOINT ["java", "-Djava.security.egd=file:/dev/./urandom", "-jar", "app.jar"]

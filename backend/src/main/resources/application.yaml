@@ -49,6 +49,11 @@ api:
     read-timeout: 30
     enabled: ${TMAP_ENABLED:true}
 
+# 강아지 감정 분석 모델 설정
+emotion:
+  model-path: ${EMOTION_MODEL_PATH:models/dog.onnx}
+  confidence-threshold: 0.5  # 이 이하면 강아지가 없는 사진으로 판단
+
 # S3 설정
 aws:
   s3:

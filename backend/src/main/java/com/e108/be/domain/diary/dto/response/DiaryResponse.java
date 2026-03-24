@@ -9,6 +9,7 @@ import lombok.Getter;
 import java.time.LocalDateTime;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 
 @Getter
 @Builder
@@ -17,6 +18,8 @@ public class DiaryResponse {
     private Long diaryId;
     private Long walkId;
     private String content;
+    private String emotionTag;
+    private Map<String, String> photoEmotions;
     private String dogName;
     private String dogProfileImageUrl;
     private LocalDateTime walkDate;
@@ -31,6 +34,8 @@ public class DiaryResponse {
                 .diaryId(diary.getId())
                 .walkId(diary.getWalkId())
                 .content(diary.getContent())
+                .emotionTag(diary.getEmotionTag())
+                .photoEmotions(diary.getPhotoEmotions())
                 .dogName(dog.getName())
                 .dogProfileImageUrl(dog.getProfileImageUrl())
                 .walkDate(walk.getStartTime())
