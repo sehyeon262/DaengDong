@@ -2,6 +2,7 @@ package com.e108.be.domain.walk.repository;
 
 import com.e108.be.domain.walk.entity.WalkRecord;
 import com.e108.be.domain.walk.entity.WalkStatus;
+import com.e108.be.domain.walk.repository.projection.RouteTypeStatsProjection;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
@@ -84,4 +85,24 @@ public interface WalkRecordRepository extends JpaRepository<WalkRecord, Long> {
 
     @Query(value = "SELECT COALESCE(SUM(json_array_length(photo_urls)), 0) FROM walk_records WHERE dog_id IN (:dogIds) AND photo_urls IS NOT NULL", nativeQuery = true)
     long countTotalPhotos(@Param("dogIds") List<Long> dogIds);
+
+    // ── 성능 평가: 경로 유형별 통계 ──
+
+    /**
+     * 경로 유형별 산책 통계 (선택률, 완주율, 이탈률 산출용)
+     *
+     * route_type이 null인 행 = 자유 산책
+     * route_type이 있는 행 = 경로 추천 기반 산책
+     */
+    @Query("""
+        SELECT w.routeType AS routeType,
+               COUNT(w) AS totalCount,
+               SUM(CASE WHEN w.walkStatus = com.e108.be.domain.walk.entity.WalkStatus.COMPLETED THEN 1 ELSE 0 END) AS completedCount,
+               SUM(CASE WHEN w.walkStatus = com.e108.be.domain.walk.entity.WalkStatus.CANCELED THEN 1 ELSE 0 END) AS canceledCount,
+               AVG(w.totalDistance) AS avgDistanceM,
+               AVG(w.totalDuration) AS avgDurationSec
+        FROM WalkRecord w
+        GROUP BY w.routeType
+        """)
+    List<RouteTypeStatsProjection> getRouteTypeStats();
 }

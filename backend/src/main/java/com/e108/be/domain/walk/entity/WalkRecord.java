@@ -1,5 +1,6 @@
 package com.e108.be.domain.walk.entity;
 
+import com.e108.be.domain.route.dto.response.RouteType;
 import com.e108.be.global.common.entity.BaseEntity;
 import jakarta.persistence.*;
 import lombok.AccessLevel;
@@ -52,6 +53,15 @@ public class WalkRecord extends BaseEntity {
     @Column(name = "end_time")
     private LocalDateTime endTime;
 
+    /**
+     * 선택한 경로 유형 (경로 추천 기반 산책인 경우)
+     * null이면 자유 산책
+     * 성능 평가 지표: 경로 유형별 완주율/이탈율 분석에 활용
+     */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "route_type", length = 20)
+    private RouteType routeType;
+
     // 총 이동 거리 (단위: m)
     @Column(name = "total_distance", precision = 10, scale = 2)
     private BigDecimal totalDistance;
@@ -74,10 +84,11 @@ public class WalkRecord extends BaseEntity {
     private List<String> photoUrls;
 
     @Builder
-    public WalkRecord(Long dogId, WalkStatus walkStatus, LocalDateTime startTime) {
+    public WalkRecord(Long dogId, WalkStatus walkStatus, LocalDateTime startTime, RouteType routeType) {
         this.dogId = dogId;
         this.walkStatus = walkStatus;
         this.startTime = startTime;
+        this.routeType = routeType;
     }
 
     /**

@@ -89,6 +89,7 @@ public class WalkService {
                 .dogId(request.getDogId())
                 .walkStatus(WalkStatus.IN_PROGRESS)
                 .startTime(LocalDateTime.now())
+                .routeType(request.getSelectedType())  // null이면 자유 산책
                 .build();
 
         WalkRecord saved = walkRecordRepository.save(walkRecord);
