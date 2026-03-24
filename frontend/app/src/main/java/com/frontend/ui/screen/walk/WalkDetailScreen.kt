@@ -1,11 +1,5 @@
 package com.frontend.ui.screen.walk
 
-import androidx.compose.animation.core.LinearEasing
-import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableIntStateOf
@@ -15,13 +9,11 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.offset
-import androidx.compose.foundation.layout.wrapContentSize
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
@@ -218,6 +210,14 @@ private fun WalkDetailContent(
         )
     }
 
+    // 사진 없을 때 갤러리 런처 직접 실행 후 뷰어 닫기
+    if (showViewer && detail.photoUrls.isEmpty()) {
+        LaunchedEffect(Unit) {
+            galleryLauncher.launch("image/*")
+            showViewer = false
+        }
+    }
+
     Column(
         modifier = modifier
             .verticalScroll(rememberScrollState())
@@ -228,10 +228,12 @@ private fun WalkDetailContent(
         PhotoCarousel(
             photoUrls = detail.photoUrls,
             startTime = detail.startTime,
+            photoEmotions = detail.diary?.photoEmotions,
             onPhotoClick = { page ->
                 initialPage = page
                 showViewer = true
-            }
+            },
+            onAddPhotos = { galleryLauncher.launch("image/*") }
         )
 
         // 산책 통계 카드
@@ -251,7 +253,9 @@ private fun WalkDetailContent(
 private fun PhotoCarousel(
     photoUrls: List<String>,
     startTime: String,
-    onPhotoClick: (Int) -> Unit = {}
+    photoEmotions: Map<String, String>? = null,
+    onPhotoClick: (Int) -> Unit = {},
+    onAddPhotos: () -> Unit = {}
 ) {
     val photos = photoUrls.ifEmpty { listOf("") } // 사진 없으면 placeholder 1장
     val pagerState = rememberPagerState(pageCount = { photos.size })
@@ -278,17 +282,41 @@ private fun PhotoCarousel(
                         .clickable { onPhotoClick(page) }
                 )
             } else {
-                // 사진 없을 때 플레이스홀더
+                // 사진 없을 때 플레이스홀더 (클릭하면 사진 추가)
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
-                        .background(Color(0xFFF0EEE8)),
+                        .background(Color(0xFFF0EEE8))
+                        .clickable { onAddPhotos() },
                     contentAlignment = Alignment.Center
                 ) {
-                    Text(
-                        text = "\uD83D\uDC3E",
-                        fontSize = 48.sp
-                    )
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Image(
+                            painter = painterResource(R.drawable.photo),
+                            contentDescription = "기본 사진",
+                            modifier = Modifier.size(72.dp),
+                            contentScale = ContentScale.Fit
+                        )
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            Icon(
+                                Icons.Default.Add,
+                                contentDescription = null,
+                                tint = TextGray,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Text(
+                                text = "사진 추가",
+                                fontSize = 14.sp,
+                                color = TextGray
+                            )
+                        }
+                    }
                 }
             }
         }
@@ -326,6 +354,36 @@ private fun PhotoCarousel(
                     fontWeight = FontWeight.SemiBold,
                     color = White
                 )
+            }
+        }
+
+        // 감정 태그 (좌측 상단) - 현재 사진의 감정 표시
+        if (photoEmotions != null && photoUrls.isNotEmpty()) {
+            val currentUrl = photoUrls.getOrNull(pagerState.currentPage)
+            val emotionTag = currentUrl?.let { photoEmotions[it] }
+            if (emotionTag != null) {
+                val tagColor = when (emotionTag) {
+                    "행복" -> Color(0xFFFFA726)
+                    "편안" -> Color(0xFF66BB6A)
+                    "슬픔" -> Color(0xFF42A5F5)
+                    "화남" -> Color(0xFFEF5350)
+                    else -> Color.White
+                }
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.TopStart)
+                        .padding(10.dp)
+                        .clip(RoundedCornerShape(16.dp))
+                        .background(tagColor.copy(alpha = 0.85f))
+                        .padding(horizontal = 12.dp, vertical = 5.dp)
+                ) {
+                    Text(
+                        text = emotionTag,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = White
+                    )
+                }
             }
         }
 
@@ -674,14 +732,47 @@ private fun DiaryCard(
                 .padding(start = 28.dp, end = 28.dp, top = 24.dp, bottom = 36.dp),
             verticalArrangement = Arrangement.spacedBy(18.dp)
         ) {
-            // 헤더
-            Text(
-                text = diaryTitle(dogName),
-                fontSize = 20.sp,
-                fontWeight = FontWeight.ExtraBold,
-                color = PointGreen,
-                fontFamily = mansehFont
-            )
+            // 헤더 + 감정 태그
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = diaryTitle(dogName),
+                    fontSize = 20.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = PointGreen,
+                    fontFamily = mansehFont
+                )
+
+                // 감정 태그 표시
+                if (diary?.emotionTag != null) {
+                    val tagColor = when (diary.emotionTag) {
+                        "행복" -> Color(0xFFFFA726)
+                        "편안" -> Color(0xFF66BB6A)
+                        "슬픔" -> Color(0xFF42A5F5)
+                        "화남" -> Color(0xFFEF5350)
+                        else -> PointGreen
+                    }
+                    Box(
+                        modifier = Modifier
+                            .background(
+                                color = tagColor.copy(alpha = 0.12f),
+                                shape = RoundedCornerShape(20.dp)
+                            )
+                            .padding(horizontal = 12.dp, vertical = 4.dp)
+                    ) {
+                        Text(
+                            text = diary.emotionTag,
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = tagColor,
+                            fontFamily = mansehFont
+                        )
+                    }
+                }
+            }
 
             // 일기 내용
             when {

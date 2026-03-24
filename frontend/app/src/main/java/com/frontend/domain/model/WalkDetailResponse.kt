@@ -16,6 +16,8 @@ data class WalkDetailResponse(
     data class DiaryInfo(
         val diaryId: Long,
         val content: String?,    // null = 생성 중
+        val emotionTag: String?, // 대표 감정 태그 (행복, 편안, 슬픔, 화남)
+        val photoEmotions: Map<String, String>?, // 사진별 감정 태그 { "url": "행복" }
         val createdAt: String?
     )
 }
