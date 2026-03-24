@@ -2,6 +2,7 @@ package com.e108.be.domain.walk.service;
 
 import com.e108.be.domain.badge.dto.response.BadgeResponse;
 import com.e108.be.domain.badge.service.BadgeService;
+import com.e108.be.domain.chat.service.ChatService;
 import com.e108.be.domain.diary.entity.Diary;
 import com.e108.be.domain.diary.repository.DiaryRepository;
 import com.e108.be.domain.diary.service.DiaryService;
@@ -69,6 +70,7 @@ public class WalkService {
     private final ObjectMapper objectMapper;
     private final BadgeService badgeService;
     private final RouteSelectionService routeSelectionService;
+    private final ChatService chatService;
 
     /**
      * W1-01 산책 시작
@@ -198,6 +200,13 @@ public class WalkService {
             }
         } catch (Exception e) {
             log.error("[endWalk] 배지 체크 중 에러 발생 (산책 종료는 정상 처리됨): walkId={}", walkId, e);
+        }
+
+        // 채팅방 종료 — 실패해도 산책 종료는 정상 처리
+        try {
+            chatService.closeRoomByWalkRecordId(walkId);
+        } catch (Exception e) {
+            log.error("[endWalk] 채팅방 종료 중 에러 발생 (산책 종료는 정상 처리됨): walkId={}", walkId, e);
         }
 
         return EndWalkResponse.from(walkRecord, newBadges);
@@ -422,7 +431,9 @@ public class WalkService {
                 String breed = data.get("breed").toString();
                 String profileImageUrl = data.containsKey("profileImageUrl")
                         ? data.get("profileImageUrl").toString() : null;
-                acceptedProposals.add(new AcceptedProposalResponse(proposalId, dogId, name, breed, profileImageUrl));
+                Long chatRoomId = data.containsKey("chatRoomId") && data.get("chatRoomId") != null
+                        ? Long.valueOf(data.get("chatRoomId").toString()) : null;
+                acceptedProposals.add(new AcceptedProposalResponse(proposalId, dogId, name, breed, profileImageUrl, chatRoomId));
                 // 읽었으면 삭제 (1회성 알림)
                 redisTemplate.opsForHash().delete(acceptKey, proposalId);
             } catch (Exception e) {
@@ -528,17 +539,33 @@ public class WalkService {
                 if (myDogForBadge != null) badgeService.checkMeetBadges(myDogForBadge.getUser().getId());
                 if (fromDogForBadge != null) badgeService.checkMeetBadges(fromDogForBadge.getUser().getId());
 
+                // 채팅방 생성
+                Long chatRoomId = null;
+                if (myDogForBadge != null && fromDogForBadge != null) {
+                    try {
+                        Long fromMemberId = fromDogForBadge.getUser().getId();
+                        Long toMemberId = myDogForBadge.getUser().getId();
+                        chatRoomId = chatService.createChatRoom(fromMemberId, toMemberId, fromWalkRecordId, request.getMyWalkRecordId());
+                        log.debug("[respondToProposal] 채팅방 생성 완료: chatRoomId={}", chatRoomId);
+                    } catch (Exception e) {
+                        log.warn("[respondToProposal] 채팅방 생성 오류: {}", e.getMessage());
+                    }
+                }
+
                 // 제안자(fromWalkRecordId)에게 수락 알림 저장 (30분 TTL)
                 Dog myDog = dogRepository.findById(myRecord.getDogId()).orElse(null);
                 if (myDog != null) {
                     try {
                         String acceptKey = ACCEPTED_KEY_PREFIX + fromWalkRecordId;
-                        String acceptValue = objectMapper.writeValueAsString(Map.of(
-                                "dogId", myDog.getId(),
-                                "name", myDog.getName(),
-                                "breed", myDog.getBreed(),
-                                "profileImageUrl", myDog.getProfileImageUrl() != null ? myDog.getProfileImageUrl() : ""
-                        ));
+                        Map<String, Object> acceptData = new java.util.HashMap<>();
+                        acceptData.put("dogId", myDog.getId());
+                        acceptData.put("name", myDog.getName());
+                        acceptData.put("breed", myDog.getBreed());
+                        acceptData.put("profileImageUrl", myDog.getProfileImageUrl() != null ? myDog.getProfileImageUrl() : "");
+                        if (chatRoomId != null) {
+                            acceptData.put("chatRoomId", chatRoomId);
+                        }
+                        String acceptValue = objectMapper.writeValueAsString(acceptData);
                         redisTemplate.opsForHash().put(acceptKey, proposalId, acceptValue);
                         redisTemplate.expire(acceptKey, 30, TimeUnit.MINUTES);
                     } catch (Exception e) {
