@@ -84,4 +84,42 @@ public interface WalkRecordRepository extends JpaRepository<WalkRecord, Long> {
 
     @Query(value = "SELECT COALESCE(SUM(json_array_length(photo_urls)), 0) FROM walk_records WHERE dog_id IN (:dogIds) AND photo_urls IS NOT NULL", nativeQuery = true)
     long countTotalPhotos(@Param("dogIds") List<Long> dogIds);
+
+    /**
+     * 현재 좌표(lat, lon) 기준 반경(radiusM) 내 진행 중인 산책 세션 조회.
+     * - PostGIS ST_DWithin으로 반경 필터링
+     * - ST_Distance로 정확한 거리 계산
+     * - route_line의 마지막 좌표(현재 위치) 반환
+     * - 자기 자신(myDogId)의 산책 세션 제외
+     * - route_line이 없는 세션 제외
+     *
+     * @return List<Object[]> — 각 행이 [walkRecordId, dogId, lat, lon, distanceM]
+     */
+    @Query(value = """
+            SELECT
+                w.id AS walkRecordId,
+                w.dog_id AS dogId,
+                ST_Y(ST_EndPoint(w.route_line::geometry)) AS lat,
+                ST_X(ST_EndPoint(w.route_line::geometry)) AS lon,
+                ST_Distance(
+                    w.route_line,
+                    ST_SetSRID(ST_MakePoint(:lon, :lat), 4326)::geography
+                ) AS distanceM
+            FROM walk_records w
+            WHERE w.walk_status = 'IN_PROGRESS'
+              AND w.route_line IS NOT NULL
+              AND w.dog_id <> :myDogId
+              AND ST_DWithin(
+                    w.route_line,
+                    ST_SetSRID(ST_MakePoint(:lon, :lat), 4326)::geography,
+                    :radiusM
+                  )
+            ORDER BY distanceM ASC
+            """, nativeQuery = true)
+    List<Object[]> findNearbyInProgressWalks(
+            @Param("lat") double lat,
+            @Param("lon") double lon,
+            @Param("radiusM") double radiusM,
+            @Param("myDogId") Long myDogId
+    );
 }

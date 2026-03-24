@@ -38,8 +38,8 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.Instant;
-import java.util.*;
 import java.time.LocalDateTime;
+import java.util.*;
 import java.util.concurrent.TimeUnit;
 
 @Slf4j
@@ -245,50 +245,59 @@ public class WalkService {
      * GET /api/v1/walks/nearby-dogs
      *
      * myWalkRecordId 전달 시 내게 온 pendingProposals도 함께 반환
+     *
+     * 성능 개선: PostGIS ST_DWithin 기반 spatial query로 반경 필터링 및 거리 계산을
+     * DB에서 처리하여 전체 IN_PROGRESS 스캔 및 N+1 문제 해결
      */
     public NearbyDogsResponse getNearbyDogs(double lat, double lon, double radius,
                                              Long myDogId, Long myWalkRecordId) {
-        List<WalkRecord> inProgressWalks = walkRecordRepository.findAllByWalkStatus(WalkStatus.IN_PROGRESS);
-        log.debug("[nearbyDogs] IN_PROGRESS {}개 조회됨. myDogId={}, lat={}, lon={}, radius={}",
-                inProgressWalks.size(), myDogId, lat, lon, radius);
-        List<NearbyDogResponse> nearbyDogs = new ArrayList<>();
+        // 1. PostGIS spatial query로 반경 내 진행 중 산책 세션 조회
+        //    반환: [walkRecordId, dogId, lat, lon, distanceM]
+        List<Object[]> nearbyWalks = walkRecordRepository.findNearbyInProgressWalks(lat, lon, radius, myDogId);
+        log.debug("[nearbyDogs] spatial query 결과: {}건. myDogId={}, lat={}, lon={}, radius={}",
+                nearbyWalks.size(), myDogId, lat, lon, radius);
 
-        // 내 피드백 목록 일괄 로드 (N+1 방지) — myDogId가 없으면 빈 맵
-        Map<Long, String> myFeedbackMap = new java.util.HashMap<>();
+        if (nearbyWalks.isEmpty()) {
+            return new NearbyDogsResponse(new ArrayList<>(), getPendingProposals(myWalkRecordId), getAcceptedProposals(myWalkRecordId));
+        }
+
+        // 2. 비선호(싫어요) 강아지 목록 한 번에 조회 → Set으로 변환
+        Set<Long> dislikedDogIds = myDogId != null
+                ? new HashSet<>(metDogRepository.findDislikedTargetDogIds(myDogId))
+                : Collections.emptySet();
+
+        // 3. 내 피드백 목록 일괄 로드 (N+1 방지)
+        Map<Long, String> myFeedbackMap = new HashMap<>();
         if (myDogId != null) {
             metDogRepository.findAllBySourceDogId(myDogId)
                     .forEach(md -> myFeedbackMap.put(md.getTargetDogId(), md.getFeedback().name()));
         }
 
-        for (WalkRecord walk : inProgressWalks) {
-            if (walk.getDogId().equals(myDogId)) {
+        // 4. dogId 목록 추출 후 Dog 정보 일괄 조회 (N+1 방지)
+        List<Long> dogIds = nearbyWalks.stream()
+                .map(row -> ((Number) row[1]).longValue())
+                .toList();
+        Map<Long, Dog> dogMap = dogRepository.findAllById(dogIds).stream()
+                .collect(java.util.stream.Collectors.toMap(Dog::getId, d -> d));
+
+        // 5. 응답 생성
+        List<NearbyDogResponse> nearbyDogs = new ArrayList<>();
+        for (Object[] row : nearbyWalks) {
+            Long walkRecordId = ((Number) row[0]).longValue();
+            Long dogId = ((Number) row[1]).longValue();
+            double dogLat = ((Number) row[2]).doubleValue();
+            double dogLon = ((Number) row[3]).doubleValue();
+            double distanceM = ((Number) row[4]).doubleValue();
+
+            Dog dog = dogMap.get(dogId);
+            if (dog == null) {
+                log.warn("[nearbyDogs] dogId={} 에 해당하는 강아지 정보 없음", dogId);
                 continue;
             }
 
-            List<Object[]> lastPointList = walkRecordRepository.getLastPoint(walk.getId());
-            if (lastPointList == null || lastPointList.isEmpty()) {
-                continue;
-            }
-            Object[] lastPoint = lastPointList.get(0);
-            if (lastPoint == null || lastPoint.length < 2) {
-                log.warn("[nearbyDogs] walkId={} → lastPoint 형식 이상: length={}",
-                        walk.getId(), lastPoint == null ? "null" : lastPoint.length);
-                continue;
-            }
+            String feedback = myFeedbackMap.get(dogId);
+            boolean avoidAlertCandidate = dislikedDogIds.contains(dogId);
 
-            double dogLat = ((Number) lastPoint[0]).doubleValue();
-            double dogLon = ((Number) lastPoint[1]).doubleValue();
-
-            double distance = haversine(lat, lon, dogLat, dogLon);
-            if (distance > radius) {
-                continue;
-            }
-
-            Optional<Dog> dogOpt = dogRepository.findById(walk.getDogId());
-            if (dogOpt.isEmpty()) continue;
-            Dog dog = dogOpt.get();
-
-            String feedback = myFeedbackMap.get(dog.getId());
             nearbyDogs.add(new NearbyDogResponse(
                     dog.getId(),
                     dog.getName(),
@@ -296,73 +305,88 @@ public class WalkService {
                     dog.getProfileImageUrl(),
                     dogLat,
                     dogLon,
-                    Math.round(distance * 10.0) / 10.0,
-                    walk.getId(),
-                    feedback
+                    Math.round(distanceM * 10.0) / 10.0,
+                    walkRecordId,
+                    feedback,
+                    avoidAlertCandidate
             ));
         }
         log.debug("[nearbyDogs] 최종 결과: {}마리", nearbyDogs.size());
 
-        // 내게 온 pending proposals 조회
+        return new NearbyDogsResponse(nearbyDogs, getPendingProposals(myWalkRecordId), getAcceptedProposals(myWalkRecordId));
+    }
+
+    /**
+     * 내게 온 pending proposals 조회 (Redis)
+     */
+    private List<PendingProposalResponse> getPendingProposals(Long myWalkRecordId) {
         List<PendingProposalResponse> pendingProposals = new ArrayList<>();
-        if (myWalkRecordId != null) {
-            String hashKey = PROPOSAL_KEY_PREFIX + myWalkRecordId;
-            Map<Object, Object> entries = redisTemplate.opsForHash().entries(hashKey);
-            for (Map.Entry<Object, Object> entry : entries.entrySet()) {
-                try {
-                    String proposalId = entry.getKey().toString();
-                    Map<String, Object> data = objectMapper.readValue(
-                            entry.getValue().toString(),
-                            new TypeReference<Map<String, Object>>() {}
-                    );
-                    Long fromWalkRecordId = Long.valueOf(data.get("fromWalkRecordId").toString());
-
-                    WalkRecord fromRecord = walkRecordRepository.findById(fromWalkRecordId).orElse(null);
-                    if (fromRecord == null) continue;
-
-                    dogRepository.findById(fromRecord.getDogId()).ifPresent(dog ->
-                            pendingProposals.add(new PendingProposalResponse(
-                                    proposalId,
-                                    fromWalkRecordId,
-                                    dog.getId(),
-                                    dog.getName(),
-                                    dog.getBreed(),
-                                    dog.getProfileImageUrl()
-                            ))
-                    );
-                } catch (Exception e) {
-                    log.warn("[nearbyDogs] pendingProposal Redis 파싱 오류: {}", e.getMessage());
-                }
-            }
+        if (myWalkRecordId == null) {
+            return pendingProposals;
         }
 
-        // 내가 보낸 제안이 수락됐는지 조회
+        String hashKey = PROPOSAL_KEY_PREFIX + myWalkRecordId;
+        Map<Object, Object> entries = redisTemplate.opsForHash().entries(hashKey);
+        for (Map.Entry<Object, Object> entry : entries.entrySet()) {
+            try {
+                String proposalId = entry.getKey().toString();
+                Map<String, Object> data = objectMapper.readValue(
+                        entry.getValue().toString(),
+                        new TypeReference<Map<String, Object>>() {}
+                );
+                Long fromWalkRecordId = Long.valueOf(data.get("fromWalkRecordId").toString());
+
+                WalkRecord fromRecord = walkRecordRepository.findById(fromWalkRecordId).orElse(null);
+                if (fromRecord == null) continue;
+
+                dogRepository.findById(fromRecord.getDogId()).ifPresent(dog ->
+                        pendingProposals.add(new PendingProposalResponse(
+                                proposalId,
+                                fromWalkRecordId,
+                                dog.getId(),
+                                dog.getName(),
+                                dog.getBreed(),
+                                dog.getProfileImageUrl()
+                        ))
+                );
+            } catch (Exception e) {
+                log.warn("[nearbyDogs] pendingProposal Redis 파싱 오류: {}", e.getMessage());
+            }
+        }
+        return pendingProposals;
+    }
+
+    /**
+     * 내가 보낸 제안이 수락됐는지 조회 (Redis)
+     */
+    private List<AcceptedProposalResponse> getAcceptedProposals(Long myWalkRecordId) {
         List<AcceptedProposalResponse> acceptedProposals = new ArrayList<>();
-        if (myWalkRecordId != null) {
-            String acceptKey = ACCEPTED_KEY_PREFIX + myWalkRecordId;
-            Map<Object, Object> acceptedEntries = redisTemplate.opsForHash().entries(acceptKey);
-            for (Map.Entry<Object, Object> entry : acceptedEntries.entrySet()) {
-                try {
-                    String proposalId = entry.getKey().toString();
-                    Map<String, Object> data = objectMapper.readValue(
-                            entry.getValue().toString(),
-                            new TypeReference<Map<String, Object>>() {}
-                    );
-                    Long dogId = Long.valueOf(data.get("dogId").toString());
-                    String name = data.get("name").toString();
-                    String breed = data.get("breed").toString();
-                    String profileImageUrl = data.containsKey("profileImageUrl")
-                            ? data.get("profileImageUrl").toString() : null;
-                    acceptedProposals.add(new AcceptedProposalResponse(proposalId, dogId, name, breed, profileImageUrl));
-                    // 읽었으면 삭제 (1회성 알림)
-                    redisTemplate.opsForHash().delete(acceptKey, proposalId);
-                } catch (Exception e) {
-                    log.warn("[nearbyDogs] acceptedProposal Redis 파싱 오류: {}", e.getMessage());
-                }
-            }
+        if (myWalkRecordId == null) {
+            return acceptedProposals;
         }
 
-        return new NearbyDogsResponse(nearbyDogs, pendingProposals, acceptedProposals);
+        String acceptKey = ACCEPTED_KEY_PREFIX + myWalkRecordId;
+        Map<Object, Object> acceptedEntries = redisTemplate.opsForHash().entries(acceptKey);
+        for (Map.Entry<Object, Object> entry : acceptedEntries.entrySet()) {
+            try {
+                String proposalId = entry.getKey().toString();
+                Map<String, Object> data = objectMapper.readValue(
+                        entry.getValue().toString(),
+                        new TypeReference<Map<String, Object>>() {}
+                );
+                Long dogId = Long.valueOf(data.get("dogId").toString());
+                String name = data.get("name").toString();
+                String breed = data.get("breed").toString();
+                String profileImageUrl = data.containsKey("profileImageUrl")
+                        ? data.get("profileImageUrl").toString() : null;
+                acceptedProposals.add(new AcceptedProposalResponse(proposalId, dogId, name, breed, profileImageUrl));
+                // 읽었으면 삭제 (1회성 알림)
+                redisTemplate.opsForHash().delete(acceptKey, proposalId);
+            } catch (Exception e) {
+                log.warn("[nearbyDogs] acceptedProposal Redis 파싱 오류: {}", e.getMessage());
+            }
+        }
+        return acceptedProposals;
     }
 
     /**
