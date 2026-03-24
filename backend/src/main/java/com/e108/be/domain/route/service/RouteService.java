@@ -10,6 +10,7 @@ import com.e108.be.domain.route.dto.response.RouteRecommendResponse;
 import com.e108.be.domain.route.dto.response.RouteType;
 import com.e108.be.domain.route.entity.WeatherCondition;
 import com.e108.be.domain.route.repository.BreedDistanceConfigRepository;
+import com.e108.be.domain.route.repository.RouteSelectionPlaceRepository;
 import com.e108.be.domain.route.service.RouteGeneratorService.ScoredPlace;
 import com.e108.be.domain.route.service.WalkPatternService.WalkPattern;
 import lombok.RequiredArgsConstructor;
@@ -17,6 +18,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDateTime;
 import java.util.*;
 
 /**
@@ -53,12 +55,16 @@ public class RouteService {
     private static final int NORMAL_MIN = 6;
     private static final int REDUCED_MIN = 3;
 
+    // 피로도 감점 적용 기간 (일)
+    private static final int RECENT_VISIT_DAYS = 3;
+
     private final PlaceRepository placeRepository;
     private final DogRepository dogRepository;
     private final PlaceScoringService placeScoringService;
     private final RouteGeneratorService routeGeneratorService;
     private final WalkPatternService walkPatternService;
     private final BreedDistanceConfigRepository breedDistanceConfigRepository;
+    private final RouteSelectionPlaceRepository selectionPlaceRepository;
 
     /**
      * 경로 추천
@@ -79,6 +85,7 @@ public class RouteService {
         // 개인화 컨텍스트 구성
         Map<String, Double> prefMap = placeScoringService.loadPreferenceMap(memberId);
         double radiusMultiplier = resolveRadiusMultiplier(dog);
+        Set<Long> recentPlaceIds = loadRecentPlaceIds(memberId);
 
         // 산책 패턴 분석 (날씨/시간 기반 추천에 활용)
         RouteType recommendedType = resolveRecommendedType(memberId, dog, weather);
@@ -88,13 +95,14 @@ public class RouteService {
         double recommendRadius = RECOMMEND_RADIUS_M * radiusMultiplier;
         double exploreRadius = EXPLORE_RADIUS_M * radiusMultiplier;
 
-        log.debug("경로 추천 - memberId={}, 반경 배율={}, short={}m, recommend={}m, explore={}m, 추천유형={}",
-                memberId, radiusMultiplier, shortRadius, recommendRadius, exploreRadius, recommendedType);
+        log.debug("경로 추천 - memberId={}, 반경 배율={}, short={}m, recommend={}m, explore={}m, 추천유형={}, 최근방문={}개",
+                memberId, radiusMultiplier, shortRadius, recommendRadius, exploreRadius,
+                recommendedType, recentPlaceIds != null ? recentPlaceIds.size() : 0);
 
-        // 1단계: 반경별 후보 장소 조회 + 개인화 스코어링
-        List<ScoredPlace> shortPlaces = findAndScore(lat, lon, shortRadius, prefMap);
-        List<ScoredPlace> recommendPlaces = findAndScore(lat, lon, recommendRadius, prefMap);
-        List<ScoredPlace> explorePlaces = findAndScore(lat, lon, exploreRadius, prefMap);
+        // 1단계: 반경별 후보 장소 조회 + 개인화 스코어링 + 피로도 감점
+        List<ScoredPlace> shortPlaces = findAndScore(lat, lon, shortRadius, prefMap, recentPlaceIds);
+        List<ScoredPlace> recommendPlaces = findAndScore(lat, lon, recommendRadius, prefMap, recentPlaceIds);
+        List<ScoredPlace> explorePlaces = findAndScore(lat, lon, exploreRadius, prefMap, recentPlaceIds);
 
         // 전체 고유 장소 수로 폴백 레벨 결정
         int totalUnique = countUniquePlaces(shortPlaces, recommendPlaces, explorePlaces);
@@ -170,11 +178,22 @@ public class RouteService {
     }
 
     /**
+     * 최근 N일 내 방문 장소 ID 조회 (피로도 감점용)
+     */
+    private Set<Long> loadRecentPlaceIds(Long memberId) {
+        if (memberId == null) return Set.of();
+
+        LocalDateTime since = LocalDateTime.now().minusDays(RECENT_VISIT_DAYS);
+        return selectionPlaceRepository.findRecentPlaceIds(memberId, since);
+    }
+
+    /**
      * 지정 반경에서 후보 장소를 조회하고 개인화 스코어링
      * 장소 부족 시 반경을 단계별로 확장 (최대 x2, 3km 제한)
      */
     private List<ScoredPlace> findAndScore(double lat, double lon, double baseRadius,
-                                            Map<String, Double> prefMap) {
+                                            Map<String, Double> prefMap,
+                                            Set<Long> recentPlaceIds) {
         List<NearbyPlaceProjection> candidates = List.of();
 
         for (double multiplier : RADIUS_MULTIPLIERS) {
@@ -189,7 +208,7 @@ public class RouteService {
         return candidates.stream()
                 .map(place -> new ScoredPlace(
                         place,
-                        placeScoringService.score(place, lat, lon, prefMap)
+                        placeScoringService.score(place, lat, lon, prefMap, recentPlaceIds)
                 ))
                 .sorted(Comparator.comparingDouble(ScoredPlace::score).reversed())
                 .toList();

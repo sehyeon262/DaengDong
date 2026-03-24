@@ -7,7 +7,9 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Set;
 
 public interface RouteSelectionPlaceRepository extends JpaRepository<RouteSelectionPlace, Long> {
 
@@ -38,4 +40,16 @@ public interface RouteSelectionPlaceRepository extends JpaRepository<RouteSelect
         ORDER BY COUNT(sp) DESC
         """)
     List<PlaceCountProjection> countByMemberIdGroupByPlace(@Param("memberId") Long memberId);
+
+    /**
+     * 최근 N일 내 사용자가 선택한 경로에 포함된 장소 ID 목록
+     * 피로도(Decay) 계산에 활용: 최근 방문 장소는 스코어 감점
+     */
+    @Query("""
+        SELECT DISTINCT sp.place.id
+        FROM RouteSelectionPlace sp
+        JOIN sp.selectionLog sl
+        WHERE sl.memberId = :memberId AND sl.createdAt >= :since
+        """)
+    Set<Long> findRecentPlaceIds(@Param("memberId") Long memberId, @Param("since") LocalDateTime since);
 }

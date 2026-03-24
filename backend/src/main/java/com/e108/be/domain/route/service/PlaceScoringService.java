@@ -9,6 +9,7 @@ import org.springframework.stereotype.Service;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.function.Function;
 import java.util.stream.Collectors;
@@ -16,11 +17,12 @@ import java.util.stream.Collectors;
 /**
  * 장소 스코어링
  *
- * 각 장소에 대해 거리, 카테고리 가중치, 개인화 선호도를 종합하여
+ * 각 장소에 대해 거리, 카테고리 가중치, 개인화 선호도, 피로도를 종합하여
  * 단일 점수를 산출한다.
  *
  * score = WEIGHT_DISTANCE × 거리 점수
  *       + WEIGHT_CATEGORY × 카테고리 점수 (전역 + 개인화 블렌딩)
+ *       - RECENT_VISIT_PENALTY (최근 방문 장소 감점)
  *       + noise
  */
 @Service
@@ -37,7 +39,11 @@ public class PlaceScoringService {
     private static final double GLOBAL_WEIGHT_RATIO = 0.6;
     private static final double PERSONAL_WEIGHT_RATIO = 0.4;
 
-    // 초기 사용자 랜덤 노이즈 범위
+    // 최근 방문 장소 감점 (피로도/다양성 관리)
+    // 최근 방문 장소는 이 값만큼 스코어가 낮아져 다른 장소가 상위로 올라옴
+    private static final double RECENT_VISIT_PENALTY = 0.3;
+
+    // 랜덤 노이즈 범위 (매 요청마다 약간의 변화 부여)
     private static final double NOISE_RANGE = 0.1;
 
     // 개인화 적용 최소 선택 횟수
@@ -48,15 +54,17 @@ public class PlaceScoringService {
     /**
      * 장소 하나에 대한 추천 점수 계산
      *
-     * @param place      주변 장소 Projection
-     * @param originLat  사용자 현재 위도
-     * @param originLon  사용자 현재 경도
-     * @param prefMap    사용자 카테고리 선호도 맵 (categoryName -> preferenceScore)
-     *                   null이면 전역 가중치만 사용
+     * @param place          주변 장소 Projection
+     * @param originLat      사용자 현재 위도
+     * @param originLon      사용자 현재 경도
+     * @param prefMap        사용자 카테고리 선호도 맵 (categoryName -> preferenceScore)
+     *                       null이면 전역 가중치만 사용
+     * @param recentPlaceIds 최근 방문한 장소 ID 집합 (피로도 감점 대상)
+     *                       null이면 감점 없음
      * @return 0 이상의 점수 (높을수록 추천도 높음)
      */
     public double score(NearbyPlaceProjection place, double originLat, double originLon,
-                        Map<String, Double> prefMap) {
+                        Map<String, Double> prefMap, Set<Long> recentPlaceIds) {
         double score = 0.0;
 
         // 1. 거리 점수 (가까울수록 높음)
@@ -78,7 +86,12 @@ public class PlaceScoringService {
             score += WEIGHT_CATEGORY * globalCategoryScore;
         }
 
-        // 3. 랜덤 노이즈 (같은 출발지에서 매번 같은 결과 방지)
+        // 3. 피로도 감점 (최근 방문 장소는 점수 하락 → 다른 장소 우선 추천)
+        if (recentPlaceIds != null && recentPlaceIds.contains(place.getId())) {
+            score -= RECENT_VISIT_PENALTY;
+        }
+
+        // 4. 랜덤 노이즈 (같은 출발지에서 매번 같은 결과 방지)
         score += ThreadLocalRandom.current().nextDouble(-NOISE_RANGE, NOISE_RANGE);
 
         return Math.max(0, score);
