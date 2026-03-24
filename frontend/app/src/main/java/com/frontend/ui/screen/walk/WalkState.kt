@@ -12,6 +12,15 @@ import com.frontend.domain.model.RejectedProposalInfo
 import com.frontend.domain.model.Place
 import com.frontend.domain.model.RecommendedRoute
 
+/**
+ * 비선호 강아지 알림 상태 추적용 데이터 클래스
+ * - 진입/이탈/쿨다운 기반으로 중복 알림 방지
+ */
+data class DogAlertState(
+    val lastAlertTimeMs: Long = 0L,         // 마지막 알림 발송 시간
+    val isInsideAlertRadius: Boolean = false, // 현재 알림 반경(50m) 안에 있는지
+)
+
 data class WalkState(
     val selectedRouteIndex: Int = 0,
     val showFilterSheet: Boolean = false,
@@ -72,7 +81,7 @@ data class WalkState(
 
     // ── 비선호 강아지 경고 (S14P21E108-175) ─────────────────────────────────
     val warningDog: NearbyDogResponse? = null,             // 현재 경고 표시 중인 비선호 강아지
-    val shownWarningDogIds: Set<Long> = emptySet(),        // 이미 경고를 띄운 dogId (중복 방지)
+    val dogAlertStates: Map<Long, DogAlertState> = emptyMap(),  // 진입/이탈/쿨다운 기반 알림 상태
 
     // ── 위험 구역 신고 ────────────────────────────────────────────────────────
     val isSelectingDangerZone: Boolean = false,       // 위치 선택 모드 여부
