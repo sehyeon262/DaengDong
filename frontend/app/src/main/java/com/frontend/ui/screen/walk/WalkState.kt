@@ -8,6 +8,7 @@ import com.frontend.domain.model.DogProfileResponse
 import com.frontend.domain.model.NearbyDogResponse
 import com.frontend.domain.model.NewBadgeInfo
 import com.frontend.domain.model.PendingProposalInfo
+import com.frontend.domain.model.RejectedProposalInfo
 import com.frontend.domain.model.Place
 import com.frontend.domain.model.RecommendedRoute
 
@@ -64,7 +65,10 @@ data class WalkState(
     val isSendingProposal: Boolean = false,                 // 제안 전송 중 여부
     val proposalSentDogId: Long? = null,                   // 제안 보낸 강아지 ID (버튼 상태용)
     val pendingProposals: List<PendingProposalInfo> = emptyList(),   // 받은 제안 목록
-    val acceptedProposals: List<AcceptedProposalInfo> = emptyList(), // 수락된 제안 알림
+    val acceptedProposals: List<AcceptedProposalInfo> = emptyList(), // 수락된 제안 알림 (제안자용 polling)
+    val rejectedProposals: List<RejectedProposalInfo> = emptyList(), // 거절된 제안 알림 (제안자용 polling)
+    val showAcceptedByMeDialog: Boolean = false,  // 수락자 확인 모달 ("함께 산책하기를 수락했습니다")
+    val showRejectedByMeDialog: Boolean = false,  // 거절자 확인 모달 ("산책 거절 메시지를 보냈습니다")
 
     // ── 비선호 강아지 경고 (S14P21E108-175) ─────────────────────────────────
     val warningDog: NearbyDogResponse? = null,             // 현재 경고 표시 중인 비선호 강아지

@@ -6,5 +6,6 @@
         <!-- TODO: 배포 직전 제거 필요 - 로컬 개발용 IP -->
         <domain includeSubdomains="true">192.168.0.19</domain>
         <domain includeSubdomains="true">192.168.30.192</domain>
+        <domain includeSubdomains="true">192.168.30.183</domain>
     </domain-config>
 </network-security-config>
