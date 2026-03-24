@@ -22,6 +22,9 @@ public interface WalkRecordRepository extends JpaRepository<WalkRecord, Long> {
 
     List<WalkRecord> findAllByWalkStatus(WalkStatus walkStatus);
 
+    // 특정 강아지의 완료된 산책 목록 (최신순) - 히트맵/기록 조회용
+    List<WalkRecord> findAllByDogIdAndWalkStatusOrderByStartTimeDesc(Long dogId, WalkStatus walkStatus);
+
     /**
      * GPS 배치(WKT)를 route_line에 이어붙임
      * - route_line이 NULL이면 새 LINESTRING 생성

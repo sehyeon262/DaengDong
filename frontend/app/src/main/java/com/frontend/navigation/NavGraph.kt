@@ -45,8 +45,8 @@ fun NavGraph() {
     ) { innerPadding ->
         NavHost(
             navController = navController,
-            // TODO: (로그인 우회 : Routes.SPLASH) (원래: Routes.SPLASH)
-            startDestination = Routes.SPLASH,
+            // TODO: (로그인 우회 : Routes.WALK) (원래: Routes.SPLASH)
+            startDestination = Routes.WALK,
             modifier = Modifier.padding(innerPadding)
         ) {
             composable(Routes.SPLASH) {
