@@ -52,22 +52,28 @@ class WalkDetailViewModel @Inject constructor(
         }
     }
 
-    // diary가 생성 중(content=null)이면 5초마다 재조회
+    // diary가 생성 중(content=null)이면 5초마다 재조회 (최대 60초)
     private fun startPollingIfNeeded(detail: WalkDetailResponse) {
         val isGenerating = detail.diary != null && detail.diary.content == null
         if (!isGenerating) return
 
         pollingJob?.cancel()
         pollingJob = viewModelScope.launch {
-            while (true) {
+            val maxAttempts = 12 // 5초 × 12 = 60초
+            var attempt = 0
+            while (attempt < maxAttempts) {
                 kotlinx.coroutines.delay(5000)
+                attempt++
                 walkRepository.getWalkDetail(walkId).onSuccess { newDetail ->
                     _state.update { it.copy(detail = newDetail) }
                     if (newDetail.diary?.content != null) {
-                        pollingJob?.cancel() // 완성되면 폴링 중단
+                        pollingJob?.cancel()
+                        return@launch
                     }
                 }
             }
+            // 60초 초과 시 폴링 중단
+            pollingJob?.cancel()
         }
     }
 

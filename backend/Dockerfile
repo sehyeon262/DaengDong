@@ -30,5 +30,8 @@ RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
 # 빌드 결과물(jar)만 쏙 가져오기
 COPY --from=builder /app/build/libs/*.jar app.jar
 
+# 강아지 감정 분석 ONNX 모델
+COPY models/dog.onnx /app/models/dog.onnx
+
 # 프로파일 및 실행 옵션 유연화
 ENTRYPOINT ["java", "-Djava.security.egd=file:/dev/./urandom", "-jar", "app.jar"]
