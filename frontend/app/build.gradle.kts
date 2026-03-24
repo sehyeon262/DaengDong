@@ -97,6 +97,8 @@ dependencies {
     implementation(libs.coil.compose)
     // Location
     implementation(libs.play.services.location)
+    // Wearable Data Layer API
+    implementation(libs.play.services.wearable)
     // Kakao Maps
     implementation(libs.kakao.maps)
     // Import the Firebase BoM
