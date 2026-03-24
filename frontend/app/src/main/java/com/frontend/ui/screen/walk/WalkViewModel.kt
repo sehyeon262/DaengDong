@@ -21,6 +21,7 @@ import com.frontend.data.repository.WalkRepository
 import com.frontend.domain.model.FeedbackRequest
 import com.frontend.domain.model.NearbyDogResponse
 import com.frontend.domain.model.PendingProposalInfo
+import com.frontend.domain.model.RejectedProposalInfo
 import com.frontend.domain.model.DangerLocation
 import com.frontend.domain.model.DangerReason
 import com.frontend.domain.model.LocationBatchRequest
@@ -689,7 +690,8 @@ class WalkViewModel @Inject constructor(
                     it.copy(
                         nearbyDogs = response.nearbyDogs,
                         pendingProposals = response.pendingProposals,
-                        acceptedProposals = response.acceptedProposals,
+                        acceptedProposals = it.acceptedProposals + response.acceptedProposals,
+                        rejectedProposals = it.rejectedProposals + response.rejectedProposals,
                     )
                 }
 
@@ -794,8 +796,10 @@ class WalkViewModel @Inject constructor(
     /** 받은 제안 수락 */
     fun acceptProposal(proposal: PendingProposalInfo) {
         val myWalkRecordId = currentWalkId ?: return
+        // optimistic: 목록에서 제거 + 수락자 확인 모달 표시
         _state.update { it.copy(
-            pendingProposals = it.pendingProposals.filter { p -> p.proposalId != proposal.proposalId }
+            pendingProposals = it.pendingProposals.filter { p -> p.proposalId != proposal.proposalId },
+            showAcceptedByMeDialog = true,
         ) }
         viewModelScope.launch {
             walkRepository.respondToProposal(proposal.proposalId, "ACCEPT", myWalkRecordId)
@@ -805,19 +809,38 @@ class WalkViewModel @Inject constructor(
     /** 받은 제안 거절 */
     fun rejectProposal(proposal: PendingProposalInfo) {
         val myWalkRecordId = currentWalkId ?: return
+        // optimistic: 목록에서 제거 + 거절자 확인 모달 표시
         _state.update { it.copy(
-            pendingProposals = it.pendingProposals.filter { p -> p.proposalId != proposal.proposalId }
+            pendingProposals = it.pendingProposals.filter { p -> p.proposalId != proposal.proposalId },
+            showRejectedByMeDialog = true,
         ) }
         viewModelScope.launch {
             walkRepository.respondToProposal(proposal.proposalId, "REJECT", myWalkRecordId)
         }
     }
 
-    /** 수락 알림 확인 (dismissed) */
+    /** 제안자 — 수락 알림 확인 */
     fun dismissAcceptedProposal(proposalId: String) {
         _state.update { it.copy(
             acceptedProposals = it.acceptedProposals.filter { a -> a.proposalId != proposalId }
         ) }
+    }
+
+    /** 제안자 — 거절 알림 확인 */
+    fun dismissRejectedProposal(proposalId: String) {
+        _state.update { it.copy(
+            rejectedProposals = it.rejectedProposals.filter { r -> r.proposalId != proposalId }
+        ) }
+    }
+
+    /** 수락자 — 수락 확인 모달 닫기 */
+    fun dismissAcceptedByMe() {
+        _state.update { it.copy(showAcceptedByMeDialog = false) }
+    }
+
+    /** 거절자 — 거절 확인 모달 닫기 */
+    fun dismissRejectedByMe() {
+        _state.update { it.copy(showRejectedByMeDialog = false) }
     }
 
     // ── 위험 구역 신고 ─────────────────────────────────────────────────────────
