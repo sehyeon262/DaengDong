@@ -25,16 +25,14 @@ import retrofit2.http.Query
 
 interface WalkApi {
 
-    /** W1-01: 산책 시작 — POST /api/v1/walks */
+    /**
+     * 산책 시작 — POST /api/v1/walks
+     *
+     * - 자유 산책: selectedType = null
+     * - 추천 경로 산책: selectedType != null (경로 선택 로그도 서버에서 자동 기록)
+     */
     @POST("walks")
     suspend fun startWalk(
-        @Header("Authorization") authorization: String,
-        @Body request: StartWalkRequest,
-    ): ApiResponse<StartWalkResponse>
-
-    /** R1-03: 자유 산책 시작 — POST /api/v1/walks/free-start */
-    @POST("walks/free-start")
-    suspend fun startFreeWalk(
         @Header("Authorization") authorization: String,
         @Body request: StartWalkRequest,
     ): ApiResponse<StartWalkResponse>

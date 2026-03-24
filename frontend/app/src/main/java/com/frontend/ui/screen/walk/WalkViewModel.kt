@@ -27,6 +27,7 @@ import com.frontend.domain.model.DangerReason
 import com.frontend.domain.model.LocationBatchRequest
 import com.frontend.domain.model.Place
 import com.frontend.domain.model.RecommendedRoute
+import com.frontend.domain.model.StartWalkRequest
 import com.frontend.domain.model.WalkRoute
 import com.frontend.domain.usecase.EndWalkUseCase
 import com.frontend.domain.usecase.GetDangerZonesUseCase
@@ -504,10 +505,12 @@ class WalkViewModel @Inject constructor(
     // ── 산책 ID 관리 ───────────────────────────────────────────────────────────
 
     /**
-     * R1-03: 자유 산책 시작
-     * - 버튼 클릭 즉시 isWalking = true (낙관적 UI 전환 → 즉각 화면 전환)
-     * - 타이머 즉시 시작
-     * - 백그라운드에서 서버 요청 → walkId 수신 후 GPS 배치 전송 시작
+     * 산책 시작 (자유 산책 / 추천 경로 산책 통합)
+     *
+     * - selectedRouteIndex == 0: 자유 산책 (selectedType = null)
+     * - selectedRouteIndex > 0: 추천 경로 산책 (selectedType, placeIds, recommendedPath 포함)
+     *
+     * 버튼 클릭 즉시 UI 전환 후 백그라운드에서 서버 요청
      */
     fun startFreeWalk() {
         // 즉시 UI 전환
@@ -529,9 +532,19 @@ class WalkViewModel @Inject constructor(
         val deferred = CompletableDeferred<Long?>()
         walkIdDeferred = deferred
         viewModelScope.launch {
-            startFreeWalkUseCase()
-                .onSuccess { walkId ->
+            // dogId 조회
+            val dogId = tokenDataStore.getDogId().first()
+                ?: run {
+                    deferred.complete(null)
+                    _state.update { it.copy(walkError = "강아지 정보가 없습니다") }
+                    return@launch
+                }
 
+            // 선택된 경로에 따라 요청 바디 구성
+            val request = buildStartWalkRequest(dogId)
+
+            startFreeWalkUseCase(request)
+                .onSuccess { walkId ->
                     currentWalkId = walkId
                     _state.update { it.copy(currentWalkId = walkId) }
                     deferred.complete(walkId)
@@ -540,11 +553,43 @@ class WalkViewModel @Inject constructor(
                     startNearbyDogsPolling()
                 }
                 .onFailure { e ->
-
                     deferred.complete(null)
                     _state.update { it.copy(walkError = "산책 시작 실패: ${e.message}") }
                 }
         }
+    }
+
+    /**
+     * 선택된 경로에 따라 StartWalkRequest 생성
+     */
+    private fun buildStartWalkRequest(dogId: Long): StartWalkRequest {
+        val selectedIndex = _state.value.selectedRouteIndex
+
+        // 자유 산책 (index == 0)
+        if (selectedIndex == 0) {
+            return StartWalkRequest(dogId = dogId)
+        }
+
+        // 추천 경로 산책
+        val recommendedRoute = getSelectedRecommendedRoute()
+            ?: return StartWalkRequest(dogId = dogId)  // fallback to free walk
+
+        // recommendedPath: actualPathPoints 우선, 없으면 polyline 사용
+        // 각 좌표를 [latitude, longitude] 형태로 변환
+        val pathPoints = recommendedRoute.getPathPoints()
+        val recommendedPath = pathPoints.map { point ->
+            listOf(point.latitude, point.longitude)
+        }
+
+        return StartWalkRequest(
+            dogId = dogId,
+            selectedType = recommendedRoute.type,
+            selectedDistanceM = recommendedRoute.totalDistanceM,
+            placeIds = recommendedRoute.places.map { it.id },
+            weatherCondition = null,  // 현재 구조상 날씨 정보 미제공 (optional)
+            temperature = null,       // 현재 구조상 기온 정보 미제공 (optional)
+            recommendedPath = recommendedPath.ifEmpty { null }
+        )
     }
 
     /**

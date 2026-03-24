@@ -39,5 +39,9 @@ __pycache__/
 /.gradle-cache-backend/
 /.gradle-cache-frontend/
 
+# Android local files
+/.android-user-home/debug.keystore
+/.android-user-home/*.lock
+
 # Markdown
 *.md
