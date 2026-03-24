@@ -8,8 +8,18 @@ import com.frontend.domain.model.DogProfileResponse
 import com.frontend.domain.model.NearbyDogResponse
 import com.frontend.domain.model.NewBadgeInfo
 import com.frontend.domain.model.PendingProposalInfo
+import com.frontend.domain.model.RejectedProposalInfo
 import com.frontend.domain.model.Place
 import com.frontend.domain.model.RecommendedRoute
+
+/**
+ * 비선호 강아지 알림 상태 추적용 데이터 클래스
+ * - 진입/이탈/쿨다운 기반으로 중복 알림 방지
+ */
+data class DogAlertState(
+    val lastAlertTimeMs: Long = 0L,         // 마지막 알림 발송 시간
+    val isInsideAlertRadius: Boolean = false, // 현재 알림 반경(50m) 안에 있는지
+)
 
 data class WalkState(
     val selectedRouteIndex: Int = 0,
@@ -64,11 +74,14 @@ data class WalkState(
     val isSendingProposal: Boolean = false,                 // 제안 전송 중 여부
     val proposalSentDogId: Long? = null,                   // 제안 보낸 강아지 ID (버튼 상태용)
     val pendingProposals: List<PendingProposalInfo> = emptyList(),   // 받은 제안 목록
-    val acceptedProposals: List<AcceptedProposalInfo> = emptyList(), // 수락된 제안 알림
+    val acceptedProposals: List<AcceptedProposalInfo> = emptyList(), // 수락된 제안 알림 (제안자용 polling)
+    val rejectedProposals: List<RejectedProposalInfo> = emptyList(), // 거절된 제안 알림 (제안자용 polling)
+    val showAcceptedByMeDialog: Boolean = false,  // 수락자 확인 모달 ("함께 산책하기를 수락했습니다")
+    val showRejectedByMeDialog: Boolean = false,  // 거절자 확인 모달 ("산책 거절 메시지를 보냈습니다")
 
     // ── 비선호 강아지 경고 (S14P21E108-175) ─────────────────────────────────
     val warningDog: NearbyDogResponse? = null,             // 현재 경고 표시 중인 비선호 강아지
-    val shownWarningDogIds: Set<Long> = emptySet(),        // 이미 경고를 띄운 dogId (중복 방지)
+    val dogAlertStates: Map<Long, DogAlertState> = emptyMap(),  // 진입/이탈/쿨다운 기반 알림 상태
 
     // ── 위험 구역 신고 ────────────────────────────────────────────────────────
     val isSelectingDangerZone: Boolean = false,       // 위치 선택 모드 여부

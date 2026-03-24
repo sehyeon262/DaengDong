@@ -62,7 +62,7 @@ fun MonthlySummarySection(summary: CalendarSummary) {
             )
             SummaryItem(
                 label = "총 거리",
-                value = "${summary.totalDistanceKm}km"
+                value = "${"%.1f".format(summary.totalDistanceKm)}km"
             )
         }
     }

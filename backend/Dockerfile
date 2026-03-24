@@ -3,7 +3,6 @@ FROM eclipse-temurin:17-jdk-alpine AS builder
 WORKDIR /app
 
 # 의존성 캐싱
-# 소스 코드 전체를 복사하기 전에, 빌드 설정 파일만 먼저 복사함
 COPY gradlew .
 COPY gradle gradle
 COPY build.gradle .
@@ -20,15 +19,19 @@ COPY src src
 RUN ./gradlew bootJar -x test --no-daemon
 
 # 2. 실행 단계 (Runner)
-FROM eclipse-temurin:17-jre-alpine
+# ONNX Runtime을 위해 glibc 기반 이미지 사용 (libstdc++ 포함)
+FROM eclipse-temurin:17-jre
 WORKDIR /app
 
 # 타임존 설정
 ENV TZ=Asia/Seoul
+RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
 
 # 빌드 결과물(jar)만 쏙 가져오기
 COPY --from=builder /app/build/libs/*.jar app.jar
 
+# 강아지 감정 분석 ONNX 모델
+COPY models/dog.onnx /app/models/dog.onnx
+
 # 프로파일 및 실행 옵션 유연화
-# 실행 시점에 환경변수나 옵션을 더 잘 먹게 하기 위한 설정
 ENTRYPOINT ["java", "-Djava.security.egd=file:/dev/./urandom", "-jar", "app.jar"]

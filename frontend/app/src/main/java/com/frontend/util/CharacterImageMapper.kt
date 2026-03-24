@@ -5,23 +5,26 @@ import androidx.compose.ui.graphics.Color
 import com.frontend.R
 
 @DrawableRes
-fun getCharacterImage(characterType: String, temperature: Int = 20): Int {
+fun getCharacterImage(characterType: String, temperature: Int = 20, fineDustGrade: String = ""): Int {
     val parts = characterType.split("_")
     val sky = parts.getOrNull(0) ?: ""
     val status = parts.getOrNull(1) ?: ""
+    val isDustBad = fineDustGrade in listOf("BAD", "VERY_BAD")
 
     return when {
         // BAD
         status == "BAD" && sky in listOf("RAINY", "SNOWY") -> R.drawable.rainy
+        status == "BAD" && isDustBad -> R.drawable.dust
         status == "BAD" -> R.drawable.cold
 
         // CAUTION
         status == "CAUTION" && sky in listOf("RAINY", "SNOWY") -> R.drawable.rainy
-        // 맑지만 추운 날 (15°C 미만) → cold 이미지
-        status == "CAUTION" && sky == "SUNNY" && temperature < 15 -> R.drawable.cold
-        // 맑고 더운 날 → hot 이미지
-        status == "CAUTION" && sky == "SUNNY" -> R.drawable.hot
-        status == "CAUTION" -> R.drawable.dust
+        status == "CAUTION" && isDustBad -> R.drawable.dust
+        // 맑지만 추운 날 (10°C 미만) → cold 이미지
+        status == "CAUTION" && sky == "SUNNY" && temperature < 10 -> R.drawable.cold
+        // 맑고 폭염 수준 (30°C 이상) → hot 이미지
+        status == "CAUTION" && sky == "SUNNY" && temperature >= 28 -> R.drawable.hot
+        status == "CAUTION" -> R.drawable.normal
 
         // GOOD
         status == "GOOD" -> R.drawable.normal

@@ -9,6 +9,7 @@ import lombok.Getter;
 import java.time.LocalDateTime;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 
 @Getter
 @Builder
@@ -36,6 +37,8 @@ public class WalkDetailResponse {
     public static class DiaryInfo {
         private Long diaryId;
         private String content;
+        private String emotionTag;
+        private Map<String, String> photoEmotions;  // { "사진URL": "즐거움" }
         private LocalDateTime createdAt;
     }
 
@@ -44,7 +47,9 @@ public class WalkDetailResponse {
         if (diary != null) {
             diaryInfo = DiaryInfo.builder()
                     .diaryId(diary.getId())
-                    .content(diary.getContent())   // null이면 프론트에서 "생성 중" 표시
+                    .content(diary.getContent())
+                    .emotionTag(diary.getEmotionTag())
+                    .photoEmotions(diary.getPhotoEmotions())
                     .createdAt(diary.getCreatedAt())
                     .build();
         }

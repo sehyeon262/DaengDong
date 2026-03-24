@@ -11,4 +11,5 @@ public class NearbyDogsResponse {
     private List<NearbyDogResponse> nearbyDogs;
     private List<PendingProposalResponse> pendingProposals;
     private List<AcceptedProposalResponse> acceptedProposals;
+    private List<RejectedProposalResponse> rejectedProposals;
 }
