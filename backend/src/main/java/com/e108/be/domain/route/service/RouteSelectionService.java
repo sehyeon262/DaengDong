@@ -11,6 +11,7 @@ import com.e108.be.domain.route.entity.UserCategoryPreference;
 import com.e108.be.domain.route.repository.RouteSelectionLogRepository;
 import com.e108.be.domain.route.repository.UserCategoryPreferenceRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -36,6 +37,7 @@ public class RouteSelectionService {
     private final PlaceRepository placeRepository;
     private final DogRepository dogRepository;
 
+    @CacheEvict(value = "walkPattern", key = "#memberId")
     @Transactional
     public void logSelection(Long memberId, RouteSelectionRequest request) {
         LocalDateTime now = LocalDateTime.now();

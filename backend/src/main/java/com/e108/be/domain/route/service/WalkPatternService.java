@@ -9,6 +9,7 @@ import com.e108.be.domain.walk.entity.WalkRecord;
 import com.e108.be.domain.walk.entity.WalkStatus;
 import com.e108.be.domain.walk.repository.WalkRecordRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -50,10 +51,13 @@ public class WalkPatternService {
     /**
      * 사용자의 산책 패턴 분석
      *
+     * 결과는 Redis에 캐싱되며, 경로 선택(logSelection) 시 자동 무효화된다.
+     *
      * @param dogId    반려견 ID
      * @param memberId 회원 ID
      * @return 산책 패턴 데이터
      */
+    @Cacheable(value = "walkPattern", key = "#memberId")
     public WalkPattern analyze(Long dogId, Long memberId) {
         LocalDateTime now = LocalDateTime.now();
         LocalDateTime since = now.minusDays(ANALYSIS_DAYS);
