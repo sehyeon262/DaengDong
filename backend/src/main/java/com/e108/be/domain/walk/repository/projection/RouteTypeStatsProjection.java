@@ -29,4 +29,7 @@ public interface RouteTypeStatsProjection {
 
     /** 평균 산책 시간 (초) */
     Double getAvgDurationSec();
+
+    /** 평균 경로 이탈률 (%) - 추천 경로 산책만 해당 */
+    Double getAvgDeviationRate();
 }

@@ -74,6 +74,14 @@ public class WalkRecord extends BaseEntity {
     @Column(name = "route_line", columnDefinition = "geography(LINESTRING, 4326)")
     private LineString routeLine;
 
+    // 추천 경로 (TMap 실도로 좌표) - 이탈률 계산용
+    @Column(name = "recommended_route", columnDefinition = "geography(LINESTRING, 4326)")
+    private LineString recommendedRoute;
+
+    // 경로 이탈률 (0.0 ~ 100.0, 단위: %)
+    @Column(name = "deviation_rate", precision = 5, scale = 2)
+    private BigDecimal deviationRate;
+
     // 소모 칼로리 (단위: kcal)
     @Column(name = "calories", precision = 10, scale = 2)
     private BigDecimal calories;
@@ -129,5 +137,13 @@ public class WalkRecord extends BaseEntity {
 
     public void updatePhotoUrls(List<String> photoUrls) {
         this.photoUrls = photoUrls;
+    }
+
+    public void updateRecommendedRoute(LineString recommendedRoute) {
+        this.recommendedRoute = recommendedRoute;
+    }
+
+    public void updateDeviationRate(BigDecimal deviationRate) {
+        this.deviationRate = deviationRate;
     }
 }

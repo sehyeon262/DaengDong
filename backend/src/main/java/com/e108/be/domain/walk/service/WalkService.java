@@ -56,6 +56,7 @@ public class WalkService {
     private static final String ACCEPTED_KEY_PREFIX  = "walk:accepted:";
     private static final double EARTH_RADIUS_M      = 6_371_000.0;
     private static final double CALORIE_FACTOR      = 0.8;
+    private static final double DEVIATION_BUFFER_M  = 50.0;  // 이탈 판정 거리 (미터)
 
     private final WalkRecordRepository walkRecordRepository;
     private final DogRepository dogRepository;
@@ -110,6 +111,9 @@ public class WalkService {
                 // 선택 로그 실패가 산책 시작을 막으면 안 됨
                 log.warn("경로 선택 로그 기록 실패 (산책은 정상 시작): memberId={}", memberId, e);
             }
+
+            // 추천 경로 좌표 저장 (이탈률 계산용)
+            saveRecommendedRoute(saved.getId(), request.getRecommendedPath());
         }
 
         return StartWalkResponse.from(saved);
@@ -177,6 +181,9 @@ public class WalkService {
         }
 
         walkRecord.end(totalDistance, calories);
+
+        // 이탈률 계산 (추천 경로가 있는 경우만)
+        calculateAndSaveDeviationRate(walkRecord);
 
         // 일기 생성 트리거 — 트랜잭션 커밋 후 비동기 실행
         final Long dogIdForDiary = walkRecord.getDogId();
@@ -575,6 +582,53 @@ public class WalkService {
     }
 
     // ────────────── 내부 유틸 ──────────────
+
+    /**
+     * 추천 경로 좌표를 WKT LINESTRING으로 변환하여 DB에 저장
+     * 좌표 형식: [[lat, lon], [lat, lon], ...]
+     */
+    private void saveRecommendedRoute(Long walkId, List<List<Double>> recommendedPath) {
+        if (recommendedPath == null || recommendedPath.size() < 2) {
+            return;
+        }
+        try {
+            StringBuilder wkt = new StringBuilder("LINESTRING(");
+            for (int i = 0; i < recommendedPath.size(); i++) {
+                List<Double> point = recommendedPath.get(i);
+                if (point.size() < 2) continue;
+                if (i > 0) wkt.append(", ");
+                // WKT는 lon lat 순서
+                wkt.append(point.get(1)).append(" ").append(point.get(0));
+            }
+            wkt.append(")");
+            walkRecordRepository.saveRecommendedRoute(walkId, wkt.toString());
+            log.debug("추천 경로 저장 완료: walkId={}, points={}", walkId, recommendedPath.size());
+        } catch (Exception e) {
+            log.warn("추천 경로 저장 실패 (산책은 정상 진행): walkId={}", walkId, e);
+        }
+    }
+
+    /**
+     * 이탈률 계산: 실제 경로의 각 포인트 중 추천 경로에서 50m 이상 벗어난 비율
+     * recommended_route가 있고, route_line이 있을 때만 계산
+     */
+    private void calculateAndSaveDeviationRate(WalkRecord walkRecord) {
+        if (walkRecord.getRouteType() == null) {
+            return; // 자유 산책은 이탈률 계산 불필요
+        }
+        try {
+            Double deviationRate = walkRecordRepository.calculateDeviationRate(
+                    walkRecord.getId(), DEVIATION_BUFFER_M);
+            if (deviationRate != null) {
+                walkRecord.updateDeviationRate(
+                        BigDecimal.valueOf(deviationRate).setScale(2, RoundingMode.HALF_UP));
+                log.info("이탈률 계산 완료: walkId={}, deviationRate={}%",
+                        walkRecord.getId(), deviationRate);
+            }
+        } catch (Exception e) {
+            log.warn("이탈률 계산 실패 (산책 종료는 정상 처리): walkId={}", walkRecord.getId(), e);
+        }
+    }
 
     private double haversine(double lat1, double lon1, double lat2, double lon2) {
         double dLat = Math.toRadians(lat2 - lat1);

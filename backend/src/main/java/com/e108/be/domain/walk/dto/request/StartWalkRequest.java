@@ -52,6 +52,13 @@ public class StartWalkRequest {
     private Double temperature;
 
     /**
+     * 추천 경로의 실제 도로 좌표 (TMap actualPathPoints)
+     * 산책 종료 시 이탈률 계산에 활용
+     * [[lat, lon], [lat, lon], ...]
+     */
+    private List<List<Double>> recommendedPath;
+
+    /**
      * 경로 추천 기반 산책인지 여부
      */
     public boolean hasRouteSelection() {
