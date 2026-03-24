@@ -1,13 +1,20 @@
 package com.frontend.ui.screen.walk
 
 import android.content.Context
+import android.database.ContentObserver
 import android.hardware.Sensor
 import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
 import android.hardware.SensorManager
+import android.net.Uri
+import android.os.Handler
 import android.os.Looper
+import android.provider.MediaStore
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import okhttp3.MediaType.Companion.toMediaTypeOrNull
+import okhttp3.MultipartBody
+import okhttp3.RequestBody.Companion.toRequestBody
 import com.frontend.data.local.TokenDataStore
 import com.frontend.data.repository.DogRepository
 import com.frontend.data.repository.WalkRepository
@@ -91,6 +98,11 @@ class WalkViewModel @Inject constructor(
     // ── 타이머 / 배치 전송 Job ──────────────────────────────────────────────────
     private var timerJob: Job? = null
     private var batchSendJob: Job? = null
+
+    // ── 카메라 사진 자동 감지 (산책 중 촬영 사진 자동 업로드) ────────────────────
+    private var photoObserver: ContentObserver? = null
+    private var walkStartTimestamp: Long = 0L
+    private val uploadedPhotoIds = mutableSetOf<Long>()
 
     // ── 나침반 (방향 센서) ─────────────────────────────────────────────────────
     private val sensorManager = context.getSystemService(Context.SENSOR_SERVICE) as SensorManager
@@ -186,10 +198,107 @@ class WalkViewModel @Inject constructor(
         fusedLocationClient.removeLocationUpdates(locationCallback)
     }
 
+    // ── 카메라 사진 자동 감지 ───────────────────────────────────────────────────
+
+    private fun startPhotoObserver() {
+        // 미디어 읽기 권한 확인
+        val mediaPermission = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+            android.Manifest.permission.READ_MEDIA_IMAGES
+        } else {
+            android.Manifest.permission.READ_EXTERNAL_STORAGE
+        }
+        val hasPermission = androidx.core.content.ContextCompat.checkSelfPermission(
+            context, mediaPermission
+        ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+
+        if (!hasPermission) {
+            android.util.Log.w("WalkVM", "미디어 읽기 권한 없음 — 사진 자동 감지 비활성화")
+            return
+        }
+
+        walkStartTimestamp = System.currentTimeMillis() / 1000
+        uploadedPhotoIds.clear()
+
+        photoObserver = object : ContentObserver(Handler(Looper.getMainLooper())) {
+            override fun onChange(selfChange: Boolean, uri: Uri?) {
+                super.onChange(selfChange, uri)
+                val walkId = currentWalkId ?: return
+                viewModelScope.launch {
+                    checkAndUploadNewPhotos(walkId)
+                }
+            }
+        }
+
+        context.contentResolver.registerContentObserver(
+            MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
+            true,
+            photoObserver!!
+        )
+    }
+
+    /** 권한 획득 후 산책 중이면 observer 재시작 */
+    fun retryPhotoObserverIfWalking() {
+        if (_state.value.isWalking && photoObserver == null) {
+            startPhotoObserver()
+        }
+    }
+
+    private fun stopPhotoObserver() {
+        photoObserver?.let { context.contentResolver.unregisterContentObserver(it) }
+        photoObserver = null
+        uploadedPhotoIds.clear()
+    }
+
+    private fun checkAndUploadNewPhotos(walkId: Long) {
+        viewModelScope.launch {
+            try {
+                val projection = arrayOf(
+                    MediaStore.Images.Media._ID,
+                    MediaStore.Images.Media.DATE_ADDED,
+                    MediaStore.Images.Media.MIME_TYPE,
+                )
+                val selection = "${MediaStore.Images.Media.DATE_ADDED} >= ?"
+                val selectionArgs = arrayOf(walkStartTimestamp.toString())
+                val sortOrder = "${MediaStore.Images.Media.DATE_ADDED} DESC"
+
+                context.contentResolver.query(
+                    MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
+                    projection, selection, selectionArgs, sortOrder
+                )?.use { cursor ->
+                    val idCol = cursor.getColumnIndexOrThrow(MediaStore.Images.Media._ID)
+                    val mimeCol = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.MIME_TYPE)
+
+                    while (cursor.moveToNext()) {
+                        val photoId = cursor.getLong(idCol)
+                        if (photoId in uploadedPhotoIds) continue
+                        uploadedPhotoIds.add(photoId)
+
+                        val mime = cursor.getString(mimeCol) ?: "image/jpeg"
+                        val contentUri = android.content.ContentUris.withAppendedId(
+                            MediaStore.Images.Media.EXTERNAL_CONTENT_URI, photoId
+                        )
+
+                        val stream = context.contentResolver.openInputStream(contentUri) ?: continue
+                        val bytes = stream.readBytes()
+                        stream.close()
+                        val requestBody = bytes.toRequestBody(mime.toMediaTypeOrNull())
+                        val part = MultipartBody.Part.createFormData(
+                            "files", "walk_photo_${photoId}.jpg", requestBody
+                        )
+                        walkRepository.uploadPhotos(walkId, listOf(part))
+                    }
+                }
+            } catch (e: Exception) {
+                android.util.Log.w("WalkVM", "사진 자동 업로드 실패: ${e.message}")
+            }
+        }
+    }
+
     override fun onCleared() {
         super.onCleared()
         sensorManager.unregisterListener(sensorListener)
         stopLocationTracking()
+        stopPhotoObserver()
     }
 
     // ── 산책 경로 ──────────────────────────────────────────────────────────────
@@ -382,6 +491,7 @@ class WalkViewModel @Inject constructor(
         _routePoints.value = emptyList()
         pendingPoints.clear()
         startWalkTimer()
+        startPhotoObserver()
 
         // 백그라운드 서버 요청 — CompletableDeferred로 endWalk에서 대기 가능
         val deferred = CompletableDeferred<Long?>()
@@ -417,6 +527,7 @@ class WalkViewModel @Inject constructor(
         timerJob?.cancel()
         timerJob = null
         stopNearbyDogsPolling()
+        stopPhotoObserver()
 
         val summarySeconds = _state.value.elapsedSeconds
         val summaryDistance = _state.value.distanceMeters

@@ -161,6 +161,28 @@ fun WalkScreen(
         }
     }
 
+    // 미디어 읽기 권한 요청 launcher (산책 중 카메라 사진 자동 감지용)
+    val mediaPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        if (granted) viewModel.retryPhotoObserverIfWalking()
+    }
+
+    // 산책 시작 시 미디어 권한 확인 및 요청
+    LaunchedEffect(state.isWalking) {
+        if (state.isWalking) {
+            val mediaPermission = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+                Manifest.permission.READ_MEDIA_IMAGES
+            } else {
+                Manifest.permission.READ_EXTERNAL_STORAGE
+            }
+            val hasMediaPermission = ActivityCompat.checkSelfPermission(context, mediaPermission) == PackageManager.PERMISSION_GRANTED
+            if (!hasMediaPermission) {
+                mediaPermissionLauncher.launch(mediaPermission)
+            }
+        }
+    }
+
     val pagerState = rememberPagerState(
         initialPage = state.selectedRouteIndex,
         pageCount = { routes.size }
