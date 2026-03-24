@@ -46,15 +46,16 @@ fun CharacterSection(
     characterType: String,
     walkStatus: String,
     walkMessage: String,
-    temperature: Int = 20
+    temperature: Int = 20,
+    fineDustGrade: String = ""
 ) {
-    val characterRes = getCharacterImage(characterType, temperature)
+    val characterRes = getCharacterImage(characterType, temperature, fineDustGrade)
     val statusColor = getWalkStatusColor(walkStatus)
     val statusLabel = getWalkStatusLabel(walkStatus)
     val sky = characterType.split("_").getOrNull(0) ?: ""
     val showClouds = walkStatus == "GOOD"
     val showBest = walkStatus == "GREAT"
-    val showSun = sky == "SUNNY" && walkStatus == "CAUTION" && temperature >= 15
+    val showSun = sky == "SUNNY" && walkStatus == "CAUTION" && temperature >= 28
     val showRain = sky in listOf("RAINY", "SNOWY")
 
     // 애니메이션
