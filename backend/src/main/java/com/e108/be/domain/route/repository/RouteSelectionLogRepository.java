@@ -57,4 +57,20 @@ public interface RouteSelectionLogRepository extends JpaRepository<RouteSelectio
     List<WeatherTypeCountProjection> countByMemberIdGroupByWeatherAndType(@Param("memberId") Long memberId);
 
     long countByMemberId(Long memberId);
+
+    /**
+     * 전체 사용자의 경로 유형별 선택 횟수 (ML 학습용)
+     */
+    @Query("""
+        SELECT r.selectedType AS selectedType, COUNT(r) AS count
+        FROM RouteSelectionLog r
+        GROUP BY r.selectedType
+        """)
+    List<TypeCountProjection> countAllGroupByType();
+
+    /**
+     * 전체 사용자의 평균 선택 거리 (ML 학습용)
+     */
+    @Query("SELECT AVG(r.selectedDistanceM) FROM RouteSelectionLog r")
+    Double findAvgDistance();
 }

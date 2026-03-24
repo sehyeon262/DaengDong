@@ -18,6 +18,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.*;
 
@@ -82,8 +83,9 @@ public class RouteService {
                                              WeatherCondition weather) {
         Dog dog = dogRepository.findFirstByUser_Id(memberId).orElse(null);
 
-        // 개인화 컨텍스트 구성
-        Map<String, Double> prefMap = placeScoringService.loadPreferenceMap(memberId);
+        // 개인화 컨텍스트 구성 (개인 선호도 → 세그먼트 CF → 전역 가중치 순으로 fallback)
+        BigDecimal dogWeight = dog != null ? dog.getWeight() : null;
+        Map<String, Double> prefMap = placeScoringService.loadPreferenceMap(memberId, dogWeight);
         double radiusMultiplier = resolveRadiusMultiplier(dog);
         Set<Long> recentPlaceIds = loadRecentPlaceIds(memberId);
 

@@ -3,6 +3,7 @@ package com.e108.be.domain.route.repository;
 import com.e108.be.domain.route.entity.RouteSelectionPlace;
 import com.e108.be.domain.route.repository.projection.CategoryCountProjection;
 import com.e108.be.domain.route.repository.projection.PlaceCountProjection;
+import com.e108.be.domain.route.repository.projection.SegmentCategoryCountProjection;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -52,4 +53,42 @@ public interface RouteSelectionPlaceRepository extends JpaRepository<RouteSelect
         WHERE sl.memberId = :memberId AND sl.createdAt >= :since
         """)
     Set<Long> findRecentPlaceIds(@Param("memberId") Long memberId, @Param("since") LocalDateTime since);
+
+    /**
+     * 체중 구간별 카테고리 선택 횟수 (세그먼트 CF 학습용)
+     *
+     * Dog의 체중을 기준으로 SMALL/MEDIUM/LARGE 세그먼트를 분류하고,
+     * 각 세그먼트가 선택한 장소의 카테고리별 횟수를 집계한다.
+     */
+    @Query("""
+        SELECT CASE
+                   WHEN d.weight < 10 THEN 'SMALL'
+                   WHEN d.weight < 25 THEN 'MEDIUM'
+                   ELSE 'LARGE'
+               END AS weightGroup,
+               p.category.id AS categoryId,
+               p.category.name AS categoryName,
+               COUNT(sp) AS count
+        FROM RouteSelectionPlace sp
+        JOIN sp.place p
+        JOIN sp.selectionLog sl
+        JOIN Dog d ON d.user.id = sl.memberId
+        WHERE p.category IS NOT NULL AND d.weight IS NOT NULL
+        GROUP BY weightGroup, p.category.id, p.category.name
+        ORDER BY weightGroup, COUNT(sp) DESC
+        """)
+    List<SegmentCategoryCountProjection> countGroupByWeightGroupAndCategory();
+
+    /**
+     * 전체 사용자의 카테고리별 선택 횟수 (ML 학습용)
+     */
+    @Query("""
+        SELECT p.category.id AS categoryId, p.category.name AS categoryName, COUNT(sp) AS count
+        FROM RouteSelectionPlace sp
+        JOIN sp.place p
+        WHERE p.category IS NOT NULL
+        GROUP BY p.category.id, p.category.name
+        ORDER BY COUNT(sp) DESC
+        """)
+    List<CategoryCountProjection> countAllGroupByCategory();
 }
