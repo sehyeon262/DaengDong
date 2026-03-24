@@ -1,63 +1,78 @@
+def isManualBuild() {
+    return currentBuild.getBuildCauses('hudson.model.Cause$UserIdCause').size() > 0
+}
+
 pipeline {
     agent any
 
     environment {
         ANDROID_HOME = '/opt/android-sdk'
-        KAKAO_MAP_API_KEY = credentials('kakao-map-api-key')
         FIREBASE_APP_ID = '1:570380494661:android:9018724828aacf5e60002c'
+        DEV_BASE_URL = 'https://j14e108.p.ssafy.io/dev/api/v1/'
+        PROD_BASE_URL = 'https://j14e108.p.ssafy.io/api/v1/'
     }
 
     stages {
         stage('Checkout') {
             steps {
-                git branch: 'develop',
+                script {
+                    env.CURRENT_BRANCH = env.CHANGE_BRANCH ?: env.BRANCH_NAME ?: 'develop'
+                }
+
+                git branch: env.CURRENT_BRANCH,
                     url: 'https://lab.ssafy.com/s14-bigdata-recom-sub1/S14P21E108.git',
                     credentialsId: 'gitlab-auth'
-                script {
-                    env.CURRENT_BRANCH = sh(script: 'git rev-parse --abbrev-ref HEAD', returnStdout: true).trim()
-                }
             }
         }
 
         stage('Setup Properties') {
             when {
-                changeset "frontend/**"
+                anyOf {
+                    changeset "frontend/**"
+                    expression { return isManualBuild() }
+                }
             }
             steps {
                 dir('frontend') {
-            	    script {
-                	def baseUrl = (env.CURRENT_BRANCH == 'main') ?
-                    	      "http://43.202.66.161:8080/api/v1/" :
-                    	      "http://43.202.66.161:8081/api/v1/"
-                	writeFile file: 'local.properties', text: "sdk.dir=${ANDROID_HOME}\nKAKAO_MAP_API_KEY=${KAKAO_MAP_API_KEY}\nBASE_URL=${baseUrl}"
-            	    }
+                    writeFile file: 'local.properties', text: """sdk.dir=${ANDROID_HOME}
+"""
                 }
             }
         }
 
         stage('Build APK') {
             when {
-                changeset "frontend/**"
+                anyOf {
+                    changeset "frontend/**"
+                    expression { return isManualBuild() }
+                }
             }
             steps {
                 dir('frontend') {
                     sh 'chmod +x gradlew'
-                    script {
-                        if (env.CURRENT_BRANCH == 'main') {
-                            sh './gradlew clean assembleRelease --no-daemon --stacktrace'
-                        } else {
-                            sh './gradlew clean assembleDebug --no-daemon --stacktrace'
+
+                    withCredentials([string(credentialsId: 'kakao-map-api-key', variable: 'KAKAO_MAP_API_KEY')]) {
+                        script {
+                            if (env.CURRENT_BRANCH == 'main') {
+                                sh './gradlew clean assembleProdRelease -PKAKAO_MAP_API_KEY="$KAKAO_MAP_API_KEY" -PBASE_URL_PROD="$PROD_BASE_URL" --no-daemon --stacktrace'
+                            } else {
+                                sh './gradlew clean assembleDevDebug -PKAKAO_MAP_API_KEY="$KAKAO_MAP_API_KEY" -PBASE_URL_DEV="$DEV_BASE_URL" --no-daemon --stacktrace'
+                            }
                         }
                     }
+
                     archiveArtifacts artifacts: 'app/build/outputs/apk/**/*.apk', fingerprint: true
                 }
             }
         }
 
-        stage('Deploy to Dev') {
+        stage('Deploy Dev To Firebase') {
             when {
                 allOf {
-                    changeset "frontend/**"
+                    anyOf {
+                        changeset "frontend/**"
+                        expression { return isManualBuild() }
+                    }
                     expression { return env.CURRENT_BRANCH == 'develop' }
                 }
             }
@@ -67,7 +82,7 @@ pipeline {
                         sh """
                             export GOOGLE_APPLICATION_CREDENTIALS=\${FIREBASE_CRED}
                             firebase appdistribution:distribute \
-                                app/build/outputs/apk/debug/app-debug.apk \
+                                app/build/outputs/apk/dev/debug/app-dev-debug.apk \
                                 --app ${FIREBASE_APP_ID} \
                                 --groups "dev-testers" \
                                 --release-notes "DEV Build #${BUILD_NUMBER} - ${env.CURRENT_BRANCH}"
@@ -77,10 +92,14 @@ pipeline {
             }
         }
 
-        stage('Deploy to Prod') {
+        /*
+        stage('Deploy Prod To Firebase') {
             when {
                 allOf {
-                    changeset "frontend/**"
+                    anyOf {
+                        changeset "frontend/**"
+                        expression { return isManualBuild() }
+                    }
                     expression { return env.CURRENT_BRANCH == 'main' }
                 }
             }
@@ -90,14 +109,15 @@ pipeline {
                         sh """
                             export GOOGLE_APPLICATION_CREDENTIALS=\${FIREBASE_CRED}
                             firebase appdistribution:distribute \
-                                app/build/outputs/apk/release/app-release.apk \
+                                app/build/outputs/apk/prod/release/app-prod-release.apk \
                                 --app ${FIREBASE_APP_ID} \
                                 --groups "release-testers" \
-                                --release-notes "PROD Release #${BUILD_NUMBER} - ${env.CURRENT_BRANCH}"
+                                --release-notes "PROD Build #${BUILD_NUMBER} - ${env.CURRENT_BRANCH}"
                         """
                     }
                 }
             }
         }
+        */
     }
 }
