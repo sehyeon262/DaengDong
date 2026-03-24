@@ -38,6 +38,18 @@ public interface MetDogRepository extends JpaRepository<MetDog, Long> {
         """)
     List<MetDog> findAllBySourceDogId(@Param("sourceDogId") Long sourceDogId);
 
+    /**
+     * 내 강아지(sourceDogId)가 비선호(싫어요)로 표시한 targetDogId 목록 조회.
+     * 비선호 강아지 알림 판정 시 한 번에 조회하여 Set으로 활용.
+     */
+    @Query("""
+        SELECT m.targetDogId FROM MetDog m
+        JOIN m.latestWalkRecord wr
+        WHERE wr.dogId = :sourceDogId
+          AND m.feedback = com.e108.be.domain.walk.entity.Feedback.싫어요
+        """)
+    List<Long> findDislikedTargetDogIds(@Param("sourceDogId") Long sourceDogId);
+
     // ── 배지용 쿼리 ──
 
     @Query("SELECT COUNT(m) > 0 FROM MetDog m JOIN m.latestWalkRecord wr WHERE wr.dogId IN :dogIds")
