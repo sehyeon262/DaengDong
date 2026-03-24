@@ -2,6 +2,12 @@ package com.frontend.ui.screen.walk
 
 import android.Manifest
 import android.content.pm.PackageManager
+import android.os.Build
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -171,10 +177,18 @@ fun WalkScreen(
         if (granted) viewModel.retryPhotoObserverIfWalking()
     }
 
-    // 산책 시작 시 미디어 권한 확인 및 요청
+    // 알림 권한 요청 launcher (Android 13+ 비선호 강아지 알림용)
+    val notificationPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        android.util.Log.d("WalkScreen", "알림 권한 요청 결과: $granted")
+    }
+
+    // 산책 시작 시 미디어 권한 + 알림 권한 확인 및 요청
     LaunchedEffect(state.isWalking) {
         if (state.isWalking) {
-            val mediaPermission = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+            // 미디어 권한 요청
+            val mediaPermission = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                 Manifest.permission.READ_MEDIA_IMAGES
             } else {
                 Manifest.permission.READ_EXTERNAL_STORAGE
@@ -182,6 +196,13 @@ fun WalkScreen(
             val hasMediaPermission = ActivityCompat.checkSelfPermission(context, mediaPermission) == PackageManager.PERMISSION_GRANTED
             if (!hasMediaPermission) {
                 mediaPermissionLauncher.launch(mediaPermission)
+            }
+
+            // 알림 권한 요청 (Android 13+)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                if (viewModel.needsNotificationPermission()) {
+                    notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                }
             }
         }
     }
@@ -296,14 +317,65 @@ fun WalkScreen(
         }
     }
 
-    // 주변 강아지 목록 변경 시 기존 마커 전부 제거 후 새로 그리기
-    LaunchedEffect(state.nearbyDogs, kakaoMap) {
+    // 주변 강아지 마커: NEARBY_DOG 필터 활성화 시에만 표시
+    // 알림 기능은 필터와 무관하게 ViewModel에서 처리
+    // avoidAlertCandidate 마커는 생성 시 강조된 글로우 효과 적용 (addNearbyDogMarker에서 처리)
+    LaunchedEffect(state.nearbyDogs, state.activeFilters, kakaoMap) {
         val map = kakaoMap ?: return@LaunchedEffect
+
+        // 기존 마커 전부 제거
         nearbyDogLabels.forEach { it.remove() }
         nearbyDogLabels.clear()
+
+        // NEARBY_DOG 필터가 활성화된 경우에만 마커 표시
+        if (WalkFilterType.NEARBY_DOG !in state.activeFilters) {
+            return@LaunchedEffect
+        }
+
         state.nearbyDogs.forEach { dog ->
             val label = addNearbyDogMarker(context, map, dog)
             if (label != null) nearbyDogLabels.add(label)
+        }
+    }
+
+    // 비선호 강아지 마커 pulse 애니메이션
+    // KakaoMap Label 런타임 스타일 변경을 통해 구현
+    val avoidAlertDogIds = remember(state.nearbyDogs) {
+        state.nearbyDogs.filter { it.avoidAlertCandidate }.map { it.dogId }.toSet()
+    }
+
+    // Pulse 애니메이션 (2초 주기, scale 0.95 ~ 1.05)
+    LaunchedEffect(avoidAlertDogIds, state.activeFilters, kakaoMap) {
+        val map = kakaoMap ?: return@LaunchedEffect
+        if (WalkFilterType.NEARBY_DOG !in state.activeFilters || avoidAlertDogIds.isEmpty()) {
+            return@LaunchedEffect
+        }
+
+        // 천천히 왕복하는 pulse 효과 (2초 사이클)
+        var phase = 0
+        while (true) {
+            kotlinx.coroutines.delay(50L)  // 20fps
+            phase = (phase + 1) % 40  // 40 frames = 2초
+
+            // sine wave로 부드러운 scale 변화: 0.92 ~ 1.08
+            val scale = 1.0f + 0.08f * kotlin.math.sin(phase * kotlin.math.PI.toFloat() / 20f)
+
+            // avoidAlertCandidate 마커 스타일 업데이트
+            nearbyDogLabels.forEach { label ->
+                val dog = label.tag as? NearbyDogResponse ?: return@forEach
+                if (dog.avoidAlertCandidate) {
+                    try {
+                        // 마커 비트맵 재생성하여 스타일 적용
+                        val markerSize = (80 * scale).toInt()
+                        val bitmap = createPulsingAvoidMarkerBitmap(context, dog, markerSize)
+                        val style = LabelStyle.from(bitmap).setAnchorPoint(0.5f, 0.5f)
+                        val styles = LabelStyles.from(style)
+                        label.changeStyles(styles)
+                    } catch (e: Exception) {
+                        // 스타일 변경 실패 시 무시 (마커가 제거된 경우 등)
+                    }
+                }
+            }
         }
     }
 
@@ -1268,7 +1340,8 @@ private suspend fun addNearbyDogMarker(
 ): Label? {
     val position = LatLng.from(dog.latitude, dog.longitude)
     val markerSize = 80
-    val isDisliked = dog.feedback == "싫어요"
+    // avoidAlertCandidate 기반으로 비선호 강아지 판정 (기존 feedback 비교 대신)
+    val isDisliked = dog.avoidAlertCandidate
 
     val circleBitmap = if (!dog.profileImageUrl.isNullOrBlank()) {
         try {
@@ -1295,6 +1368,62 @@ private suspend fun addNearbyDogMarker(
     val styles = LabelStyles.from(style)
     val options = LabelOptions.from(position).setStyles(styles).setTag(dog)
     return kakaoMap.labelManager?.layer?.addLabel(options)
+}
+
+/**
+ * pulse 애니메이션용 비선호 강아지 마커 비트맵 생성
+ * - 글로우 강도가 동적으로 변하는 효과
+ */
+private fun createPulsingAvoidMarkerBitmap(
+    context: android.content.Context,
+    dog: NearbyDogResponse,
+    size: Int,
+): android.graphics.Bitmap {
+    // 기본 원형 마커 생성
+    val circleBitmap = if (!dog.profileImageUrl.isNullOrBlank()) {
+        try {
+            // 이미 로드된 이미지가 있다면 사용 (여기서는 fallback 사용)
+            fallbackMarkerBitmap(context, dog.dogId, size)
+        } catch (e: Exception) {
+            fallbackMarkerBitmap(context, dog.dogId, size)
+        }
+    } else {
+        fallbackMarkerBitmap(context, dog.dogId, size)
+    }
+
+    // 강조된 글로우 효과 적용
+    return addPulsingDislikedRing(circleBitmap, size)
+}
+
+/**
+ * pulse 애니메이션용 강조된 글로우 효과
+ */
+private fun addPulsingDislikedRing(src: android.graphics.Bitmap, targetSize: Int): android.graphics.Bitmap {
+    val glowPadding = 24   // 더 큰 글로우 여백
+    val borderWidth = 6    // 더 두꺼운 테두리
+    val total = targetSize + glowPadding * 2
+    val output = android.graphics.Bitmap.createBitmap(total, total, android.graphics.Bitmap.Config.ARGB_8888)
+    val canvas = android.graphics.Canvas(output)
+
+    // 1) 반투명 빨간 글로우 원 (더 진하게)
+    val glowPaint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+        color = android.graphics.Color.argb(100, 255, 60, 60)
+    }
+    canvas.drawCircle(total / 2f, total / 2f, total / 2f, glowPaint)
+
+    // 2) 불투명 빨간 테두리 원
+    val borderPaint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+        color = android.graphics.Color.argb(240, 255, 60, 60)
+    }
+    val scaled = android.graphics.Bitmap.createScaledBitmap(src, targetSize, targetSize, true)
+    val radius = targetSize / 2f + borderWidth
+    canvas.drawCircle(total / 2f, total / 2f, radius, borderPaint)
+
+    // 3) 원본 이미지 중앙에 합성
+    val imgPaint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG)
+    canvas.drawBitmap(scaled, glowPadding.toFloat(), glowPadding.toFloat(), imgPaint)
+
+    return output
 }
 
 /**
