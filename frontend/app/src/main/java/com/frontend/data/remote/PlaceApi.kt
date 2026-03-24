@@ -3,8 +3,14 @@ package com.frontend.data.remote
 import com.frontend.domain.model.ApiResponse
 import com.frontend.domain.model.Place
 import com.frontend.domain.model.PlaceCategory
+import com.frontend.domain.model.RegisterPlaceResponse
+import okhttp3.MultipartBody
+import okhttp3.RequestBody
 import retrofit2.http.GET
 import retrofit2.http.Header
+import retrofit2.http.Multipart
+import retrofit2.http.POST
+import retrofit2.http.Part
 import retrofit2.http.Path
 import retrofit2.http.Query
 
@@ -40,4 +46,19 @@ interface PlaceApi {
         @Header("Authorization") authorization: String,
         @Query("dogId") dogId: Long
     ): ApiResponse<List<Place>>
+
+    /** 신규 장소 등록 — POST /api/v1/places (multipart/form-data)
+     *  name, categoryName, latitude, longitude, address, memo, image(선택) */
+    @Multipart
+    @POST("places")
+    suspend fun registerPlace(
+        @Header("Authorization") authorization: String,
+        @Part("name") name: RequestBody,
+        @Part("latitude") latitude: RequestBody,
+        @Part("longitude") longitude: RequestBody,
+        @Part("categoryName") categoryName: RequestBody?,
+        @Part("address") address: RequestBody?,
+        @Part("memo") memo: RequestBody?,
+        @Part image: MultipartBody.Part?
+    ): ApiResponse<RegisterPlaceResponse>
 }
