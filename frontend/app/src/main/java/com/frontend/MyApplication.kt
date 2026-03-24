@@ -77,8 +77,7 @@ class MyApplication : Application() {
                 info.signingInfo?.apkContentsSigners ?: emptyArray()
             } else {
                 @Suppress("DEPRECATION")
-                val info = packageManager.getPackageInfo(packageName, PackageManager.GET_SIGNATURES)
-                info.signatures ?: emptyArray()
+                (packageManager.getPackageInfo(packageName, PackageManager.GET_SIGNATURES).signatures ?: emptyArray())
             }
             for (sig in signatures) {
                 val md = MessageDigest.getInstance("SHA")
