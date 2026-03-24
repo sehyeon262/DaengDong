@@ -1,7 +1,10 @@
 package com.e108.be.domain.route.service;
 
 import com.e108.be.domain.route.dto.response.RouteType;
+import com.e108.be.domain.route.entity.WeatherCondition;
 import com.e108.be.domain.route.repository.RouteSelectionLogRepository;
+import com.e108.be.domain.route.repository.projection.TypeCountProjection;
+import com.e108.be.domain.route.repository.projection.WeatherTypeCountProjection;
 import com.e108.be.domain.walk.entity.WalkRecord;
 import com.e108.be.domain.walk.entity.WalkStatus;
 import com.e108.be.domain.walk.repository.WalkRecordRepository;
@@ -14,6 +17,7 @@ import java.time.LocalDateTime;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 /**
  * 사용자 산책 패턴 분석 서비스
@@ -34,6 +38,10 @@ import java.util.Map;
 public class WalkPatternService {
 
     private static final int ANALYSIS_DAYS = 30;
+    private static final int DEFAULT_PREFERRED_HOUR = 18;
+    private static final int MIN_WALKS_FOR_ANALYSIS = 3;
+    private static final double ACTUAL_WALK_WEIGHT = 0.6;
+    private static final double SELECTION_LOG_WEIGHT = 0.4;
 
     private final WalkRecordRepository walkRecordRepository;
     private final RouteSelectionLogRepository selectionLogRepository;
@@ -46,11 +54,12 @@ public class WalkPatternService {
      * @return 산책 패턴 데이터
      */
     public WalkPattern analyze(Long dogId, Long memberId) {
-        LocalDateTime since = LocalDateTime.now().minusDays(ANALYSIS_DAYS);
+        LocalDateTime now = LocalDateTime.now();
+        LocalDateTime since = now.minusDays(ANALYSIS_DAYS);
 
         List<WalkRecord> recentWalks = walkRecordRepository
                 .findByDogIdAndWalkStatusAndStartTimeBetween(
-                        dogId, WalkStatus.COMPLETED, since, LocalDateTime.now());
+                        dogId, WalkStatus.COMPLETED, since, now);
 
         // 평균 산책 거리 (미터)
         double avgDistanceM = recentWalks.stream()
@@ -73,19 +82,19 @@ public class WalkPatternService {
         Double selectionAvgDistance = selectionLogRepository.findAvgDistanceByMemberId(memberId);
         if (selectionAvgDistance != null && selectionAvgDistance > 0) {
             avgDistanceM = avgDistanceM > 0
-                    ? (avgDistanceM * 0.6 + selectionAvgDistance * 0.4)
+                    ? (avgDistanceM * ACTUAL_WALK_WEIGHT + selectionAvgDistance * SELECTION_LOG_WEIGHT)
                     : selectionAvgDistance;
         }
 
         // 날씨별 선호 유형
-        Map<String, RouteType> weatherPreferences = analyzeWeatherPreferences(memberId);
+        Map<WeatherCondition, RouteType> weatherPreferences = analyzeWeatherPreferences(memberId);
 
         return new WalkPattern(avgDistanceM, preferredHour, preferredType,
                 walkCount, weatherPreferences);
     }
 
     private int analyzePreferredHour(List<WalkRecord> walks) {
-        if (walks.isEmpty()) return 18;
+        if (walks.isEmpty()) return DEFAULT_PREFERRED_HOUR;
 
         Map<Integer, Long> hourCounts = new HashMap<>();
         walks.stream()
@@ -95,21 +104,19 @@ public class WalkPatternService {
         return hourCounts.entrySet().stream()
                 .max(Map.Entry.comparingByValue())
                 .map(Map.Entry::getKey)
-                .orElse(18);
+                .orElse(DEFAULT_PREFERRED_HOUR);
     }
 
     private RouteType analyzePreferredType(Long memberId) {
-        List<Object[]> typeCounts = selectionLogRepository.countByMemberIdGroupByType(memberId);
+        List<TypeCountProjection> typeCounts = selectionLogRepository.countByMemberIdGroupByType(memberId);
         if (typeCounts.isEmpty()) return RouteType.RECOMMENDED;
 
         RouteType maxType = RouteType.RECOMMENDED;
         long maxCount = 0;
-        for (Object[] row : typeCounts) {
-            RouteType type = (RouteType) row[0];
-            long count = (long) row[1];
-            if (count > maxCount) {
-                maxCount = count;
-                maxType = type;
+        for (TypeCountProjection projection : typeCounts) {
+            if (projection.getCount() > maxCount) {
+                maxCount = projection.getCount();
+                maxType = projection.getSelectedType();
             }
         }
         return maxType;
@@ -117,25 +124,22 @@ public class WalkPatternService {
 
     /**
      * 날씨별 선호 경로 유형 분석
-     * 예: CLEAR → EXPLORE, RAIN → SHORT
+     * 예: CLEAR -> EXPLORE, RAIN -> SHORT
      */
-    private Map<String, RouteType> analyzeWeatherPreferences(Long memberId) {
-        List<Object[]> rows = selectionLogRepository
+    private Map<WeatherCondition, RouteType> analyzeWeatherPreferences(Long memberId) {
+        List<WeatherTypeCountProjection> rows = selectionLogRepository
                 .countByMemberIdGroupByWeatherAndType(memberId);
 
-        // weather → (type → count) 집계
-        Map<String, Map<RouteType, Long>> weatherTypeCounts = new HashMap<>();
-        for (Object[] row : rows) {
-            String weather = (String) row[0];
-            RouteType type = (RouteType) row[1];
-            long count = (long) row[2];
+        // weather -> (type -> count) 집계
+        Map<WeatherCondition, Map<RouteType, Long>> weatherTypeCounts = new HashMap<>();
+        for (WeatherTypeCountProjection row : rows) {
             weatherTypeCounts
-                    .computeIfAbsent(weather, k -> new HashMap<>())
-                    .put(type, count);
+                    .computeIfAbsent(row.getWeatherCondition(), k -> new HashMap<>())
+                    .put(row.getSelectedType(), row.getCount());
         }
 
         // 각 날씨별 최다 선택 유형 추출
-        Map<String, RouteType> result = new HashMap<>();
+        Map<WeatherCondition, RouteType> result = new HashMap<>();
         for (var entry : weatherTypeCounts.entrySet()) {
             entry.getValue().entrySet().stream()
                     .max(Map.Entry.comparingByValue())
@@ -156,10 +160,13 @@ public class WalkPatternService {
             int preferredHour,
             RouteType preferredType,
             int walkCount,
-            Map<String, RouteType> weatherPreferences
+            Map<WeatherCondition, RouteType> weatherPreferences
     ) {
+        /**
+         * 데이터가 충분한지 여부
+         */
         public boolean hasEnoughData() {
-            return walkCount >= 3;
+            return walkCount >= MIN_WALKS_FOR_ANALYSIS;
         }
     }
 }

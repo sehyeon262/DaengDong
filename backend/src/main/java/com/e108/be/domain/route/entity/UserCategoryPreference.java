@@ -1,6 +1,7 @@
 package com.e108.be.domain.route.entity;
 
 import com.e108.be.domain.place.entity.PlaceCategory;
+import com.e108.be.global.common.entity.BaseEntity;
 import jakarta.persistence.*;
 import lombok.AccessLevel;
 import lombok.Builder;
@@ -18,7 +19,7 @@ import lombok.NoArgsConstructor;
         uniqueConstraints = @UniqueConstraint(columnNames = {"member_id", "category_id"}))
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
-public class UserCategoryPreference {
+public class UserCategoryPreference extends BaseEntity {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -51,6 +52,10 @@ public class UserCategoryPreference {
     }
 
     public void updateScore(double score) {
+        if (score < 0.0 || score > 1.0) {
+            throw new IllegalArgumentException(
+                    "Preference score must be between 0.0 and 1.0, but was: " + score);
+        }
         this.preferenceScore = score;
     }
 }

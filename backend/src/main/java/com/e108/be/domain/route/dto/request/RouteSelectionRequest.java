@@ -1,7 +1,10 @@
 package com.e108.be.domain.route.dto.request;
 
 import com.e108.be.domain.route.dto.response.RouteType;
+import com.e108.be.domain.route.entity.WeatherCondition;
+import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Size;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 
@@ -14,11 +17,13 @@ public class RouteSelectionRequest {
     @NotNull
     private RouteType selectedType;
 
+    @Min(0)
     private int selectedDistanceM;
 
-    private List<Long> placeIds;
+    @Size(max = 20)
+    private List<@NotNull Long> placeIds;
 
-    private String weatherCondition;
+    private WeatherCondition weatherCondition;
 
     private Double temperature;
 }

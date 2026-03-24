@@ -1,6 +1,9 @@
 package com.e108.be.domain.route.repository;
 
 import com.e108.be.domain.route.entity.RouteSelectionLog;
+import com.e108.be.domain.route.repository.projection.HourCountProjection;
+import com.e108.be.domain.route.repository.projection.TypeCountProjection;
+import com.e108.be.domain.route.repository.projection.WeatherTypeCountProjection;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -13,24 +16,24 @@ public interface RouteSelectionLogRepository extends JpaRepository<RouteSelectio
      * 사용자의 경로 유형별 선택 횟수
      */
     @Query("""
-        SELECT r.selectedType, COUNT(r)
+        SELECT r.selectedType AS selectedType, COUNT(r) AS count
         FROM RouteSelectionLog r
         WHERE r.memberId = :memberId
         GROUP BY r.selectedType
         """)
-    List<Object[]> countByMemberIdGroupByType(@Param("memberId") Long memberId);
+    List<TypeCountProjection> countByMemberIdGroupByType(@Param("memberId") Long memberId);
 
     /**
      * 사용자의 시간대별 선택 횟수
      */
     @Query("""
-        SELECT r.hourOfDay, COUNT(r)
+        SELECT r.hourOfDay AS hourOfDay, COUNT(r) AS count
         FROM RouteSelectionLog r
         WHERE r.memberId = :memberId
         GROUP BY r.hourOfDay
         ORDER BY COUNT(r) DESC
         """)
-    List<Object[]> countByMemberIdGroupByHour(@Param("memberId") Long memberId);
+    List<HourCountProjection> countByMemberIdGroupByHour(@Param("memberId") Long memberId);
 
     /**
      * 사용자의 평균 선택 거리 (미터)
@@ -46,12 +49,12 @@ public interface RouteSelectionLogRepository extends JpaRepository<RouteSelectio
      * 사용자의 날씨별 경로 유형 선택 횟수
      */
     @Query("""
-        SELECT r.weatherCondition, r.selectedType, COUNT(r)
+        SELECT r.weatherCondition AS weatherCondition, r.selectedType AS selectedType, COUNT(r) AS count
         FROM RouteSelectionLog r
         WHERE r.memberId = :memberId AND r.weatherCondition IS NOT NULL
         GROUP BY r.weatherCondition, r.selectedType
         """)
-    List<Object[]> countByMemberIdGroupByWeatherAndType(@Param("memberId") Long memberId);
+    List<WeatherTypeCountProjection> countByMemberIdGroupByWeatherAndType(@Param("memberId") Long memberId);
 
     long countByMemberId(Long memberId);
 }

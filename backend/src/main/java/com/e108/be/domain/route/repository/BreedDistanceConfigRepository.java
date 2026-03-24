@@ -12,10 +12,11 @@ public interface BreedDistanceConfigRepository extends JpaRepository<BreedDistan
 
     /**
      * 체중으로 해당 구간의 적정 거리 설정 조회
+     * 구간: minWeightKg(포함) ~ maxWeightKg(미포함)
      */
     @Query("""
         SELECT b FROM BreedDistanceConfig b
-        WHERE b.minWeightKg <= :weight AND b.maxWeightKg >= :weight
+        WHERE b.minWeightKg <= :weight AND b.maxWeightKg > :weight
         """)
     Optional<BreedDistanceConfig> findByWeight(@Param("weight") BigDecimal weight);
 }

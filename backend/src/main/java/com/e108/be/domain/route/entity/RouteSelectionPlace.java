@@ -14,7 +14,10 @@ import lombok.NoArgsConstructor;
  * 이 데이터로 카테고리별 선호도를 집계할 수 있다.
  */
 @Entity
-@Table(name = "route_selection_places")
+@Table(name = "route_selection_places", indexes = {
+        @Index(name = "idx_rsp_selection_log_id", columnList = "selection_log_id"),
+        @Index(name = "idx_rsp_place_id", columnList = "place_id")
+})
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class RouteSelectionPlace {

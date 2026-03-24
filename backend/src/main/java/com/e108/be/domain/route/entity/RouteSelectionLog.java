@@ -19,7 +19,10 @@ import java.util.List;
  * 개인화된 경로 추천을 제공한다.
  */
 @Entity
-@Table(name = "route_selection_logs")
+@Table(name = "route_selection_logs", indexes = {
+        @Index(name = "idx_rsl_member_id", columnList = "member_id"),
+        @Index(name = "idx_rsl_member_weather", columnList = "member_id, weather_condition")
+})
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class RouteSelectionLog extends BaseEntity {
@@ -47,8 +50,9 @@ public class RouteSelectionLog extends BaseEntity {
     @Column(name = "day_of_week")
     private int dayOfWeek;
 
+    @Enumerated(EnumType.STRING)
     @Column(name = "weather_condition", length = 20)
-    private String weatherCondition;
+    private WeatherCondition weatherCondition;
 
     @Column(name = "temperature")
     private Double temperature;
@@ -60,7 +64,7 @@ public class RouteSelectionLog extends BaseEntity {
     public RouteSelectionLog(Long memberId, Long dogId, RouteType selectedType,
                               int selectedDistanceM,
                               int hourOfDay, int dayOfWeek,
-                              String weatherCondition, Double temperature) {
+                              WeatherCondition weatherCondition, Double temperature) {
         this.memberId = memberId;
         this.dogId = dogId;
         this.selectedType = selectedType;

@@ -91,4 +91,11 @@ public interface PlaceRepository extends JpaRepository<Place, Long> {
     );
 
     boolean existsByProviderAndSourceId(String provider, String sourceId);
+
+    /**
+     * ID 목록으로 장소 조회 (카테고리 함께 FETCH JOIN)
+     * N+1 문제 방지를 위해 카테고리를 즉시 로딩한다.
+     */
+    @Query("SELECT p FROM Place p LEFT JOIN FETCH p.category WHERE p.id IN :ids")
+    List<Place> findAllByIdWithCategory(@Param("ids") List<Long> ids);
 }
