@@ -20,7 +20,6 @@ import java.util.List;
  */
 @Entity
 @Table(name = "route_selection_logs", indexes = {
-        @Index(name = "idx_rsl_member_id", columnList = "member_id"),
         @Index(name = "idx_rsl_member_weather", columnList = "member_id, weather_condition")
 })
 @Getter

@@ -14,6 +14,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -109,17 +110,11 @@ public class WalkPatternService {
 
     private RouteType analyzePreferredType(Long memberId) {
         List<TypeCountProjection> typeCounts = selectionLogRepository.countByMemberIdGroupByType(memberId);
-        if (typeCounts.isEmpty()) return RouteType.RECOMMENDED;
 
-        RouteType maxType = RouteType.RECOMMENDED;
-        long maxCount = 0;
-        for (TypeCountProjection projection : typeCounts) {
-            if (projection.getCount() > maxCount) {
-                maxCount = projection.getCount();
-                maxType = projection.getSelectedType();
-            }
-        }
-        return maxType;
+        return typeCounts.stream()
+                .max(Comparator.comparing(TypeCountProjection::getCount))
+                .map(TypeCountProjection::getSelectedType)
+                .orElse(RouteType.RECOMMENDED);
     }
 
     /**
