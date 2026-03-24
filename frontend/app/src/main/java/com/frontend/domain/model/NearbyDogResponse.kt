@@ -29,8 +29,17 @@ data class AcceptedProposalInfo(
     val profileImageUrl: String?,
 )
 
+data class RejectedProposalInfo(
+    val proposalId: String,
+    val dogId: Long,
+    val name: String,
+    val breed: String,
+    val profileImageUrl: String?,
+)
+
 data class NearbyDogsResponse(
     val nearbyDogs: List<NearbyDogResponse>,
     val pendingProposals: List<PendingProposalInfo>,
     val acceptedProposals: List<AcceptedProposalInfo>,
+    val rejectedProposals: List<RejectedProposalInfo> = emptyList(),
 )

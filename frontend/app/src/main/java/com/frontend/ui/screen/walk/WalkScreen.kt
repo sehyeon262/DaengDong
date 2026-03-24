@@ -84,8 +84,11 @@ import com.frontend.ui.screen.walk.components.DangerReportModal
 import com.frontend.ui.screen.walk.components.DogWarningDialog
 import com.frontend.ui.screen.walk.components.NearbyDogProfilePopup
 import com.frontend.ui.screen.walk.components.PlaceDetailBottomSheet
+import com.frontend.ui.screen.walk.components.ProposalAcceptedByMeDialog
 import com.frontend.ui.screen.walk.components.ProposalAcceptedDialog
 import com.frontend.ui.screen.walk.components.ProposalIncomingDialog
+import com.frontend.ui.screen.walk.components.ProposalRejectedByMeDialog
+import com.frontend.ui.screen.walk.components.ProposalRejectedDialog
 import com.frontend.ui.screen.walk.components.WalkFilterBottomSheet
 import com.frontend.ui.screen.walk.components.WalkRouteCard
 import com.frontend.ui.screen.walk.components.WalkSearchBar
@@ -641,11 +644,33 @@ fun WalkScreen(
             )
         }
 
-        // ── 10. 제안 수락 알림 다이얼로그 ───────────────────────────────
+        // ── 10. 제안자 — 수락 알림 다이얼로그 (polling) ─────────────────
         state.acceptedProposals.firstOrNull()?.let { accepted ->
             ProposalAcceptedDialog(
                 accepted = accepted,
                 onDismiss = { viewModel.dismissAcceptedProposal(accepted.proposalId) }
+            )
+        }
+
+        // ── 10a. 제안자 — 거절 알림 다이얼로그 (polling) ─────────────────
+        state.rejectedProposals.firstOrNull()?.let { rejected ->
+            ProposalRejectedDialog(
+                rejected = rejected,
+                onDismiss = { viewModel.dismissRejectedProposal(rejected.proposalId) }
+            )
+        }
+
+        // ── 10b. 수락자 — 수락 완료 확인 모달 (optimistic) ───────────────
+        if (state.showAcceptedByMeDialog) {
+            ProposalAcceptedByMeDialog(
+                onDismiss = { viewModel.dismissAcceptedByMe() }
+            )
+        }
+
+        // ── 10c. 거절자 — 거절 완료 확인 모달 (optimistic) ───────────────
+        if (state.showRejectedByMeDialog) {
+            ProposalRejectedByMeDialog(
+                onDismiss = { viewModel.dismissRejectedByMe() }
             )
         }
 
