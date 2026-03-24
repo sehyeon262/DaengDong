@@ -26,4 +26,19 @@ public class RouteSelectionRequest {
     private WeatherCondition weatherCondition;
 
     private Double temperature;
+
+    /**
+     * StartWalkRequest에서 경로 선택 정보를 추출하여 생성
+     */
+    public static RouteSelectionRequest of(RouteType selectedType, int selectedDistanceM,
+                                            List<Long> placeIds, WeatherCondition weatherCondition,
+                                            Double temperature) {
+        RouteSelectionRequest request = new RouteSelectionRequest();
+        request.selectedType = selectedType;
+        request.selectedDistanceM = selectedDistanceM;
+        request.placeIds = placeIds;
+        request.weatherCondition = weatherCondition;
+        request.temperature = temperature;
+        return request;
+    }
 }

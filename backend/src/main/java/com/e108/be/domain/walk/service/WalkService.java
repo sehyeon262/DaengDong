@@ -5,6 +5,8 @@ import com.e108.be.domain.badge.service.BadgeService;
 import com.e108.be.domain.diary.entity.Diary;
 import com.e108.be.domain.diary.repository.DiaryRepository;
 import com.e108.be.domain.diary.service.DiaryService;
+import com.e108.be.domain.route.dto.request.RouteSelectionRequest;
+import com.e108.be.domain.route.service.RouteSelectionService;
 import com.e108.be.domain.walk.dto.request.*;
 import com.e108.be.domain.walk.dto.request.StartWalkRequest;
 import com.e108.be.domain.walk.dto.response.*;
@@ -19,6 +21,8 @@ import com.e108.be.domain.walk.dto.response.CaloriesResponse;
 import com.e108.be.domain.walk.dto.response.DistanceResponse;
 import com.e108.be.domain.walk.dto.response.WalkDetailResponse;
 import com.e108.be.global.common.util.S3Service;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.multipart.MultipartFile;
 import com.e108.be.domain.walk.entity.WalkRecord;
 import com.e108.be.domain.walk.entity.WalkStatus;
@@ -62,9 +66,17 @@ public class WalkService {
     private final S3Service s3Service;
     private final ObjectMapper objectMapper;
     private final BadgeService badgeService;
+    private final RouteSelectionService routeSelectionService;
 
+    /**
+     * W1-01 산책 시작
+     * POST /api/v1/walks
+     *
+     * 경로 추천 기반 산책: selectedType이 있으면 경로 선택 로그도 함께 기록
+     * 자유 산책: selectedType이 null이면 산책만 시작
+     */
     @Transactional
-    public StartWalkResponse startWalk(StartWalkRequest request) {
+    public StartWalkResponse startWalk(Long memberId, StartWalkRequest request) {
         // 기존 IN_PROGRESS 산책이 있으면 자동 강제 종료 (stuck 방지)
         walkRecordRepository.findByDogIdAndWalkStatus(request.getDogId(), WalkStatus.IN_PROGRESS)
                 .ifPresent(w -> {
@@ -80,16 +92,38 @@ public class WalkService {
                 .build();
 
         WalkRecord saved = walkRecordRepository.save(walkRecord);
+
+        // 경로 추천 기반 산책이면 선택 로그 기록 (개인화 추천에 활용)
+        if (request.hasRouteSelection() && memberId != null) {
+            try {
+                RouteSelectionRequest selectionRequest = RouteSelectionRequest.of(
+                        request.getSelectedType(),
+                        request.getSelectedDistanceM() != null ? request.getSelectedDistanceM() : 0,
+                        request.getPlaceIds(),
+                        request.getWeatherCondition(),
+                        request.getTemperature()
+                );
+                routeSelectionService.logSelection(memberId, selectionRequest);
+                log.debug("경로 선택 로그 기록: memberId={}, type={}", memberId, request.getSelectedType());
+            } catch (Exception e) {
+                // 선택 로그 실패가 산책 시작을 막으면 안 됨
+                log.warn("경로 선택 로그 기록 실패 (산책은 정상 시작): memberId={}", memberId, e);
+            }
+        }
+
         return StartWalkResponse.from(saved);
     }
 
     /**
      * R1-03 자유 산책 시작
      * POST /walks/free-start
+     *
+     * @deprecated startWalk()로 통합됨. selectedType을 null로 보내면 자유 산책.
      */
+    @Deprecated
     @Transactional
-    public StartWalkResponse startFreeWalk(StartWalkRequest request) {
-        return startWalk(request);
+    public StartWalkResponse startFreeWalk(Long memberId, StartWalkRequest request) {
+        return startWalk(memberId, request);
     }
 
     /**
