@@ -18,6 +18,7 @@ public class EndWalkResponse {
     private Integer totalDuration;   // 초(seconds) 단위
     private Double totalDistance;    // km 단위
     private Double calories;
+    private Double deviationRate;   // 경로 이탈률 (%, 추천 경로 산책인 경우만)
     private List<BadgeResponse> newBadges;  // 새로 획득한 배지
 
     public static EndWalkResponse from(WalkRecord walkRecord) {
@@ -29,6 +30,8 @@ public class EndWalkResponse {
                         ? walkRecord.getTotalDistance().doubleValue() : 0.0)
                 .calories(walkRecord.getCalories() != null
                         ? walkRecord.getCalories().doubleValue() : 0.0)
+                .deviationRate(walkRecord.getDeviationRate() != null
+                        ? walkRecord.getDeviationRate().doubleValue() : null)
                 .build();
     }
 
@@ -41,6 +44,8 @@ public class EndWalkResponse {
                         ? walkRecord.getTotalDistance().doubleValue() : 0.0)
                 .calories(walkRecord.getCalories() != null
                         ? walkRecord.getCalories().doubleValue() : 0.0)
+                .deviationRate(walkRecord.getDeviationRate() != null
+                        ? walkRecord.getDeviationRate().doubleValue() : null)
                 .newBadges(newBadges)
                 .build();
     }

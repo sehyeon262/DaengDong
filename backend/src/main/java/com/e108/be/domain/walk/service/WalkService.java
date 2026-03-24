@@ -5,6 +5,8 @@ import com.e108.be.domain.badge.service.BadgeService;
 import com.e108.be.domain.diary.entity.Diary;
 import com.e108.be.domain.diary.repository.DiaryRepository;
 import com.e108.be.domain.diary.service.DiaryService;
+import com.e108.be.domain.route.dto.request.RouteSelectionRequest;
+import com.e108.be.domain.route.service.RouteSelectionService;
 import com.e108.be.domain.walk.dto.request.*;
 import com.e108.be.domain.walk.dto.request.StartWalkRequest;
 import com.e108.be.domain.walk.dto.response.*;
@@ -19,6 +21,8 @@ import com.e108.be.domain.walk.dto.response.CaloriesResponse;
 import com.e108.be.domain.walk.dto.response.DistanceResponse;
 import com.e108.be.domain.walk.dto.response.WalkDetailResponse;
 import com.e108.be.global.common.util.S3Service;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.multipart.MultipartFile;
 import com.e108.be.domain.walk.entity.WalkRecord;
 import com.e108.be.domain.walk.entity.WalkStatus;
@@ -53,6 +57,7 @@ public class WalkService {
     private static final String REJECTED_KEY_PREFIX  = "walk:rejected:";
     private static final double EARTH_RADIUS_M      = 6_371_000.0;
     private static final double CALORIE_FACTOR      = 0.8;
+    private static final double DEVIATION_BUFFER_M  = 50.0;  // 이탈 판정 거리 (미터)
 
     private final WalkRecordRepository walkRecordRepository;
     private final DogRepository dogRepository;
@@ -63,9 +68,17 @@ public class WalkService {
     private final S3Service s3Service;
     private final ObjectMapper objectMapper;
     private final BadgeService badgeService;
+    private final RouteSelectionService routeSelectionService;
 
+    /**
+     * W1-01 산책 시작
+     * POST /api/v1/walks
+     *
+     * 경로 추천 기반 산책: selectedType이 있으면 경로 선택 로그도 함께 기록
+     * 자유 산책: selectedType이 null이면 산책만 시작
+     */
     @Transactional
-    public StartWalkResponse startWalk(StartWalkRequest request) {
+    public StartWalkResponse startWalk(Long memberId, StartWalkRequest request) {
         // 기존 IN_PROGRESS 산책이 있으면 자동 강제 종료 (stuck 방지)
         walkRecordRepository.findByDogIdAndWalkStatus(request.getDogId(), WalkStatus.IN_PROGRESS)
                 .ifPresent(w -> {
@@ -78,19 +91,45 @@ public class WalkService {
                 .dogId(request.getDogId())
                 .walkStatus(WalkStatus.IN_PROGRESS)
                 .startTime(LocalDateTime.now())
+                .routeType(request.getSelectedType())  // null이면 자유 산책
                 .build();
 
         WalkRecord saved = walkRecordRepository.save(walkRecord);
+
+        // 경로 추천 기반 산책이면 선택 로그 기록 (개인화 추천에 활용)
+        if (request.hasRouteSelection() && memberId != null) {
+            try {
+                RouteSelectionRequest selectionRequest = RouteSelectionRequest.of(
+                        request.getSelectedType(),
+                        request.getSelectedDistanceM() != null ? request.getSelectedDistanceM() : 0,
+                        request.getPlaceIds(),
+                        request.getWeatherCondition(),
+                        request.getTemperature()
+                );
+                routeSelectionService.logSelection(memberId, selectionRequest);
+                log.debug("경로 선택 로그 기록: memberId={}, type={}", memberId, request.getSelectedType());
+            } catch (Exception e) {
+                // 선택 로그 실패가 산책 시작을 막으면 안 됨
+                log.warn("경로 선택 로그 기록 실패 (산책은 정상 시작): memberId={}", memberId, e);
+            }
+
+            // 추천 경로 좌표 저장 (이탈률 계산용)
+            saveRecommendedRoute(saved.getId(), request.getRecommendedPath());
+        }
+
         return StartWalkResponse.from(saved);
     }
 
     /**
      * R1-03 자유 산책 시작
      * POST /walks/free-start
+     *
+     * @deprecated startWalk()로 통합됨. selectedType을 null로 보내면 자유 산책.
      */
+    @Deprecated
     @Transactional
-    public StartWalkResponse startFreeWalk(StartWalkRequest request) {
-        return startWalk(request);
+    public StartWalkResponse startFreeWalk(Long memberId, StartWalkRequest request) {
+        return startWalk(memberId, request);
     }
 
     /**
@@ -143,6 +182,9 @@ public class WalkService {
         }
 
         walkRecord.end(totalDistance, calories);
+
+        // 이탈률 계산 (추천 경로가 있는 경우만)
+        calculateAndSaveDeviationRate(walkRecord);
 
         // 일기 생성 트리거 — 트랜잭션 커밋 후 비동기 실행
         final Long dogIdForDiary = walkRecord.getDogId();
@@ -627,6 +669,53 @@ public class WalkService {
     }
 
     // ────────────── 내부 유틸 ──────────────
+
+    /**
+     * 추천 경로 좌표를 WKT LINESTRING으로 변환하여 DB에 저장
+     * 좌표 형식: [[lat, lon], [lat, lon], ...]
+     */
+    private void saveRecommendedRoute(Long walkId, List<List<Double>> recommendedPath) {
+        if (recommendedPath == null || recommendedPath.size() < 2) {
+            return;
+        }
+        try {
+            StringBuilder wkt = new StringBuilder("LINESTRING(");
+            for (int i = 0; i < recommendedPath.size(); i++) {
+                List<Double> point = recommendedPath.get(i);
+                if (point.size() < 2) continue;
+                if (i > 0) wkt.append(", ");
+                // WKT는 lon lat 순서
+                wkt.append(point.get(1)).append(" ").append(point.get(0));
+            }
+            wkt.append(")");
+            walkRecordRepository.saveRecommendedRoute(walkId, wkt.toString());
+            log.debug("추천 경로 저장 완료: walkId={}, points={}", walkId, recommendedPath.size());
+        } catch (Exception e) {
+            log.warn("추천 경로 저장 실패 (산책은 정상 진행): walkId={}", walkId, e);
+        }
+    }
+
+    /**
+     * 이탈률 계산: 실제 경로의 각 포인트 중 추천 경로에서 50m 이상 벗어난 비율
+     * recommended_route가 있고, route_line이 있을 때만 계산
+     */
+    private void calculateAndSaveDeviationRate(WalkRecord walkRecord) {
+        if (walkRecord.getRouteType() == null) {
+            return; // 자유 산책은 이탈률 계산 불필요
+        }
+        try {
+            Double deviationRate = walkRecordRepository.calculateDeviationRate(
+                    walkRecord.getId(), DEVIATION_BUFFER_M);
+            if (deviationRate != null) {
+                walkRecord.updateDeviationRate(
+                        BigDecimal.valueOf(deviationRate).setScale(2, RoundingMode.HALF_UP));
+                log.info("이탈률 계산 완료: walkId={}, deviationRate={}%",
+                        walkRecord.getId(), deviationRate);
+            }
+        } catch (Exception e) {
+            log.warn("이탈률 계산 실패 (산책 종료는 정상 처리): walkId={}", walkRecord.getId(), e);
+        }
+    }
 
     private double haversine(double lat1, double lon1, double lat2, double lon2) {
         double dLat = Math.toRadians(lat2 - lat1);
