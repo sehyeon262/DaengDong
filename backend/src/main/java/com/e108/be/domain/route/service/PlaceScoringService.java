@@ -63,6 +63,20 @@ public class PlaceScoringService {
     private final SegmentPreferenceRepository segmentPreferenceRepository;
 
     /**
+     * 학습된 스코어링 가중치를 1회 로드
+     *
+     * 요청당 1번만 호출하여 score()에 전달한다.
+     * 루프 내부에서 매번 DB를 조회하는 N+1 문제를 방지한다.
+     *
+     * @return featureName -> weight 맵 (DISTANCE, CATEGORY)
+     */
+    public Map<String, Double> loadGlobalWeights() {
+        double wDistance = loadWeight("DISTANCE", ScoringWeightLearner.DEFAULT_WEIGHT_DISTANCE);
+        double wCategory = loadWeight("CATEGORY", ScoringWeightLearner.DEFAULT_WEIGHT_CATEGORY);
+        return Map.of("DISTANCE", wDistance, "CATEGORY", wCategory);
+    }
+
+    /**
      * 장소 하나에 대한 추천 점수 계산
      *
      * @param place          주변 장소 Projection
@@ -72,14 +86,15 @@ public class PlaceScoringService {
      *                       null이면 세그먼트 선호도 또는 전역 가중치만 사용
      * @param recentPlaceIds 최근 방문한 장소 ID 집합 (피로도 감점 대상)
      *                       null이면 감점 없음
+     * @param weights        학습된 피처 가중치 맵 (loadGlobalWeights()로 1회 로드)
      * @return 0 이상의 점수 (높을수록 추천도 높음)
      */
     public double score(NearbyPlaceProjection place, double originLat, double originLon,
-                        Map<String, Double> prefMap, Set<Long> recentPlaceIds) {
+                        Map<String, Double> prefMap, Set<Long> recentPlaceIds,
+                        Map<String, Double> weights) {
 
-        // 학습된 가중치 로드 (DB에 없으면 기본값)
-        double wDistance = loadWeight("DISTANCE", ScoringWeightLearner.DEFAULT_WEIGHT_DISTANCE);
-        double wCategory = loadWeight("CATEGORY", ScoringWeightLearner.DEFAULT_WEIGHT_CATEGORY);
+        double wDistance = weights.getOrDefault("DISTANCE", ScoringWeightLearner.DEFAULT_WEIGHT_DISTANCE);
+        double wCategory = weights.getOrDefault("CATEGORY", ScoringWeightLearner.DEFAULT_WEIGHT_CATEGORY);
 
         double score = 0.0;
 

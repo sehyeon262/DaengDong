@@ -89,6 +89,9 @@ public class RouteService {
         double radiusMultiplier = resolveRadiusMultiplier(dog);
         Set<Long> recentPlaceIds = loadRecentPlaceIds(memberId);
 
+        // 학습된 스코어링 가중치 1회 로드 (N+1 방지)
+        Map<String, Double> weights = placeScoringService.loadGlobalWeights();
+
         // 산책 패턴 분석 (날씨/시간 기반 추천에 활용)
         RouteType recommendedType = resolveRecommendedType(memberId, dog, weather);
 
@@ -102,9 +105,9 @@ public class RouteService {
                 recommendedType, recentPlaceIds != null ? recentPlaceIds.size() : 0);
 
         // 1단계: 반경별 후보 장소 조회 + 개인화 스코어링 + 피로도 감점
-        List<ScoredPlace> shortPlaces = findAndScore(lat, lon, shortRadius, prefMap, recentPlaceIds);
-        List<ScoredPlace> recommendPlaces = findAndScore(lat, lon, recommendRadius, prefMap, recentPlaceIds);
-        List<ScoredPlace> explorePlaces = findAndScore(lat, lon, exploreRadius, prefMap, recentPlaceIds);
+        List<ScoredPlace> shortPlaces = findAndScore(lat, lon, shortRadius, prefMap, recentPlaceIds, weights);
+        List<ScoredPlace> recommendPlaces = findAndScore(lat, lon, recommendRadius, prefMap, recentPlaceIds, weights);
+        List<ScoredPlace> explorePlaces = findAndScore(lat, lon, exploreRadius, prefMap, recentPlaceIds, weights);
 
         // 전체 고유 장소 수로 폴백 레벨 결정
         int totalUnique = countUniquePlaces(shortPlaces, recommendPlaces, explorePlaces);
@@ -195,7 +198,8 @@ public class RouteService {
      */
     private List<ScoredPlace> findAndScore(double lat, double lon, double baseRadius,
                                             Map<String, Double> prefMap,
-                                            Set<Long> recentPlaceIds) {
+                                            Set<Long> recentPlaceIds,
+                                            Map<String, Double> weights) {
         List<NearbyPlaceProjection> candidates = List.of();
 
         for (double multiplier : RADIUS_MULTIPLIERS) {
@@ -210,7 +214,7 @@ public class RouteService {
         return candidates.stream()
                 .map(place -> new ScoredPlace(
                         place,
-                        placeScoringService.score(place, lat, lon, prefMap, recentPlaceIds)
+                        placeScoringService.score(place, lat, lon, prefMap, recentPlaceIds, weights)
                 ))
                 .sorted(Comparator.comparingDouble(ScoredPlace::score).reversed())
                 .toList();
