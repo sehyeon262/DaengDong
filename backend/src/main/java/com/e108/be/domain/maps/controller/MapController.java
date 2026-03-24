@@ -4,6 +4,7 @@ import com.e108.be.domain.maps.dto.request.StampRequest;
 import com.e108.be.domain.maps.dto.response.FootprintHistoryResponse;
 import com.e108.be.domain.maps.dto.response.FootprintMapResponse;
 import com.e108.be.domain.maps.service.MapService;
+import com.e108.be.domain.place.dto.response.PlaceDetailResponse;
 import com.e108.be.global.common.template.ResTemplate;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -50,6 +51,21 @@ public class MapController {
         mapService.stamp(request);
         return ResponseEntity.ok(
                 ResTemplate.success(HttpStatus.OK, "발자국 도장 등록 성공", null)
+        );
+    }
+
+    /**
+     * GET /api/v1/maps/stamps?dogId={dogId}
+     * 강아지가 발자국 도장을 찍은 장소 목록 조회
+     */
+    @GetMapping("/stamps")
+    public ResponseEntity<ResTemplate<List<PlaceDetailResponse>>> getStampedPlaces(
+            @AuthenticationPrincipal Long memberId,
+            @RequestParam Long dogId
+    ) {
+        List<PlaceDetailResponse> response = mapService.getStampedPlaces(dogId);
+        return ResponseEntity.ok(
+                ResTemplate.success(HttpStatus.OK, "발자국 도장 장소 조회 성공", response)
         );
     }
 

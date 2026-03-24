@@ -43,6 +43,10 @@ data class WalkState(
     val isPlacesLoading: Boolean = false,             // 장소 로딩 중 여부
     val selectedPlace: Place? = null,                 // 클릭된 장소 (상세 바텀시트 표시용)
 
+    // ── 발자국 마커 ────────────────────────────────────────────────────────────
+    val footprintPlaces: List<Place> = emptyList(),   // 도장 찍은 장소 목록
+    val isFootprintPlacesLoading: Boolean = false,    // 발자국 장소 로딩 중 여부
+
     // ── 자유 산책 ──────────────────────────────────────────────────────────────
     val isWalking: Boolean = false,       // 산책 진행 중 여부
     val isPaused: Boolean = false,        // 일시정지 여부

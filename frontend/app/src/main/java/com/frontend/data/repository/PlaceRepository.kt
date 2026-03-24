@@ -46,4 +46,13 @@ class PlaceRepository constructor(
             authorization = "Bearer $token"
         ).data ?: emptyList()
     }
+
+    /** 발자국 도장 찍은 장소 목록 조회 */
+    suspend fun getFootprintPlaces(dogId: Long): Result<List<Place>> = runCatching {
+        val token = tokenDataStore.getAccessToken().first() ?: error("인증 토큰 없음")
+        placeApi.getFootprintPlaces(
+            authorization = "Bearer $token",
+            dogId = dogId
+        ).data ?: emptyList()
+    }
 }

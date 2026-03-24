@@ -3,8 +3,11 @@ package com.e108.be.domain.maps.service;
 import com.e108.be.domain.maps.dto.request.StampRequest;
 import com.e108.be.domain.maps.dto.response.FootprintHistoryResponse;
 import com.e108.be.domain.maps.dto.response.FootprintMapResponse;
+import com.e108.be.domain.place.dto.response.PlaceDetailResponse;
+import com.e108.be.domain.place.repository.PlaceRepository;
 import com.e108.be.domain.walk.entity.WalkRecord;
 import com.e108.be.domain.walk.entity.WalkStatus;
+import com.e108.be.domain.walk.repository.FootprintRepository;
 import com.e108.be.domain.walk.repository.WalkRecordRepository;
 import com.e108.be.domain.walk.service.FootprintService;
 import lombok.RequiredArgsConstructor;
@@ -22,6 +25,8 @@ public class MapService {
 
     private final WalkRecordRepository walkRecordRepository;
     private final FootprintService footprintService;
+    private final FootprintRepository footprintRepository;
+    private final PlaceRepository placeRepository;
 
     /**
      * M3-01 GET /api/v1/maps/footprints
@@ -60,6 +65,17 @@ public class MapService {
     @Transactional
     public void stamp(StampRequest request) {
         footprintService.registerStamp(request.getWalkId(), request.getDogId(), request.getPlaceId());
+    }
+
+    /**
+     * GET /api/v1/maps/stamps?dogId={dogId}
+     * 강아지가 발자국 도장을 찍은 장소 목록 조회 (중복 제거)
+     */
+    public List<PlaceDetailResponse> getStampedPlaces(Long dogId) {
+        List<Long> placeIds = footprintRepository.findDistinctPlaceIdsByDogId(dogId);
+        return placeRepository.findAllById(placeIds).stream()
+                .map(PlaceDetailResponse::from)
+                .toList();
     }
 
     /**

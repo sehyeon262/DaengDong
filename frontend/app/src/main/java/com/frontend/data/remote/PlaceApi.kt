@@ -33,4 +33,11 @@ interface PlaceApi {
         @Query("limit") limit: Int? = null,         // 최대 결과 수, 기본값 20
         @Query("category") category: String? = null // 카테고리 필터 (예: "카페", "동물병원")
     ): ApiResponse<List<Place>>
+
+    /** 발자국 도장 찍은 장소 목록 조회 — GET /api/v1/maps/stamps */
+    @GET("maps/stamps")
+    suspend fun getFootprintPlaces(
+        @Header("Authorization") authorization: String,
+        @Query("dogId") dogId: Long
+    ): ApiResponse<List<Place>>
 }

@@ -160,6 +160,9 @@ fun WalkScreen(
     // 장소 마커 목록 (PLACE 필터 on/off 시 추가/제거)
     val placeLabels = remember { mutableStateListOf<Label>() }
 
+    // 발자국 마커 목록 (FOOTPRINT 필터 on/off 시 추가/제거)
+    val footprintLabels = remember { mutableStateListOf<Label>() }
+
     // 주변 강아지 마커 목록
     val nearbyDogLabels = remember { mutableStateListOf<Label>() }
 
@@ -516,6 +519,18 @@ fun WalkScreen(
         } else {
             placeLabels.forEach { map.labelManager?.layer?.remove(it) }
             placeLabels.clear()
+        }
+    }
+
+    // 발자국 목록 변경 시: 마커 전체 교체 (FOOTPRINT 필터 ON → API 응답 도착)
+    LaunchedEffect(state.footprintPlaces, kakaoMap) {
+        val map = kakaoMap ?: return@LaunchedEffect
+        footprintLabels.forEach { map.labelManager?.layer?.remove(it) }
+        footprintLabels.clear()
+        if (state.footprintPlaces.isEmpty()) return@LaunchedEffect
+        state.footprintPlaces.forEach { place ->
+            val label = addFootprintMarker(context, map, place)
+            if (label != null) footprintLabels.add(label)
         }
     }
 
@@ -1309,6 +1324,38 @@ private fun addPlaceMarker(
     val scaled = android.graphics.Bitmap.createScaledBitmap(source, targetWidth, targetSize, true)
 
     val style = LabelStyle.from(scaled).setAnchorPoint(0.5f, 1.0f)  // 하단 중앙을 좌표에 맞춤
+    val styles = LabelStyles.from(style)
+    val options = LabelOptions.from(position).setStyles(styles).setTag(place.id)
+    return kakaoMap.labelManager?.layer?.addLabel(options)
+}
+
+// ── 발자국 마커 추가 (place_mark에 초록 틴트 적용) ──────────────────────────
+private fun addFootprintMarker(
+    context: android.content.Context,
+    kakaoMap: KakaoMap,
+    place: com.frontend.domain.model.Place
+): Label? {
+    val position = LatLng.from(place.latitude, place.longitude)
+
+    val source = android.graphics.BitmapFactory.decodeResource(
+        context.resources, R.drawable.place_mark
+    )
+    val targetSize = 80
+    val aspectRatio = source.width.toFloat() / source.height.toFloat()
+    val targetWidth = (targetSize * aspectRatio).toInt()
+    val scaled = android.graphics.Bitmap.createScaledBitmap(source, targetWidth, targetSize, true)
+
+    // 초록 틴트를 적용해 일반 장소 마커(파랑)와 구분
+    val tinted = scaled.copy(android.graphics.Bitmap.Config.ARGB_8888, true)
+    val canvas = android.graphics.Canvas(tinted)
+    val paint = android.graphics.Paint()
+    paint.colorFilter = android.graphics.PorterDuffColorFilter(
+        android.graphics.Color.argb(180, 76, 175, 80),  // 반투명 녹색 #4CAF50
+        android.graphics.PorterDuff.Mode.SRC_ATOP
+    )
+    canvas.drawBitmap(scaled, 0f, 0f, paint)
+
+    val style = LabelStyle.from(tinted).setAnchorPoint(0.5f, 1.0f)
     val styles = LabelStyles.from(style)
     val options = LabelOptions.from(position).setStyles(styles).setTag(place.id)
     return kakaoMap.labelManager?.layer?.addLabel(options)
