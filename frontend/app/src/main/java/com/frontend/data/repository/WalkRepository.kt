@@ -168,14 +168,16 @@ class WalkRepository @Inject constructor(
         response.data?.get("proposalId") ?: throw Exception("proposalId 없음")
     }
 
-    /** 산책 제안 수락/거절 */
-    suspend fun respondToProposal(proposalId: String, action: String, myWalkRecordId: Long): Result<Unit> = runCatching {
+    /** 산책 제안 수락/거절
+     *  @return 수락 시 chatRoomId, 거절 시 null */
+    suspend fun respondToProposal(proposalId: String, action: String, myWalkRecordId: Long): Result<Long?> = runCatching {
         val token = tokenDataStore.getAccessToken().first()
             ?: throw Exception("로그인이 필요합니다")
-        walkApi.respondToProposal(
+        val response = walkApi.respondToProposal(
             authorization = "Bearer $token",
             proposalId = proposalId,
             request = RespondProposalRequest(action, myWalkRecordId),
         )
+        response.data?.get("chatRoomId")
     }
 }

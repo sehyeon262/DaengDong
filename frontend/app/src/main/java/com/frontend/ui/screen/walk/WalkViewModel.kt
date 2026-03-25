@@ -16,8 +16,10 @@ import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.MultipartBody
 import okhttp3.RequestBody.Companion.toRequestBody
 import com.frontend.data.local.TokenDataStore
+import com.frontend.data.remote.StompChatClient
 import com.frontend.data.repository.DogRepository
 import com.frontend.data.repository.WalkRepository
+import com.frontend.domain.model.ChatBannerNotification
 import com.frontend.domain.model.FeedbackRequest
 import com.frontend.domain.model.NearbyDogResponse
 import com.frontend.domain.model.PendingProposalInfo
@@ -78,6 +80,7 @@ class WalkViewModel @Inject constructor(
     private val saveLocationsUseCase: SaveLocationsUseCase,
     private val endWalkUseCase: EndWalkUseCase,
     private val nearbyDogAlertManager: NearbyDogAlertManager,
+    private val stompChatClient: StompChatClient,
 ) : ViewModel() {
 
     // ── 비선호 강아지 알림 상수 ─────────────────────────────────────────────────
@@ -994,6 +997,16 @@ class WalkViewModel @Inject constructor(
         ) }
         viewModelScope.launch {
             walkRepository.respondToProposal(proposal.proposalId, "ACCEPT", myWalkRecordId)
+                .onSuccess { chatRoomId ->
+                    if (chatRoomId != null) {
+                        // 수락자 측: chatRoomId 저장 + WebSocket 구독
+                        _state.update { it.copy(
+                            acceptedChatRooms = it.acceptedChatRooms + (proposal.dogId to chatRoomId),
+                            acceptedByMeChatRoomId = chatRoomId,
+                        ) }
+                        subscribeToChatRoom(chatRoomId, proposal.name, proposal.profileImageUrl)
+                    }
+                }
         }
     }
 
@@ -1012,9 +1025,17 @@ class WalkViewModel @Inject constructor(
 
     /** 제안자 — 수락 알림 확인 */
     fun dismissAcceptedProposal(proposalId: String) {
+        val accepted = _state.value.acceptedProposals.find { it.proposalId == proposalId }
         _state.update { it.copy(
             acceptedProposals = it.acceptedProposals.filter { a -> a.proposalId != proposalId }
         ) }
+        // 제안자 측: chatRoomId 저장 + WebSocket 구독
+        accepted?.chatRoomId?.let { chatRoomId ->
+            _state.update { it.copy(
+                acceptedChatRooms = it.acceptedChatRooms + (accepted.dogId to chatRoomId)
+            ) }
+            subscribeToChatRoom(chatRoomId, accepted.name, accepted.profileImageUrl)
+        }
     }
 
     /** 제안자 — 거절 알림 확인 */
@@ -1026,7 +1047,7 @@ class WalkViewModel @Inject constructor(
 
     /** 수락자 — 수락 확인 모달 닫기 */
     fun dismissAcceptedByMe() {
-        _state.update { it.copy(showAcceptedByMeDialog = false) }
+        _state.update { it.copy(showAcceptedByMeDialog = false, acceptedByMeChatRoomId = null) }
     }
 
     /** 거절자 — 거절 확인 모달 닫기 */
@@ -1148,5 +1169,53 @@ class WalkViewModel @Inject constructor(
                 _state.update { it.copy(isLoading = false, error = e.message) }
             }
         }
+    }
+
+    // ── 채팅 관련 ─────────────────────────────────────────────────────────────
+
+    /** WebSocket 연결 후 특정 채팅방 구독 + 메시지 수신 시 배너 표시 */
+    private fun subscribeToChatRoom(
+        chatRoomId: Long,
+        partnerName: String,
+        partnerImageUrl: String?,
+    ) {
+        viewModelScope.launch {
+            val token = tokenDataStore.getAccessToken().first() ?: return@launch
+            val wsUrl = buildWsUrl()
+            if (!stompChatClient.isConnected) {
+                stompChatClient.connect(wsUrl, token)
+                stompChatClient.connected.first { it }
+            }
+            stompChatClient.subscribe(chatRoomId)
+
+            // 수신 메시지 → 배너 알림
+            stompChatClient.messages.collect { (roomId, message) ->
+                if (roomId == chatRoomId) {
+                    _state.update { it.copy(
+                        chatBanner = ChatBannerNotification(
+                            chatRoomId = roomId,
+                            senderName = partnerName,
+                            senderImageUrl = partnerImageUrl,
+                            messagePreview = message.content.take(40),
+                        )
+                    ) }
+                }
+            }
+        }
+    }
+
+    /** 채팅 배너 닫기 */
+    fun dismissChatBanner() {
+        _state.update { it.copy(chatBanner = null) }
+    }
+
+    private fun buildWsUrl(): String {
+        // BASE_URL 예: "http://192.168.30.183:8080/api/v1/"
+        // WS URL 결과: "ws://192.168.30.183:8080/api/v1/ws-native"
+        val scheme = if (com.frontend.util.Constants.BASE_URL.startsWith("https")) "wss" else "ws"
+        val base = com.frontend.util.Constants.BASE_URL
+            .removePrefix("https://").removePrefix("http://")
+            .trimEnd('/')
+        return "$scheme://$base/ws-native"
     }
 }

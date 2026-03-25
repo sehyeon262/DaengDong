@@ -15,6 +15,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.DirectionsWalk
+import androidx.compose.material.icons.filled.Chat
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.LocationOn
@@ -66,9 +67,11 @@ fun NearbyDogProfilePopup(
     isLoading: Boolean,
     proposalSent: Boolean = false,
     isSendingProposal: Boolean = false,
+    chatRoomId: Long? = null,              // 수락된 채팅방 ID (있으면 채팅 버튼 표시)
     onDismiss: () -> Unit,
     onPropose: () -> Unit,
     onFeedback: (String) -> Unit = {},
+    onStartChat: (Long) -> Unit = {},      // 채팅 시작하기 콜백
 ) {
     val sheetState = rememberModalBottomSheetState()
     val fallbackDrawable = dogFallbackDrawables[nearbyDog.dogId.toInt() % dogFallbackDrawables.size]
@@ -226,34 +229,59 @@ fun NearbyDogProfilePopup(
                     Spacer(Modifier.height(16.dp))
                 }
 
-                // ── 함께 산책 제안 버튼 ─────────────────────────────────────
-                Button(
-                    onClick = { if (!proposalSent && !isSendingProposal) onPropose() },
-                    enabled = !proposalSent && !isSendingProposal,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(54.dp),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = if (proposalSent) Color(0xFF9E9E9E) else PointGreen,
-                        disabledContainerColor = if (proposalSent) Color(0xFF9E9E9E) else Color(0xFFBDBDBD),
-                    ),
-                    shape = RoundedCornerShape(14.dp)
-                ) {
-                    if (isSendingProposal) {
-                        CircularProgressIndicator(color = Color.White, modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
-                    } else {
+                // ── 채팅 시작하기 버튼 (수락 완료된 경우) ──────────────────
+                if (chatRoomId != null) {
+                    Button(
+                        onClick = { onStartChat(chatRoomId) },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(54.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = PointGreen),
+                        shape = RoundedCornerShape(14.dp)
+                    ) {
                         Icon(
-                            imageVector = Icons.AutoMirrored.Filled.DirectionsWalk,
+                            imageVector = Icons.Default.Chat,
                             contentDescription = null,
                             tint = Color.White
                         )
                         Spacer(Modifier.width(8.dp))
                         Text(
-                            text = if (proposalSent) "제안 전송됨" else "함께 산책 제안",
+                            text = "채팅 시작하기",
                             color = Color.White,
                             fontWeight = FontWeight.Bold,
                             fontSize = 16.sp
                         )
+                    }
+                } else {
+                    // ── 함께 산책 제안 버튼 ─────────────────────────────────────
+                    Button(
+                        onClick = { if (!proposalSent && !isSendingProposal) onPropose() },
+                        enabled = !proposalSent && !isSendingProposal,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(54.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = if (proposalSent) Color(0xFF9E9E9E) else PointGreen,
+                            disabledContainerColor = if (proposalSent) Color(0xFF9E9E9E) else Color(0xFFBDBDBD),
+                        ),
+                        shape = RoundedCornerShape(14.dp)
+                    ) {
+                        if (isSendingProposal) {
+                            CircularProgressIndicator(color = Color.White, modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
+                        } else {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Filled.DirectionsWalk,
+                                contentDescription = null,
+                                tint = Color.White
+                            )
+                            Spacer(Modifier.width(8.dp))
+                            Text(
+                                text = if (proposalSent) "제안 전송됨" else "함께 산책 제안",
+                                color = Color.White,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 16.sp
+                            )
+                        }
                     }
                 }
             }

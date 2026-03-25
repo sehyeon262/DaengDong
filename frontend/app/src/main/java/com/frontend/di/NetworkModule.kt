@@ -3,6 +3,7 @@ package com.frontend.di
 import com.frontend.BuildConfig
 import com.frontend.data.remote.AuthApi
 import com.frontend.data.remote.BadgeApi
+import com.frontend.data.remote.ChatApi
 import com.frontend.data.remote.DangerZoneApi
 import com.frontend.data.remote.DogApi
 import com.frontend.data.remote.HomeApi
@@ -122,5 +123,11 @@ object NetworkModule {
     @Singleton
     fun provideKakaoLocalApi(@KakaoRetrofit retrofit: Retrofit): KakaoLocalApi {
         return retrofit.create(KakaoLocalApi::class.java)
+    }
+
+    @Provides
+    @Singleton
+    fun provideChatApi(retrofit: Retrofit): ChatApi {
+        return retrofit.create(ChatApi::class.java)
     }
 }

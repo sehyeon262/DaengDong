@@ -1,5 +1,6 @@
 package com.frontend.ui.screen.walk
 
+import com.frontend.domain.model.ChatBannerNotification
 import com.frontend.domain.model.DangerLocation
 import com.frontend.domain.model.DangerReason
 import com.frontend.domain.model.DangerZone
@@ -98,5 +99,13 @@ data class WalkState(
     val error: String? = null,                        // 에러 메시지 (없으면 null)
 
     // ── 배지 획득 알림 ──────────────────────────────────────────────────────
-    val newBadges: List<NewBadgeInfo> = emptyList()   // 새로 획득한 배지 목록
+    val newBadges: List<NewBadgeInfo> = emptyList(),   // 새로 획득한 배지 목록
+
+    // ── 채팅 관련 상태 ──────────────────────────────────────────────────────
+    /** dogId → chatRoomId: 수락된 제안의 채팅방 정보 보관 (프로필 팝업에서 채팅 버튼 표시용) */
+    val acceptedChatRooms: Map<Long, Long> = emptyMap(),
+    /** 수락자 확인 다이얼로그에서 바로 채팅방 이동할 수 있도록 최근 수락한 chatRoomId 보관 */
+    val acceptedByMeChatRoomId: Long? = null,
+    /** 화면 상단에 표시할 채팅 배너 알림 (null이면 숨김) */
+    val chatBanner: ChatBannerNotification? = null,
 )
