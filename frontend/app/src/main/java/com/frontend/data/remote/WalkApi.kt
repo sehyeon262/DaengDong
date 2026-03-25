@@ -25,16 +25,14 @@ import retrofit2.http.Query
 
 interface WalkApi {
 
-    /** W1-01: 산책 시작 — POST /api/v1/walks */
+    /**
+     * 산책 시작 — POST /api/v1/walks
+     *
+     * - 자유 산책: selectedType = null
+     * - 추천 경로 산책: selectedType != null (경로 선택 로그도 서버에서 자동 기록)
+     */
     @POST("walks")
     suspend fun startWalk(
-        @Header("Authorization") authorization: String,
-        @Body request: StartWalkRequest,
-    ): ApiResponse<StartWalkResponse>
-
-    /** R1-03: 자유 산책 시작 — POST /api/v1/walks/free-start */
-    @POST("walks/free-start")
-    suspend fun startFreeWalk(
         @Header("Authorization") authorization: String,
         @Body request: StartWalkRequest,
     ): ApiResponse<StartWalkResponse>
@@ -99,13 +97,14 @@ interface WalkApi {
         @Body request: SendProposalRequest,
     ): ApiResponse<Map<String, String>>
 
-    /** S14P21E108-171: 산책 제안 수락/거절 — PATCH /api/v1/walks/proposals/{proposalId} */
+    /** S14P21E108-171: 산책 제안 수락/거절 — PATCH /api/v1/walks/proposals/{proposalId}
+     *  수락 시 data에 chatRoomId 포함, 거절 시 data = {} */
     @PATCH("walks/proposals/{proposalId}")
     suspend fun respondToProposal(
         @Header("Authorization") authorization: String,
         @Path("proposalId") proposalId: String,
         @Body request: RespondProposalRequest,
-    ): ApiResponse<Unit>
+    ): ApiResponse<Map<String, Long>>
 
     /** W1-03: 주변 강아지 조회 — GET /api/v1/walks/nearby-dogs */
     @GET("walks/nearby-dogs")

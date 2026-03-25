@@ -18,8 +18,8 @@ spring:
   # 파일 업로드 크기 설정
   servlet:
     multipart:
-      max-file-size: 10MB
-      max-request-size: 50MB
+      max-file-size: 30MB
+      max-request-size: 100MB
 
   # 공통 JPA 설정
   jpa:
@@ -52,7 +52,12 @@ api:
 # 강아지 감정 분석 모델 설정
 emotion:
   model-path: ${EMOTION_MODEL_PATH:models/dog.onnx}
-  confidence-threshold: 0.5  # 이 이하면 강아지가 없는 사진으로 판단
+  confidence-threshold: 0.5  # Vision API가 강아지 탐지를 담당하므로 감정 분류 threshold는 낮게 유지
+
+# Google Cloud Vision API 설정 (API 키 방식)
+google:
+  vision:
+    api-key: ${GOOGLE_VISION_API_KEY}
 
 # S3 설정
 aws:

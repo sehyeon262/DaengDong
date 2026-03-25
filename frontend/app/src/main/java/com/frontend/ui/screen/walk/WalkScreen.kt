@@ -27,8 +27,10 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.DirectionsWalk
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.FilterAlt
 import androidx.compose.material.icons.filled.GpsFixed
+import androidx.compose.material.icons.filled.Navigation
 import androidx.compose.material.icons.filled.Route
 import androidx.compose.material.icons.outlined.Route
 import androidx.compose.material.icons.filled.LocalFireDepartment
@@ -65,10 +67,16 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -131,6 +139,7 @@ fun WalkScreen(
     onNavigateToWalkDetail: (Long) -> Unit = {},
     onNavigateToHome: () -> Unit = {},
     onNavigateToAddPlace: () -> Unit = {},
+    onNavigateToChat: (Long) -> Unit = {},
     viewModel: WalkViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsState()
@@ -146,6 +155,8 @@ fun WalkScreen(
     var currentLocationLabel by remember { mutableStateOf<Label?>(null) }
     val currentPosition by viewModel.currentPosition.collectAsState()
     var fovOverlay by remember { mutableStateOf<Polygon?>(null) }
+    // GPS 버튼으로 트래킹 활성화 여부 (사용자가 지도를 드래그하면 자동 해제)
+    var isTrackingActive by remember { mutableStateOf(false) }
     // GPS 버튼 모드: 0=꺼짐, 1=위치 추적, 2=방향 추적(heading up)
     var gpsMode by remember { mutableStateOf(0) }
 
@@ -183,7 +194,13 @@ fun WalkScreen(
     val mediaPermissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission()
     ) { granted ->
-        if (granted) viewModel.retryPhotoObserverIfWalking()
+        if (granted) {
+            viewModel.retryPhotoObserverIfWalking()
+        } else {
+            // Android 14+에서 "사진 선택"(부분 접근)을 선택한 경우
+            // 자동 감지는 불가하지만 산책 후 수동 업로드는 가능
+            android.util.Log.w("WalkScreen", "사진 전체 접근 미허용 — 자동 감지 비활성화 (수동 업로드 가능)")
+        }
     }
 
     // 알림 권한 요청 launcher (Android 13+ 비선호 강아지 알림용)
@@ -196,14 +213,20 @@ fun WalkScreen(
     // 산책 시작 시 미디어 권한 + 알림 권한 확인 및 요청
     LaunchedEffect(state.isWalking) {
         if (state.isWalking) {
-            // 미디어 권한 요청
-            val mediaPermission = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                Manifest.permission.READ_MEDIA_IMAGES
+            // 자동 감지에는 전체 접근(READ_MEDIA_IMAGES) 필요
+            // Android 14+ "사진 선택"(부분 접근)으로는 새 카메라 사진을 MediaStore로 감지 불가
+            val hasFullAccess = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                ActivityCompat.checkSelfPermission(context, Manifest.permission.READ_MEDIA_IMAGES) == PackageManager.PERMISSION_GRANTED
             } else {
-                Manifest.permission.READ_EXTERNAL_STORAGE
+                ActivityCompat.checkSelfPermission(context, Manifest.permission.READ_EXTERNAL_STORAGE) == PackageManager.PERMISSION_GRANTED
             }
-            val hasMediaPermission = ActivityCompat.checkSelfPermission(context, mediaPermission) == PackageManager.PERMISSION_GRANTED
-            if (!hasMediaPermission) {
+
+            if (!hasFullAccess) {
+                val mediaPermission = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                    Manifest.permission.READ_MEDIA_IMAGES
+                } else {
+                    Manifest.permission.READ_EXTERNAL_STORAGE
+                }
                 mediaPermissionLauncher.launch(mediaPermission)
             }
 
@@ -252,18 +275,30 @@ fun WalkScreen(
         val map = kakaoMap ?: return@LaunchedEffect
 
         if (currentLocationLabel == null) {
+            // 최초: 카메라 이동 + 마커 생성 + TrackingManager 시작
             // 최초: 카메라 이동 + 마커 생성 (트래킹은 GPS 버튼으로만 활성화)
             map.moveCamera(CameraUpdateFactory.newCenterPosition(pos, 15))
             val bitmap = rotateBitmap(createDogMarkerBitmap(context), azimuth)
             val styles = LabelStyles.from(LabelStyle.from(bitmap).setAnchorPoint(0.5f, 0.5f))
             val label = map.labelManager?.layer?.addLabel(LabelOptions.from(pos).setStyles(styles))
             currentLocationLabel = label
+            if (label != null) {
+                map.trackingManager?.startTracking(label)
+            }
 
             // 최초 위치 수신 시 추천 경로 로드
             viewModel.loadRecommendedRoutes(pos.latitude, pos.longitude)
         } else {
             // 이후: moveTo()로 이동 (마커 사라짐 없이)
             currentLocationLabel?.moveTo(pos)
+            // 방향 추적 모드: 위치 변경 시 카메라도 이동 (rotation 유지)
+            if (gpsMode == 2) {
+                map.moveCamera(
+                    CameraUpdateFactory.newCameraPosition(
+                        CameraPosition.from(pos.latitude, pos.longitude, 15, 0.0, azimuth.toDouble(), 0.0)
+                    )
+                )
+            }
         }
 
         // FOV cone 갱신
@@ -282,6 +317,15 @@ fun WalkScreen(
 
         // FOV cone 업데이트
         fovOverlay = updateFovCone(map, pos, azimuth, fovOverlay)
+
+        // 방향 추적 모드: azimuth 변경 시 카메라 회전
+        if (gpsMode == 2) {
+            map.moveCamera(
+                CameraUpdateFactory.newCameraPosition(
+                    CameraPosition.from(pos.latitude, pos.longitude, 15, 0.0, azimuth.toDouble(), 0.0)
+                )
+            )
+        }
     }
 
     // 외부에서 selectedRouteIndex 변경 시 페이저 스크롤
@@ -301,6 +345,8 @@ fun WalkScreen(
                     while (true) {
                         val event = awaitPointerEvent(PointerEventPass.Initial)
                         if (event.changes.any { it.position != it.previousPosition }) {
+                            kakaoMap?.trackingManager?.stopTracking()
+                            isTrackingActive = false
                             gpsMode = 0
                             break
                         }
@@ -701,13 +747,37 @@ fun WalkScreen(
                 }
             )
             MapOverlayButton(
-                icon = Icons.Filled.GpsFixed,
+                icon = if (gpsMode == 2) Icons.Filled.Navigation else Icons.Filled.GpsFixed,
                 contentDescription = "현재 위치",
                 onClick = {
-                    currentPosition?.let { pos ->
-                        kakaoMap?.moveCamera(CameraUpdateFactory.newCenterPosition(pos, 15))
+                    when (gpsMode) {
+                        0 -> {
+                            // 1번 누름: 현재 위치로 카메라 이동 + 위치 추적 시작
+                            currentLocationLabel?.let { label ->
+                                kakaoMap?.trackingManager?.startTracking(label)
+                                isTrackingActive = true
+                                gpsMode = 1
+                            }
+                        }
+                        1 -> {
+                            // 2번 누름: 방향 추적 모드 (heading up)
+                            kakaoMap?.trackingManager?.stopTracking()
+                            isTrackingActive = false
+                            gpsMode = 2
+                            currentPosition?.let { pos ->
+                                kakaoMap?.moveCamera(
+                                    CameraUpdateFactory.newCameraPosition(
+                                        CameraPosition.from(pos.latitude, pos.longitude, 15, 0.0, azimuth.toDouble(), 0.0)
+                                    )
+                                )
+                            }
+                        }
+                        else -> {
+                            // 3번 누름: 초기화 (North up)
+                            gpsMode = 0
+                            isTrackingActive = false
+                        }
                     }
-                    gpsMode = 1
                 }
             )
             // 추천 경로 표시 토글 버튼
@@ -755,10 +825,33 @@ fun WalkScreen(
                 isLoading = state.isDogProfileLoading,
                 proposalSent = state.proposalSentDogId == dog.dogId,
                 isSendingProposal = state.isSendingProposal,
+                chatRoomId = state.acceptedChatRooms[dog.dogId],
                 onDismiss = { viewModel.dismissDogProfile() },
                 onPropose = { viewModel.sendProposal(dog.walkRecordId, dog.dogId) },
                 onFeedback = { feedback -> viewModel.updateFeedback(dog.dogId, feedback) },
+                onStartChat = { chatRoomId -> onNavigateToChat(chatRoomId) },
             )
+        }
+
+        // ── 채팅 메시지 배너 알림 (상단 슬라이드) ──────────────────────
+        AnimatedVisibility(
+            visible = state.chatBanner != null,
+            enter = slideInVertically(initialOffsetY = { -it }) + fadeIn(),
+            exit = slideOutVertically(targetOffsetY = { -it }) + fadeOut(),
+            modifier = androidx.compose.ui.Modifier
+                .align(Alignment.TopCenter)
+                .padding(top = 12.dp, start = 12.dp, end = 12.dp),
+        ) {
+            state.chatBanner?.let { banner ->
+                ChatBannerCard(
+                    banner = banner,
+                    onDismiss = { viewModel.dismissChatBanner() },
+                    onClick = {
+                        viewModel.dismissChatBanner()
+                        onNavigateToChat(banner.chatRoomId)
+                    },
+                )
+            }
         }
 
         // ── 9. 받은 산책 제안 다이얼로그 ────────────────────────────────
@@ -774,7 +867,11 @@ fun WalkScreen(
         state.acceptedProposals.firstOrNull()?.let { accepted ->
             ProposalAcceptedDialog(
                 accepted = accepted,
-                onDismiss = { viewModel.dismissAcceptedProposal(accepted.proposalId) }
+                onDismiss = { viewModel.dismissAcceptedProposal(accepted.proposalId) },
+                onStartChat = { chatRoomId ->
+                    viewModel.dismissAcceptedProposal(accepted.proposalId)
+                    onNavigateToChat(chatRoomId)
+                },
             )
         }
 
@@ -789,7 +886,12 @@ fun WalkScreen(
         // ── 10b. 수락자 — 수락 완료 확인 모달 (optimistic) ───────────────
         if (state.showAcceptedByMeDialog) {
             ProposalAcceptedByMeDialog(
-                onDismiss = { viewModel.dismissAcceptedByMe() }
+                onDismiss = { viewModel.dismissAcceptedByMe() },
+                chatRoomId = state.acceptedByMeChatRoomId,
+                onStartChat = { chatRoomId ->
+                    viewModel.dismissAcceptedByMe()
+                    onNavigateToChat(chatRoomId)
+                },
             )
         }
 
@@ -1549,6 +1651,77 @@ private fun createDogMarkerBitmap(context: android.content.Context): android.gra
     val aspectRatio = source.width.toFloat() / source.height.toFloat()
     val targetWidth = (targetHeight * aspectRatio).toInt()
     return source.scale(targetWidth, targetHeight)
+}
+
+// ── 채팅 메시지 배너 카드 ──────────────────────────────────────────────────────
+@Composable
+private fun ChatBannerCard(
+    banner: com.frontend.domain.model.ChatBannerNotification,
+    onDismiss: () -> Unit,
+    onClick: () -> Unit,
+) {
+    LaunchedEffect(banner) {
+        kotlinx.coroutines.delay(3_500)
+        onDismiss()
+    }
+
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+            ) { onClick() },
+        shape = RoundedCornerShape(14.dp),
+        colors = CardDefaults.cardColors(containerColor = Color.White),
+        elevation = CardDefaults.cardElevation(defaultElevation = 6.dp),
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 14.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            coil.compose.AsyncImage(
+                model = banner.senderImageUrl.takeIf { !it.isNullOrBlank() },
+                contentDescription = banner.senderName,
+                placeholder = painterResource(R.drawable.husky),
+                error = painterResource(R.drawable.husky),
+                fallback = painterResource(R.drawable.husky),
+                contentScale = ContentScale.Crop,
+                modifier = Modifier
+                    .size(44.dp)
+                    .clip(androidx.compose.foundation.shape.CircleShape)
+            )
+            Spacer(modifier = Modifier.width(12.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = banner.senderName,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 14.sp,
+                    color = Color.Black,
+                )
+                Text(
+                    text = banner.messagePreview,
+                    fontSize = 13.sp,
+                    color = Color.Gray,
+                    maxLines = 1,
+                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                )
+            }
+            androidx.compose.material3.IconButton(
+                onClick = onDismiss,
+                modifier = Modifier.size(32.dp),
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.Close,
+                    contentDescription = "닫기",
+                    tint = Color.Gray,
+                    modifier = Modifier.size(18.dp),
+                )
+            }
+        }
+    }
 }
 
 // ── 배지 획득 팝업 ───────────────────────────────────────────────────────────

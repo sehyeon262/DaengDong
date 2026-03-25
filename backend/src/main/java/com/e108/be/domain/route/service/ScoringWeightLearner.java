@@ -222,10 +222,12 @@ public class ScoringWeightLearner {
     }
 
     /**
-     * Segment-based Collaborative Filtering
+     * Segment-based Collaborative Filtering (2차원: 체중 × 연령)
      *
-     * 반려견 체중 구간별로 카테고리 선호도를 집계하여 저장한다.
+     * 반려견 체중 구간 × 연령 구간별로 카테고리 선호도를 집계하여 저장한다.
      * 개인 선호도 데이터가 부족한 사용자에게 같은 세그먼트의 선호도를 적용한다.
+     *
+     * 세그먼트 조합: SMALL_PUPPY, SMALL_ADULT, ..., LARGE_SENIOR (최대 9개)
      */
     private void learnSegmentPreferences() {
         List<SegmentCategoryCountProjection> rows =
@@ -236,9 +238,10 @@ public class ScoringWeightLearner {
             return;
         }
 
-        // 세그먼트별 그룹핑: weightGroup -> [(categoryId, categoryName, count), ...]
+        // 2차원 세그먼트별 그룹핑: (weightGroup, ageGroup) -> [(categoryId, categoryName, count), ...]
         Map<String, List<SegmentCategoryCountProjection>> grouped = rows.stream()
-                .collect(Collectors.groupingBy(SegmentCategoryCountProjection::getWeightGroup));
+                .collect(Collectors.groupingBy(
+                        r -> r.getWeightGroup() + "_" + r.getAgeGroup()));
 
         // 카테고리 엔티티 캐시
         Map<Integer, PlaceCategory> categoryCache = new HashMap<>();
@@ -246,7 +249,10 @@ public class ScoringWeightLearner {
         int totalUpdated = 0;
 
         for (var entry : grouped.entrySet()) {
-            String weightGroup = entry.getKey();
+            String segmentKey = entry.getKey();
+            String[] parts = segmentKey.split("_", 2);
+            String weightGroup = parts[0];
+            String ageGroup = parts[1];
             List<SegmentCategoryCountProjection> categoryRows = entry.getValue();
 
             // 이 세그먼트의 총 선택 수
@@ -266,7 +272,7 @@ public class ScoringWeightLearner {
 
             // 기존 세그먼트 선호도 조회
             Map<Integer, SegmentPreference> existing = segmentPreferenceRepository
-                    .findByWeightGroup(weightGroup).stream()
+                    .findByWeightGroupAndAgeGroup(weightGroup, ageGroup).stream()
                     .collect(Collectors.toMap(
                             sp -> sp.getCategory().getId(),
                             sp -> sp));
@@ -287,6 +293,7 @@ public class ScoringWeightLearner {
                 } else {
                     pref = SegmentPreference.builder()
                             .weightGroup(weightGroup)
+                            .ageGroup(ageGroup)
                             .category(category)
                             .preferenceScore(score)
                             .sampleCount(sampleCount)
@@ -298,7 +305,7 @@ public class ScoringWeightLearner {
             }
         }
 
-        log.info("세그먼트 CF 학습 완료: {}개 세그먼트, {}개 선호도 갱신",
+        log.info("세그먼트 CF 학습 완료: {}개 세그먼트(체중×연령), {}개 선호도 갱신",
                 grouped.size(), totalUpdated);
     }
 }

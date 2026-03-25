@@ -21,37 +21,22 @@ class WalkRepository @Inject constructor(
 ) {
 
     /**
-     * 산책 시작 API 호출.
-     * TokenDataStore에서 accessToken·dogId를 직접 조회하므로 외부 주입 불필요.
-     * @return Result<Long> — 성공 시 서버가 발급한 walkId, 실패 시 예외를 래핑
+     * 산책 시작 API 호출 (POST /walks)
+     *
+     * 자유 산책과 추천 경로 산책 모두 이 함수로 처리.
+     * - 자유 산책: request.selectedType = null
+     * - 추천 경로: request.selectedType != null (서버에서 경로 선택 로그도 자동 기록)
+     *
+     * @param request 산책 시작 요청 DTO
+     * @return Result<Long> — 성공 시 서버가 발급한 walkId
      */
-    suspend fun startWalk(): Result<Long> = runCatching {
+    suspend fun startWalk(request: StartWalkRequest): Result<Long> = runCatching {
         val token = tokenDataStore.getAccessToken().first()
             ?: throw Exception("로그인이 필요합니다")
-        val dogId = tokenDataStore.getDogId().first()
-            ?: 1L
-            //?: throw Exception("강아지 정보가 없습니다")
-        //우회 : (?: 1L) // TODO: 로그인 우회 (원래: ?: throw Exception("강아지 정보가 없습니다"))
 
-        val response = walkApi.startWalk("Bearer $token", StartWalkRequest(dogId))
+        val response = walkApi.startWalk("Bearer $token", request)
         response.data?.walkId
             ?: throw Exception("산책 시작 실패: walkId가 없습니다")
-    }
-
-    /**
-     * R1-03: 자유 산책 시작 API 호출
-     * @return Result<Long> — 성공 시 walkId
-     */
-    suspend fun startFreeWalk(): Result<Long> = runCatching {
-        val token = tokenDataStore.getAccessToken().first()
-            ?: throw Exception("로그인이 필요합니다")
-        val dogId = tokenDataStore.getDogId().first()
-        // TODO: 로그인 우회 (원래: ?: throw Exception("강아지 정보가 없습니다"))
-            ?: throw Exception("강아지 정보가 없습니다")
-
-        val response = walkApi.startFreeWalk("Bearer $token", StartWalkRequest(dogId))
-        response.data?.walkId
-            ?: throw Exception("자유 산책 시작 실패: walkId가 없습니다")
     }
 
     /**
@@ -183,14 +168,16 @@ class WalkRepository @Inject constructor(
         response.data?.get("proposalId") ?: throw Exception("proposalId 없음")
     }
 
-    /** 산책 제안 수락/거절 */
-    suspend fun respondToProposal(proposalId: String, action: String, myWalkRecordId: Long): Result<Unit> = runCatching {
+    /** 산책 제안 수락/거절
+     *  @return 수락 시 chatRoomId, 거절 시 null */
+    suspend fun respondToProposal(proposalId: String, action: String, myWalkRecordId: Long): Result<Long?> = runCatching {
         val token = tokenDataStore.getAccessToken().first()
             ?: throw Exception("로그인이 필요합니다")
-        walkApi.respondToProposal(
+        val response = walkApi.respondToProposal(
             authorization = "Bearer $token",
             proposalId = proposalId,
             request = RespondProposalRequest(action, myWalkRecordId),
         )
+        response.data?.get("chatRoomId")
     }
 }

@@ -33,14 +33,19 @@ public class StompHandler implements ChannelInterceptor {
                 String token = authHeader.substring(7);
                 if (jwtTokenProvider.validateToken(token)) {
                     Long memberId = jwtTokenProvider.getMemberId(token);
+                    // sessionAttributes가 null인 경우 직접 초기화 (native WebSocket 대응)
                     Map<String, Object> sessionAttributes = accessor.getSessionAttributes();
-                    if (sessionAttributes != null) {
-                        sessionAttributes.put("memberId", memberId);
+                    if (sessionAttributes == null) {
+                        sessionAttributes = new java.util.HashMap<>();
+                        accessor.setSessionAttributes(sessionAttributes);
                     }
+                    sessionAttributes.put("memberId", memberId);
                     log.debug("[StompHandler] WebSocket 연결: memberId={}", memberId);
                 } else {
                     log.warn("[StompHandler] 유효하지 않은 JWT 토큰");
                 }
+            } else {
+                log.warn("[StompHandler] Authorization 헤더 없음 — STOMP CONNECT 거부");
             }
         }
         return message;

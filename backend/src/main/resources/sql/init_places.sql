@@ -37,6 +37,10 @@ INSERT INTO public.place_category (id, icon_url, name, route_weight) VALUES (10,
 INSERT INTO public.place_category (id, icon_url, name, route_weight) VALUES (11, NULL, '여행지', 8);
 INSERT INTO public.place_category (id, icon_url, name, route_weight) VALUES (12, NULL, '펜션', 3);
 INSERT INTO public.place_category (id, icon_url, name, route_weight) VALUES (13, NULL, '호텔', 3);
+INSERT INTO public.place_category (id, icon_url, name, route_weight) VALUES (14, NULL, '공원', 8);
+INSERT INTO public.place_category (id, icon_url, name, route_weight) VALUES (15, NULL, '화장실', 5);
+INSERT INTO public.place_category (id, icon_url, name, route_weight) VALUES (16, NULL, '산책로', 8);
+INSERT INTO public.place_category (id, icon_url, name, route_weight) VALUES (17, NULL, '편의시설', 5);
 
 
 --
@@ -23977,7 +23981,7 @@ INSERT INTO public.places (id, address, contact, created_at, description, image_
 -- Name: place_category_id_seq; Type: SEQUENCE SET; Schema: public; Owner: postgres
 --
 
-SELECT pg_catalog.setval('public.place_category_id_seq', 13, true);
+SELECT pg_catalog.setval('public.place_category_id_seq', 17, true);
 
 
 --
@@ -23986,6 +23990,18 @@ SELECT pg_catalog.setval('public.place_category_id_seq', 13, true);
 
 SELECT pg_catalog.setval('public.places_id_seq', 23930, true);
 
+--
+-- Data for Name: places; Type: TABLE DATA (user-registered places)
+--
+
+INSERT INTO public.places (id, address, contact, created_at, description, image_url, is_active, location, name, provider, source_id, updated_at, category_id) VALUES (23931, NULL, NULL, '2026-03-20 19:38:20.524147', NULL, 'https://ssafy-e108-uploads-216203894753-ap-northeast-2-an.s3.ap-northeast-2.amazonaws.com/shared/places/916fc45b-692d-4f2f-a0f4-fa2e5fb311e9.jpg', true, ST_SetSRID(ST_MakePoint(128.85393, 35.09313), 4326), '아이유정', 'USER', '77fe3b61-bd71-45e2-a603-4215c3d9df89', '2026-03-20 19:38:20.524147', 17);
+INSERT INTO public.places (id, address, contact, created_at, description, image_url, is_active, location, name, provider, source_id, updated_at, category_id) VALUES (23932, NULL, NULL, '2026-03-20 20:56:50.306157', NULL, 'https://ssafy-e108-uploads-216203894753-ap-northeast-2-an.s3.ap-northeast-2.amazonaws.com/shared/places/00671525-da39-438d-89dc-cef537589379.jpg', true, ST_SetSRID(ST_MakePoint(128.853172, 35.093079), 4326), '희망공원 화장실', 'USER', 'de88d51f-5785-4178-9ac4-055553b2c305', '2026-03-20 20:56:50.306157', 15);
+INSERT INTO public.places (id, address, contact, created_at, description, image_url, is_active, location, name, provider, source_id, updated_at, category_id) VALUES (23933, NULL, NULL, '2026-03-20 21:01:34.894466', NULL, 'https://ssafy-e108-uploads-216203894753-ap-northeast-2-an.s3.ap-northeast-2.amazonaws.com/shared/places/8b3ff2c8-7c3c-453f-b29c-6a700d033932.jpg', true, ST_SetSRID(ST_MakePoint(128.85295, 35.092346), 4326), '희망공원 산책로', 'USER', 'ef9dcd33-97a7-4649-b345-3a3b9ae7d2c2', '2026-03-20 21:01:34.894466', 16);
+INSERT INTO public.places (id, address, contact, created_at, description, image_url, is_active, location, name, provider, source_id, updated_at, category_id) VALUES (23934, NULL, NULL, '2026-03-20 21:09:07.229917', NULL, 'https://ssafy-e108-uploads-216203894753-ap-northeast-2-an.s3.ap-northeast-2.amazonaws.com/shared/places/3b07e66d-1aa9-4aa1-b9c3-b80bea8115e0.jpg', true, ST_SetSRID(ST_MakePoint(128.852815, 35.091471), 4326), '희망공원 기념비', 'USER', 'e15d73e9-0c73-41bf-8c58-f37202700884', '2026-03-20 21:09:07.229917', 17);
+INSERT INTO public.places (id, address, contact, created_at, description, image_url, is_active, location, name, provider, source_id, updated_at, category_id) VALUES (23935, NULL, NULL, '2026-03-20 21:12:02.438869', NULL, 'https://search.pstatic.net/common/?src=https%3A%2F%2Fldb-phinf.pstatic.net%2F20251209_230%2F1765246569869LPtUH_JPEG%2FKakaoTalk_20251209_111411125.jpg', true, ST_SetSRID(ST_MakePoint(128.853869, 35.090797), 4326), '고더커피 녹산공단점', 'USER', '46dc7842-d498-44bf-a08f-d105e2728bed', '2026-03-20 21:12:02.438869', 6);
+INSERT INTO public.places (id, address, contact, created_at, description, image_url, is_active, location, name, provider, source_id, updated_at, category_id) VALUES (23936, NULL, NULL, '2026-03-20 21:14:20.743896', NULL, 'https://search.pstatic.net/common/?src=https%3A%2F%2Fldb-phinf.pstatic.net%2F20241022_51%2F17295796512885jMsj_JPEG%2F1000001733.jpg', true, ST_SetSRID(ST_MakePoint(128.854669, 35.090663), 4326), '하삼동커피 녹산중앙점', 'USER', '37794e54-9661-4287-a005-83e209ad590c', '2026-03-20 21:14:20.743896', 6);
+
+SELECT pg_catalog.setval('public.places_id_seq', 23936, true);
 
 --
 -- PostgreSQL database dump complete

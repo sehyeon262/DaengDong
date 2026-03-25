@@ -28,6 +28,7 @@ data class AcceptedProposalInfo(
     val name: String,
     val breed: String,
     val profileImageUrl: String?,
+    val chatRoomId: Long? = null,
 )
 
 data class RejectedProposalInfo(

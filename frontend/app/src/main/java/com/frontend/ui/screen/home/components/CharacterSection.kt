@@ -149,7 +149,13 @@ fun CharacterSection(
             Image(
                 painter = painterResource(id = characterRes),
                 contentDescription = "캐릭터",
-                modifier = Modifier.fillMaxSize(),
+                modifier = if (showRain) {
+                    Modifier
+                        .fillMaxSize()
+                        .padding(horizontal = 40.dp, vertical = 16.dp)
+                } else {
+                    Modifier.fillMaxSize()
+                },
                 contentScale = ContentScale.Fit
             )
 
@@ -216,18 +222,18 @@ fun CharacterSection(
                     painter = painterResource(id = R.drawable.rain),
                     contentDescription = "비 왼쪽",
                     modifier = Modifier
-                        .size(55.dp)
+                        .size(38.dp)
                         .align(Alignment.TopStart)
-                        .offset(x = 8.dp, y = (30 + rainLeftOffset).dp),
+                        .offset(x = 12.dp, y = (10 + rainLeftOffset).dp),
                     contentScale = ContentScale.Fit
                 )
                 Image(
                     painter = painterResource(id = R.drawable.rain),
                     contentDescription = "비 오른쪽",
                     modifier = Modifier
-                        .size(55.dp)
+                        .size(38.dp)
                         .align(Alignment.TopEnd)
-                        .offset(x = (-8).dp, y = (40 + rainRightOffset).dp),
+                        .offset(x = (-12).dp, y = (18 + rainRightOffset).dp),
                     contentScale = ContentScale.Fit
                 )
             }
