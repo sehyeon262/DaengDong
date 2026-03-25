@@ -55,28 +55,39 @@ public interface RouteSelectionPlaceRepository extends JpaRepository<RouteSelect
     Set<Long> findRecentPlaceIds(@Param("userId") Long userId, @Param("since") LocalDateTime since);
 
     /**
-     * 체중 구간별 카테고리 선택 횟수 (세그먼트 CF 학습용)
+     * 체중 × 연령 구간별 카테고리 선택 횟수 (세그먼트 CF 학습용)
      *
-     * Dog의 체중을 기준으로 SMALL/MEDIUM/LARGE 세그먼트를 분류하고,
+     * Dog의 체중과 생년월일을 기준으로 2차원 세그먼트를 분류하고,
      * 각 세그먼트가 선택한 장소의 카테고리별 횟수를 집계한다.
+     *
+     * 체중: SMALL(~10kg) / MEDIUM(10~25kg) / LARGE(25kg~)
+     * 연령: PUPPY(~1세) / ADULT(1~7세) / SENIOR(7세~)
      */
-    @Query("""
-        SELECT CASE
-                   WHEN d.weight < 10 THEN 'SMALL'
-                   WHEN d.weight < 25 THEN 'MEDIUM'
-                   ELSE 'LARGE'
-               END AS weightGroup,
-               p.category.id AS categoryId,
-               p.category.name AS categoryName,
-               COUNT(sp) AS count
-        FROM RouteSelectionPlace sp
-        JOIN sp.place p
-        JOIN sp.selectionLog sl
-        JOIN Dog d ON d.user.id = sl.userId
-        WHERE p.category IS NOT NULL AND d.weight IS NOT NULL
-        GROUP BY weightGroup, p.category.id, p.category.name
-        ORDER BY weightGroup, COUNT(sp) DESC
-        """)
+    @Query(value = """
+        SELECT
+            CASE
+                WHEN d.weight < 10 THEN 'SMALL'
+                WHEN d.weight < 25 THEN 'MEDIUM'
+                ELSE 'LARGE'
+            END AS weightGroup,
+            CASE
+                WHEN d.birth_date IS NULL THEN 'ADULT'
+                WHEN d.birth_date > CURRENT_DATE - INTERVAL '1 year' THEN 'PUPPY'
+                WHEN d.birth_date < CURRENT_DATE - INTERVAL '7 years' THEN 'SENIOR'
+                ELSE 'ADULT'
+            END AS ageGroup,
+            pc.id AS categoryId,
+            pc.name AS categoryName,
+            COUNT(sp.id) AS count
+        FROM route_selection_places sp
+        JOIN places p ON p.id = sp.place_id
+        JOIN place_category pc ON pc.id = p.category_id
+        JOIN route_selection_logs sl ON sl.id = sp.selection_log_id
+        JOIN dogs d ON d.user_id = sl.user_id
+        WHERE pc.id IS NOT NULL AND d.weight IS NOT NULL
+        GROUP BY weightGroup, ageGroup, pc.id, pc.name
+        ORDER BY weightGroup, ageGroup, COUNT(sp.id) DESC
+        """, nativeQuery = true)
     List<SegmentCategoryCountProjection> countGroupByWeightGroupAndCategory();
 
     /**
