@@ -9,21 +9,21 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 
 /**
- * 세그먼트(체중 구간)별 카테고리 선호도
+ * 세그먼트(체중 × 연령)별 카테고리 선호도
  *
- * 같은 체중 구간의 반려견을 키우는 사용자들의 카테고리 선호도를 집계한다.
+ * 같은 세그먼트의 반려견을 키우는 사용자들의 카테고리 선호도를 집계한다.
  * 개인 데이터가 부족한 신규 사용자(콜드스타트)에게
  * 같은 세그먼트의 선호도를 적용하여 추천 품질을 높인다.
  *
- * 세그먼트: 반려견 체중 구간 (SMALL / MEDIUM / LARGE)
- * - SMALL:  0 ~ 10kg
- * - MEDIUM: 10 ~ 25kg
- * - LARGE:  25kg 이상
+ * 체중 구간: SMALL(~10kg) / MEDIUM(10~25kg) / LARGE(25kg~)
+ * 연령 구간: PUPPY(~1세) / ADULT(1~7세) / SENIOR(7세~)
+ *
+ * 조합 예: SMALL_PUPPY, LARGE_ADULT, MEDIUM_SENIOR 등 총 9개 세그먼트
  */
 @Entity
 @Table(name = "segment_preferences", uniqueConstraints = {
         @UniqueConstraint(name = "uk_segment_category",
-                columnNames = {"weight_group", "category_id"})
+                columnNames = {"weight_group", "age_group", "category_id"})
 })
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
@@ -38,6 +38,12 @@ public class SegmentPreference extends BaseEntity {
      */
     @Column(name = "weight_group", nullable = false, length = 10)
     private String weightGroup;
+
+    /**
+     * 연령 그룹 (PUPPY, ADULT, SENIOR)
+     */
+    @Column(name = "age_group", nullable = false, length = 10)
+    private String ageGroup;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "category_id", nullable = false)
@@ -56,9 +62,10 @@ public class SegmentPreference extends BaseEntity {
     private int sampleCount;
 
     @Builder
-    public SegmentPreference(String weightGroup, PlaceCategory category,
+    public SegmentPreference(String weightGroup, String ageGroup, PlaceCategory category,
                               double preferenceScore, int sampleCount) {
         this.weightGroup = weightGroup;
+        this.ageGroup = ageGroup;
         this.category = category;
         this.preferenceScore = preferenceScore;
         this.sampleCount = sampleCount;

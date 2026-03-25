@@ -83,9 +83,10 @@ public class RouteService {
                                              WeatherCondition weather) {
         Dog dog = dogRepository.findFirstByUser_Id(userId).orElse(null);
 
-        // 개인화 컨텍스트 구성 (개인 선호도 → 세그먼트 CF → 전역 가중치 순으로 fallback)
+        // 개인화 컨텍스트 구성 (개인 선호도 → 세그먼트 CF(체중×연령) → 전역 가중치 순으로 fallback)
         BigDecimal dogWeight = dog != null ? dog.getWeight() : null;
-        Map<String, Double> prefMap = placeScoringService.loadPreferenceMap(userId, dogWeight);
+        java.time.LocalDate birthDate = dog != null ? dog.getBirthDate() : null;
+        Map<String, Double> prefMap = placeScoringService.loadPreferenceMap(userId, dogWeight, birthDate);
         double radiusMultiplier = resolveRadiusMultiplier(dog);
         Set<Long> recentPlaceIds = loadRecentPlaceIds(userId);
 

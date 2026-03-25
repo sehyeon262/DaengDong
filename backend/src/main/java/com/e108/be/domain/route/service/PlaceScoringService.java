@@ -12,6 +12,8 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
+import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -133,14 +135,15 @@ public class PlaceScoringService {
      *
      * 우선순위:
      * 1. 개인 선호도 (선택 5회 이상)
-     * 2. 세그먼트 선호도 (같은 체중 구간, 콜드스타트 대응)
+     * 2. 세그먼트 선호도 (같은 체중×연령 구간, 콜드스타트 대응)
      * 3. null (전역 가중치만 사용)
      *
-     * @param userId   회원 ID
+     * @param userId     회원 ID
      * @param dogWeight  반려견 체중 (세그먼트 판별용, nullable)
+     * @param birthDate  반려견 생년월일 (세그먼트 판별용, nullable)
      * @return categoryName -> preferenceScore 맵
      */
-    public Map<String, Double> loadPreferenceMap(Long userId, BigDecimal dogWeight) {
+    public Map<String, Double> loadPreferenceMap(Long userId, BigDecimal dogWeight, LocalDate birthDate) {
         if (userId == null) return null;
 
         // 1순위: 개인 선호도
@@ -150,7 +153,7 @@ public class PlaceScoringService {
         }
 
         // 2순위: 세그먼트 선호도 (콜드스타트 대응)
-        return loadSegmentPreferenceMap(dogWeight);
+        return loadSegmentPreferenceMap(dogWeight, birthDate);
     }
 
     /**
@@ -176,27 +179,40 @@ public class PlaceScoringService {
     }
 
     /**
-     * 세그먼트(체중 구간) 선호도 조회
+     * 세그먼트(체중 × 연령) 선호도 조회
      *
-     * 같은 체중 구간의 다른 사용자들이 많이 선택한 카테고리를
+     * 같은 체중 구간 × 연령 구간의 다른 사용자들이 많이 선택한 카테고리를
      * 선호도 맵으로 반환한다. (Collaborative Filtering)
      *
+     * 2차원 매칭 실패 시 체중 구간만으로 폴백:
+     * 1차: SMALL_PUPPY (정확 매칭)
+     * 2차: SMALL_* (체중만 매칭)
+     *
      * @param dogWeight 반려견 체중 (nullable)
+     * @param birthDate 반려견 생년월일 (nullable)
      * @return categoryName -> preferenceScore 맵, 데이터 없으면 null
      */
-    private Map<String, Double> loadSegmentPreferenceMap(BigDecimal dogWeight) {
+    private Map<String, Double> loadSegmentPreferenceMap(BigDecimal dogWeight, LocalDate birthDate) {
         if (dogWeight == null) return null;
 
         String weightGroup = resolveWeightGroup(dogWeight);
+        String ageGroup = resolveAgeGroup(birthDate);
+
+        // 1차: 체중 × 연령 정확 매칭
         List<SegmentPreference> segmentPrefs = segmentPreferenceRepository
-                .findByWeightGroup(weightGroup);
+                .findByWeightGroupAndAgeGroup(weightGroup, ageGroup);
+
+        // 2차: 데이터 부족 시 체중만으로 폴백
+        if (segmentPrefs.isEmpty()) {
+            segmentPrefs = segmentPreferenceRepository.findByWeightGroup(weightGroup);
+        }
 
         if (segmentPrefs.isEmpty()) {
             return null;
         }
 
-        log.debug("세그먼트 CF 적용: weightGroup={}, 카테고리={}개",
-                weightGroup, segmentPrefs.size());
+        log.debug("세그먼트 CF 적용: weightGroup={}, ageGroup={}, 카테고리={}개",
+                weightGroup, ageGroup, segmentPrefs.size());
 
         return segmentPrefs.stream()
                 .filter(sp -> sp.getCategory() != null)
@@ -215,6 +231,22 @@ public class PlaceScoringService {
         if (w < 10.0) return "SMALL";
         if (w < 25.0) return "MEDIUM";
         return "LARGE";
+    }
+
+    /**
+     * 생년월일 → 연령 세그먼트 그룹 변환
+     *
+     * PUPPY:  ~1세 (체력 부족, 사회화 단계)
+     * ADULT:  1~7세 (활동적, 다양한 코스 가능)
+     * SENIOR: 7세~ (관절 보호, 짧고 평탄한 코스 선호)
+     */
+    private String resolveAgeGroup(LocalDate birthDate) {
+        if (birthDate == null) return "ADULT"; // 정보 없으면 기본 성견
+
+        long years = ChronoUnit.YEARS.between(birthDate, LocalDate.now());
+        if (years < 1) return "PUPPY";
+        if (years < 7) return "ADULT";
+        return "SENIOR";
     }
 
     /**
