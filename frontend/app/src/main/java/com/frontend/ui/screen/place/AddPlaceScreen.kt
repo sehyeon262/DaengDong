@@ -4,6 +4,7 @@ import android.Manifest
 import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Build
+import android.view.MotionEvent
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
@@ -51,12 +52,16 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -94,7 +99,7 @@ import com.kakao.vectormap.label.LabelStyle
 import com.kakao.vectormap.label.LabelStyles
 import kotlinx.coroutines.launch
 
-private val CATEGORIES = listOf("식당", "카페", "공원", "여행지", "위탁관리", "숙박업소", "의료", "기타")
+private val CATEGORIES = listOf("식당", "카페", "위탁관리", "여행지", "동물병원", "동물약국", "펜션", "호텔")
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
@@ -599,48 +604,110 @@ private fun MiniKakaoMap(
     longitude: Double,
     onMapTapped: (Double, Double) -> Unit = { _, _ -> }
 ) {
+    val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
+    val mapView = remember { MapView(context) }
     var kakaoMap by remember { mutableStateOf<KakaoMap?>(null) }
+    var mapStarted by remember { mutableStateOf(false) }
+    // 탭으로 찍은 좌표는 카메라 이동 없이 마커만 업데이트
+    var lastTapCoords by remember { mutableStateOf<Pair<Double, Double>?>(null) }
 
-    // 지도 준비 완료 시 탭 리스너 등록
+    // 라이프사이클 연동 — resume/pause/finish 를 WalkScreen 과 동일하게 처리
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (!mapStarted) return@LifecycleEventObserver
+            when (event) {
+                Lifecycle.Event.ON_RESUME -> runCatching { mapView.resume() }
+                Lifecycle.Event.ON_PAUSE  -> runCatching { mapView.pause() }
+                else -> {}
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+            runCatching { mapView.finish() }
+        }
+    }
+
+    // 탭 리스너 등록
     LaunchedEffect(kakaoMap) {
         kakaoMap?.setOnMapClickListener { _, latLng, _, _ ->
             latLng?.let { onMapTapped(it.latitude, it.longitude) }
         }
     }
 
-    // 좌표 변경 시 지도 이동 + 마커 업데이트
+    // 80px 높이로 스케일된 마커 비트맵 (WalkScreen 과 동일한 방식)
+    val markerBitmap = remember {
+        val src = android.graphics.BitmapFactory.decodeResource(
+            context.resources, com.frontend.R.drawable.place_marker
+        )
+        val targetH = 80
+        val targetW = (targetH * src.width.toFloat() / src.height).toInt()
+        android.graphics.Bitmap.createScaledBitmap(src, targetW, targetH, true)
+    }
+
+    // 좌표 변경 시 마커 업데이트 — 탭으로 찍은 경우 카메라 이동 없이 마커만 업데이트
     LaunchedEffect(latitude, longitude) {
         kakaoMap?.let { map ->
             val pos = LatLng.from(latitude, longitude)
-            map.moveCamera(CameraUpdateFactory.newCenterPosition(pos, 15))
+            val isTap = lastTapCoords?.first == latitude && lastTapCoords?.second == longitude
+            if (!isTap) {
+                map.moveCamera(CameraUpdateFactory.newCenterPosition(pos, 15))
+            }
             map.labelManager?.layer?.removeAll()
             map.labelManager?.layer?.addLabel(
                 LabelOptions.from(pos)
-                    .setStyles(LabelStyles.from(LabelStyle.from(com.frontend.R.drawable.place_mark)))
+                    .setStyles(LabelStyles.from(LabelStyle.from(markerBitmap).setAnchorPoint(0.5f, 1.0f)))
             )
         }
     }
 
     AndroidView(
-        factory = { ctx ->
-            MapView(ctx).apply {
-                start(
-                    object : MapLifeCycleCallback() {
-                        override fun onMapDestroy() {}
-                        override fun onMapError(e: Exception) {}
-                    },
-                    object : KakaoMapReadyCallback() {
-                        override fun onMapReady(map: KakaoMap) {
-                            kakaoMap = map
-                            val pos = LatLng.from(latitude, longitude)
-                            map.moveCamera(CameraUpdateFactory.newCenterPosition(pos, 15))
-                            map.labelManager?.layer?.addLabel(
-                                LabelOptions.from(pos)
-                                    .setStyles(LabelStyles.from(LabelStyle.from(com.frontend.R.drawable.place_mark)))
-                            )
-                        }
+        factory = { _ ->
+            mapView.apply {
+                // 지도 위 터치 시 부모 ScrollView 스크롤 차단
+                setOnTouchListener { v, event ->
+                    when (event.actionMasked) {
+                        MotionEvent.ACTION_DOWN, MotionEvent.ACTION_MOVE ->
+                            v.parent?.requestDisallowInterceptTouchEvent(true)
+                        MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL ->
+                            v.parent?.requestDisallowInterceptTouchEvent(false)
                     }
-                )
+                    false // 이벤트는 지도로 전달
+                }
+                runCatching {
+                    start(
+                        object : MapLifeCycleCallback() {
+                            override fun onMapDestroy() {}
+                            override fun onMapError(e: Exception) {
+                                android.util.Log.e("MiniKakaoMap", "onMapError: ${e.message}", e)
+                            }
+                        },
+                        object : KakaoMapReadyCallback() {
+                            override fun onMapReady(map: KakaoMap) {
+                                mapStarted = true
+                                kakaoMap = map
+                                val pos = LatLng.from(latitude, longitude)
+                                map.moveCamera(CameraUpdateFactory.newCenterPosition(pos, 15))
+                                map.labelManager?.layer?.addLabel(
+                                    LabelOptions.from(pos)
+                                        .setStyles(LabelStyles.from(LabelStyle.from(markerBitmap).setAnchorPoint(0.5f, 1.0f)))
+                                )
+                                map.setOnMapClickListener { _, latLng, _, _ ->
+                                    latLng?.let {
+                                        lastTapCoords = Pair(it.latitude, it.longitude)
+                                        onMapTapped(it.latitude, it.longitude)
+                                    }
+                                }
+                            }
+                        }
+                    )
+                }.onFailure { e ->
+                    android.util.Log.e("MiniKakaoMap", "MapView.start() 실패: ${e.message}", e)
+                }
+                if (mapStarted && lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) {
+                    runCatching { resume() }
+                }
             }
         },
         modifier = Modifier
