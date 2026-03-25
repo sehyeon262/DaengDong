@@ -1,15 +1,18 @@
 package com.frontend.di
 
+import com.frontend.BuildConfig
 import com.frontend.data.remote.AuthApi
 import com.frontend.data.remote.BadgeApi
 import com.frontend.data.remote.DangerZoneApi
 import com.frontend.data.remote.DogApi
 import com.frontend.data.remote.HomeApi
+import com.frontend.data.remote.KakaoLocalApi
 import com.frontend.data.remote.PlaceApi
 import com.frontend.data.remote.RecordApi
 import com.frontend.data.remote.RouteApi
 import com.frontend.data.remote.WalkApi
 import com.frontend.util.Constants
+import javax.inject.Qualifier
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -19,6 +22,11 @@ import okhttp3.logging.HttpLoggingInterceptor
 import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
 import javax.inject.Singleton
+
+/** 카카오 로컬 API 전용 Retrofit 인스턴스를 구분하기 위한 Qualifier */
+@Qualifier
+@Retention(AnnotationRetention.BINARY)
+annotation class KakaoRetrofit
 
 @Module
 @InstallIn(SingletonComponent::class)
@@ -96,5 +104,23 @@ object NetworkModule {
     @Singleton
     fun provideBadgeApi(retrofit: Retrofit): BadgeApi {
         return retrofit.create(BadgeApi::class.java)
+    }
+
+    /** 카카오 로컬 API 전용 Retrofit (baseUrl: https://dapi.kakao.com/) */
+    @Provides
+    @Singleton
+    @KakaoRetrofit
+    fun provideKakaoRetrofit(okHttpClient: OkHttpClient): Retrofit {
+        return Retrofit.Builder()
+            .baseUrl("https://dapi.kakao.com/")
+            .client(okHttpClient)
+            .addConverterFactory(GsonConverterFactory.create())
+            .build()
+    }
+
+    @Provides
+    @Singleton
+    fun provideKakaoLocalApi(@KakaoRetrofit retrofit: Retrofit): KakaoLocalApi {
+        return retrofit.create(KakaoLocalApi::class.java)
     }
 }

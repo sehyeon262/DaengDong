@@ -22,6 +22,7 @@ import com.frontend.ui.screen.dog.DogProfileScreen
 import com.frontend.ui.screen.dog.MetDogsScreen
 import com.frontend.ui.screen.home.HomeScreen
 import com.frontend.ui.screen.login.LoginScreen
+import com.frontend.ui.screen.place.AddPlaceScreen
 import com.frontend.ui.screen.record.RecordScreen
 import com.frontend.ui.screen.splash.SplashScreen
 import com.frontend.ui.screen.walk.WalkDetailScreen
@@ -77,7 +78,15 @@ fun NavGraph() {
                             launchSingleTop = true
                             restoreState = true
                         }
+                    },
+                    onNavigateToAddPlace = {
+                        navController.navigate(Routes.ADD_PLACE)
                     }
+                )
+            }
+            composable(Routes.ADD_PLACE) {
+                AddPlaceScreen(
+                    onNavigateBack = { navController.popBackStack() }
                 )
             }
             composable(Routes.RECORD) {
