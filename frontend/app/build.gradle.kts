@@ -141,6 +141,10 @@ dependencies {
 
     implementation(libs.play.services.location)
 
+    // Wearable Data Layer API
+    implementation(libs.play.services.wearable)
+    // Kakao Maps
+
     implementation(libs.kakao.maps)
 
     implementation(platform("com.google.firebase:firebase-bom:34.10.0"))

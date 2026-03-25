@@ -39,5 +39,11 @@ __pycache__/
 /.gradle-cache-backend/
 /.gradle-cache-frontend/
 
+# Android build outputs
+frontend/app/build/
+frontend/wear/build/
+frontend/build/
+frontend/.gradle/
+
 # Markdown
 *.md
