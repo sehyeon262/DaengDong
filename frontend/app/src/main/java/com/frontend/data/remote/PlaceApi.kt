@@ -4,8 +4,10 @@ import com.frontend.domain.model.ApiResponse
 import com.frontend.domain.model.Place
 import com.frontend.domain.model.PlaceCategory
 import com.frontend.domain.model.RegisterPlaceResponse
+import com.frontend.domain.model.StampRequest
 import okhttp3.MultipartBody
 import okhttp3.RequestBody
+import retrofit2.http.Body
 import retrofit2.http.GET
 import retrofit2.http.Header
 import retrofit2.http.Multipart
@@ -46,6 +48,13 @@ interface PlaceApi {
         @Header("Authorization") authorization: String,
         @Query("dogId") dogId: Long
     ): ApiResponse<List<Place>>
+
+    /** 발자국 도장 찍기 — POST /api/v1/maps/stamps */
+    @POST("maps/stamps")
+    suspend fun stampPlace(
+        @Header("Authorization") authorization: String,
+        @Body request: StampRequest
+    ): ApiResponse<Void>
 
     /** 신규 장소 등록 — POST /api/v1/places (multipart/form-data)
      *  name, categoryName, latitude, longitude, address, memo, image(선택) */
