@@ -18,10 +18,10 @@ public interface RouteSelectionLogRepository extends JpaRepository<RouteSelectio
     @Query("""
         SELECT r.selectedType AS selectedType, COUNT(r) AS count
         FROM RouteSelectionLog r
-        WHERE r.memberId = :memberId
+        WHERE r.userId = :userId
         GROUP BY r.selectedType
         """)
-    List<TypeCountProjection> countByMemberIdGroupByType(@Param("memberId") Long memberId);
+    List<TypeCountProjection> countByUserIdGroupByType(@Param("userId") Long userId);
 
     /**
      * 사용자의 시간대별 선택 횟수
@@ -29,11 +29,11 @@ public interface RouteSelectionLogRepository extends JpaRepository<RouteSelectio
     @Query("""
         SELECT r.hourOfDay AS hourOfDay, COUNT(r) AS count
         FROM RouteSelectionLog r
-        WHERE r.memberId = :memberId
+        WHERE r.userId = :userId
         GROUP BY r.hourOfDay
         ORDER BY COUNT(r) DESC
         """)
-    List<HourCountProjection> countByMemberIdGroupByHour(@Param("memberId") Long memberId);
+    List<HourCountProjection> countByUserIdGroupByHour(@Param("userId") Long userId);
 
     /**
      * 사용자의 평균 선택 거리 (미터)
@@ -41,9 +41,9 @@ public interface RouteSelectionLogRepository extends JpaRepository<RouteSelectio
     @Query("""
         SELECT AVG(r.selectedDistanceM)
         FROM RouteSelectionLog r
-        WHERE r.memberId = :memberId
+        WHERE r.userId = :userId
         """)
-    Double findAvgDistanceByMemberId(@Param("memberId") Long memberId);
+    Double findAvgDistanceByUserId(@Param("userId") Long userId);
 
     /**
      * 사용자의 날씨별 경로 유형 선택 횟수
@@ -51,12 +51,12 @@ public interface RouteSelectionLogRepository extends JpaRepository<RouteSelectio
     @Query("""
         SELECT r.weatherCondition AS weatherCondition, r.selectedType AS selectedType, COUNT(r) AS count
         FROM RouteSelectionLog r
-        WHERE r.memberId = :memberId AND r.weatherCondition IS NOT NULL
+        WHERE r.userId = :userId AND r.weatherCondition IS NOT NULL
         GROUP BY r.weatherCondition, r.selectedType
         """)
-    List<WeatherTypeCountProjection> countByMemberIdGroupByWeatherAndType(@Param("memberId") Long memberId);
+    List<WeatherTypeCountProjection> countByUserIdGroupByWeatherAndType(@Param("userId") Long userId);
 
-    long countByMemberId(Long memberId);
+    long countByUserId(Long userId);
 
     /**
      * 전체 사용자의 경로 유형별 선택 횟수 (ML 학습용)
