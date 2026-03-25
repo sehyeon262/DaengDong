@@ -45,20 +45,20 @@ SET weight = EXCLUDED.weight, sample_count = EXCLUDED.sample_count, updated_at =
 -- =============================================
 
 -- 카테고리 선호도 (선택 횟수 + 정규화 점수)
-INSERT INTO user_category_preferences (member_id, category_id, selection_count, preference_score, created_at, updated_at)
+INSERT INTO user_category_preferences (user_id, category_id, selection_count, preference_score, created_at, updated_at)
 VALUES
     (1, 6,  15, 1.00, NOW(), NOW()),   -- 카페: 15회 -> 1.0 (최고 선호)
     (1, 7,  10, 0.67, NOW(), NOW()),   -- 식당: 10회 -> 0.67
     (1, 4,   6, 0.40, NOW(), NOW()),   -- 반려동물용품: 6회 -> 0.40
     (1, 3,   3, 0.20, NOW(), NOW()),   -- 미용: 3회 -> 0.20
     (1, 11,  1, 0.07, NOW(), NOW())    -- 여행지: 1회 -> 0.07
-ON CONFLICT (member_id, category_id) DO UPDATE
+ON CONFLICT (user_id, category_id) DO UPDATE
 SET selection_count = EXCLUDED.selection_count,
     preference_score = EXCLUDED.preference_score,
     updated_at = NOW();
 
 -- 경로 선택 로그 (최근 30일)
-INSERT INTO route_selection_logs (member_id, dog_id, selected_type, selected_distance_m, hour_of_day, day_of_week, weather_condition, temperature, created_at, updated_at)
+INSERT INTO route_selection_logs (user_id, dog_id, selected_type, selected_distance_m, hour_of_day, day_of_week, weather_condition, temperature, created_at, updated_at)
 VALUES
     (1, 1, 'SHORT',       400,  18, 6, 'CLEAR',  22.0, NOW() - INTERVAL '1 day',   NOW()),
     (1, 1, 'RECOMMENDED', 800,  19, 7, 'CLEAR',  21.0, NOW() - INTERVAL '2 days',  NOW()),
@@ -86,7 +86,7 @@ JOIN LATERAL (
       )
     LIMIT 3
 ) sub ON true
-WHERE sl.member_id = 1;
+WHERE sl.user_id = 1;
 
 -- =============================================
 -- 4. 페르소나 B: 박민재 (user_id=3)
@@ -96,20 +96,20 @@ WHERE sl.member_id = 1;
 -- =============================================
 
 -- 카테고리 선호도
-INSERT INTO user_category_preferences (member_id, category_id, selection_count, preference_score, created_at, updated_at)
+INSERT INTO user_category_preferences (user_id, category_id, selection_count, preference_score, created_at, updated_at)
 VALUES
     (3, 11, 14, 1.00, NOW(), NOW()),   -- 여행지: 14회 -> 1.0 (최고 선호)
     (3, 8,   9, 0.64, NOW(), NOW()),   -- 박물관: 9회 -> 0.64
     (3, 9,   7, 0.50, NOW(), NOW()),   -- 미술관: 7회 -> 0.50
     (3, 10,  4, 0.29, NOW(), NOW()),   -- 문예회관: 4회 -> 0.29
     (3, 6,   2, 0.14, NOW(), NOW())    -- 카페: 2회 -> 0.14
-ON CONFLICT (member_id, category_id) DO UPDATE
+ON CONFLICT (user_id, category_id) DO UPDATE
 SET selection_count = EXCLUDED.selection_count,
     preference_score = EXCLUDED.preference_score,
     updated_at = NOW();
 
 -- 경로 선택 로그 (탐험형 - EXPLORE 선호, 긴 거리)
-INSERT INTO route_selection_logs (member_id, dog_id, selected_type, selected_distance_m, hour_of_day, day_of_week, weather_condition, temperature, created_at, updated_at)
+INSERT INTO route_selection_logs (user_id, dog_id, selected_type, selected_distance_m, hour_of_day, day_of_week, weather_condition, temperature, created_at, updated_at)
 VALUES
     (3, 3, 'EXPLORE',     1500, 10, 6, 'CLEAR',  25.0, NOW() - INTERVAL '1 day',   NOW()),
     (3, 3, 'EXPLORE',     1800, 9,  7, 'CLEAR',  23.0, NOW() - INTERVAL '2 days',  NOW()),
@@ -138,7 +138,7 @@ JOIN LATERAL (
       )
     LIMIT 3
 ) sub ON true
-WHERE sl.member_id = 3;
+WHERE sl.user_id = 3;
 
 -- =============================================
 -- 5. 세그먼트 선호도 (콜드스타트 CF 데이터)
@@ -198,11 +198,11 @@ VALUES
 -- 페르소나별 선호도 확인
 -- SELECT '페르소나 A (김지훈)' AS persona, pc.name, ucp.selection_count, ucp.preference_score
 -- FROM user_category_preferences ucp JOIN place_category pc ON pc.id = ucp.category_id
--- WHERE ucp.member_id = 1 ORDER BY ucp.preference_score DESC;
+-- WHERE ucp.user_id = 1 ORDER BY ucp.preference_score DESC;
 --
 -- SELECT '페르소나 B (박민재)' AS persona, pc.name, ucp.selection_count, ucp.preference_score
 -- FROM user_category_preferences ucp JOIN place_category pc ON pc.id = ucp.category_id
--- WHERE ucp.member_id = 3 ORDER BY ucp.preference_score DESC;
+-- WHERE ucp.user_id = 3 ORDER BY ucp.preference_score DESC;
 
 -- 시연 좌표 반경 3km 장소 카테고리 분포 확인
 -- SELECT pc.name AS category, COUNT(*) AS cnt
