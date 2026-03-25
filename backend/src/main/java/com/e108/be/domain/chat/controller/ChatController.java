@@ -49,7 +49,8 @@ public class ChatController {
             @DestinationVariable Long chatRoomId,
             SendMessageRequest request,
             SimpMessageHeaderAccessor headerAccessor) {
-        Long senderId = (Long) headerAccessor.getSessionAttributes().get("memberId");
+        java.util.Map<String, Object> attrs = headerAccessor.getSessionAttributes();
+        Long senderId = (attrs != null) ? (Long) attrs.get("memberId") : null;
         if (senderId == null) {
             log.warn("[ChatController] 인증되지 않은 WebSocket 메시지: chatRoomId={}", chatRoomId);
             return;

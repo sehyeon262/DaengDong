@@ -17,6 +17,7 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.frontend.ui.screen.badge.BadgeScreen
+import com.frontend.ui.screen.chat.ChatScreen
 import com.frontend.ui.screen.dog.DogEditScreen
 import com.frontend.ui.screen.dog.DogProfileScreen
 import com.frontend.ui.screen.dog.MetDogsScreen
@@ -81,6 +82,9 @@ fun NavGraph() {
                     },
                     onNavigateToAddPlace = {
                         navController.navigate(Routes.ADD_PLACE)
+                    },
+                    onNavigateToChat = { chatRoomId ->
+                        navController.navigate(Routes.chat(chatRoomId))
                     }
                 )
             }
@@ -116,6 +120,12 @@ fun NavGraph() {
                 arguments = listOf(navArgument("walkId") { type = NavType.LongType })
             ) {
                 WalkDetailScreen(navController = navController)
+            }
+            composable(
+                route = Routes.CHAT,
+                arguments = listOf(navArgument("chatRoomId") { type = NavType.LongType })
+            ) {
+                ChatScreen(onBack = { navController.popBackStack() })
             }
         }
     }
