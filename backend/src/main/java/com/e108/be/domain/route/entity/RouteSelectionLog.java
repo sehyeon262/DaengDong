@@ -20,7 +20,7 @@ import java.util.List;
  */
 @Entity
 @Table(name = "route_selection_logs", indexes = {
-        @Index(name = "idx_rsl_member_weather", columnList = "member_id, weather_condition")
+        @Index(name = "idx_rsl_user_weather", columnList = "user_id, weather_condition")
 })
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
@@ -30,8 +30,8 @@ public class RouteSelectionLog extends BaseEntity {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(name = "member_id", nullable = false)
-    private Long memberId;
+    @Column(name = "user_id", nullable = false)
+    private Long userId;
 
     @Column(name = "dog_id")
     private Long dogId;
@@ -60,11 +60,11 @@ public class RouteSelectionLog extends BaseEntity {
     private List<RouteSelectionPlace> selectedPlaces = new ArrayList<>();
 
     @Builder
-    public RouteSelectionLog(Long memberId, Long dogId, RouteType selectedType,
+    public RouteSelectionLog(Long userId, Long dogId, RouteType selectedType,
                               int selectedDistanceM,
                               int hourOfDay, int dayOfWeek,
                               WeatherCondition weatherCondition, Double temperature) {
-        this.memberId = memberId;
+        this.userId = userId;
         this.dogId = dogId;
         this.selectedType = selectedType;
         this.selectedDistanceM = selectedDistanceM;

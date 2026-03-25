@@ -23,11 +23,11 @@ public interface RouteSelectionPlaceRepository extends JpaRepository<RouteSelect
         FROM RouteSelectionPlace sp
         JOIN sp.place p
         JOIN sp.selectionLog sl
-        WHERE sl.memberId = :memberId
+        WHERE sl.userId = :userId
         GROUP BY p.category.id, p.category.name
         ORDER BY COUNT(sp) DESC
         """)
-    List<CategoryCountProjection> countByMemberIdGroupByCategory(@Param("memberId") Long memberId);
+    List<CategoryCountProjection> countByUserIdGroupByCategory(@Param("userId") Long userId);
 
     /**
      * 사용자가 특정 장소를 선택한 횟수 (재방문 패턴 분석)
@@ -36,11 +36,11 @@ public interface RouteSelectionPlaceRepository extends JpaRepository<RouteSelect
         SELECT sp.place.id AS placeId, COUNT(sp) AS count
         FROM RouteSelectionPlace sp
         JOIN sp.selectionLog sl
-        WHERE sl.memberId = :memberId
+        WHERE sl.userId = :userId
         GROUP BY sp.place.id
         ORDER BY COUNT(sp) DESC
         """)
-    List<PlaceCountProjection> countByMemberIdGroupByPlace(@Param("memberId") Long memberId);
+    List<PlaceCountProjection> countByUserIdGroupByPlace(@Param("userId") Long userId);
 
     /**
      * 최근 N일 내 사용자가 선택한 경로에 포함된 장소 ID 목록
@@ -50,9 +50,9 @@ public interface RouteSelectionPlaceRepository extends JpaRepository<RouteSelect
         SELECT DISTINCT sp.place.id
         FROM RouteSelectionPlace sp
         JOIN sp.selectionLog sl
-        WHERE sl.memberId = :memberId AND sl.createdAt >= :since
+        WHERE sl.userId = :userId AND sl.createdAt >= :since
         """)
-    Set<Long> findRecentPlaceIds(@Param("memberId") Long memberId, @Param("since") LocalDateTime since);
+    Set<Long> findRecentPlaceIds(@Param("userId") Long userId, @Param("since") LocalDateTime since);
 
     /**
      * 체중 구간별 카테고리 선택 횟수 (세그먼트 CF 학습용)
@@ -72,7 +72,7 @@ public interface RouteSelectionPlaceRepository extends JpaRepository<RouteSelect
         FROM RouteSelectionPlace sp
         JOIN sp.place p
         JOIN sp.selectionLog sl
-        JOIN Dog d ON d.user.id = sl.memberId
+        JOIN Dog d ON d.user.id = sl.userId
         WHERE p.category IS NOT NULL AND d.weight IS NOT NULL
         GROUP BY weightGroup, p.category.id, p.category.name
         ORDER BY weightGroup, COUNT(sp) DESC

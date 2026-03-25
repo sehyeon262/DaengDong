@@ -73,35 +73,35 @@ public class RouteService {
      * 로그인한 사용자의 반려견과 산책 패턴을 분석하여
      * 개인화된 경로를 추천한다.
      *
-     * @param memberId 회원 ID (JWT에서 추출)
+     * @param userId 회원 ID (JWT에서 추출)
      * @param lat      기준 위도
      * @param lon      기준 경도
      * @param weather  현재 날씨 (nullable)
      * @return 폴백 레벨에 따른 경로 응답
      */
-    public RouteRecommendResponse recommend(Long memberId, double lat, double lon,
+    public RouteRecommendResponse recommend(Long userId, double lat, double lon,
                                              WeatherCondition weather) {
-        Dog dog = dogRepository.findFirstByUser_Id(memberId).orElse(null);
+        Dog dog = dogRepository.findFirstByUser_Id(userId).orElse(null);
 
         // 개인화 컨텍스트 구성 (개인 선호도 → 세그먼트 CF → 전역 가중치 순으로 fallback)
         BigDecimal dogWeight = dog != null ? dog.getWeight() : null;
-        Map<String, Double> prefMap = placeScoringService.loadPreferenceMap(memberId, dogWeight);
+        Map<String, Double> prefMap = placeScoringService.loadPreferenceMap(userId, dogWeight);
         double radiusMultiplier = resolveRadiusMultiplier(dog);
-        Set<Long> recentPlaceIds = loadRecentPlaceIds(memberId);
+        Set<Long> recentPlaceIds = loadRecentPlaceIds(userId);
 
         // 학습된 스코어링 가중치 1회 로드 (N+1 방지)
         Map<String, Double> weights = placeScoringService.loadGlobalWeights();
 
         // 산책 패턴 분석 (날씨/시간 기반 추천에 활용)
-        RouteType recommendedType = resolveRecommendedType(memberId, dog, weather);
+        RouteType recommendedType = resolveRecommendedType(userId, dog, weather);
 
         // 반경 조정 (체중 기반)
         double shortRadius = SHORT_RADIUS_M * radiusMultiplier;
         double recommendRadius = RECOMMEND_RADIUS_M * radiusMultiplier;
         double exploreRadius = EXPLORE_RADIUS_M * radiusMultiplier;
 
-        log.debug("경로 추천 - memberId={}, 반경 배율={}, short={}m, recommend={}m, explore={}m, 추천유형={}, 최근방문={}개",
-                memberId, radiusMultiplier, shortRadius, recommendRadius, exploreRadius,
+        log.debug("경로 추천 - userId={}, 반경 배율={}, short={}m, recommend={}m, explore={}m, 추천유형={}, 최근방문={}개",
+                userId, radiusMultiplier, shortRadius, recommendRadius, exploreRadius,
                 recommendedType, recentPlaceIds != null ? recentPlaceIds.size() : 0);
 
         // 1단계: 반경별 후보 장소 조회 + 개인화 스코어링 + 피로도 감점
@@ -129,13 +129,13 @@ public class RouteService {
      * 2. 전체 선호 유형 (가장 많이 선택한 유형)
      * 3. null (데이터 부족 시 추천 없음)
      */
-    private RouteType resolveRecommendedType(Long memberId, Dog dog, WeatherCondition weather) {
-        if (memberId == null) return null;
+    private RouteType resolveRecommendedType(Long userId, Dog dog, WeatherCondition weather) {
+        if (userId == null) return null;
 
         Long dogId = dog != null ? dog.getId() : null;
 
         try {
-            WalkPattern pattern = walkPatternService.analyze(dogId, memberId);
+            WalkPattern pattern = walkPatternService.analyze(dogId, userId);
 
             if (!pattern.hasEnoughData()) {
                 return null;
@@ -155,7 +155,7 @@ public class RouteService {
             return pattern.preferredType();
 
         } catch (Exception e) {
-            log.warn("산책 패턴 분석 실패, 기본 추천 사용: memberId={}", memberId, e);
+            log.warn("산책 패턴 분석 실패, 기본 추천 사용: userId={}", userId, e);
             return null;
         }
     }
@@ -185,11 +185,11 @@ public class RouteService {
     /**
      * 최근 N일 내 방문 장소 ID 조회 (피로도 감점용)
      */
-    private Set<Long> loadRecentPlaceIds(Long memberId) {
-        if (memberId == null) return Set.of();
+    private Set<Long> loadRecentPlaceIds(Long userId) {
+        if (userId == null) return Set.of();
 
         LocalDateTime since = LocalDateTime.now().minusDays(RECENT_VISIT_DAYS);
-        return selectionPlaceRepository.findRecentPlaceIds(memberId, since);
+        return selectionPlaceRepository.findRecentPlaceIds(userId, since);
     }
 
     /**
