@@ -394,9 +394,10 @@ class WalkViewModel @Inject constructor(
 
     /**
      * 추천 경로 강제 새로고침
+     * 경로 목록을 비우면서 selectedRouteIndex도 0(자유 산책)으로 초기화
      */
     fun refreshRecommendedRoutes(latitude: Double, longitude: Double) {
-        _state.update { it.copy(recommendedRoutes = emptyList()) }
+        _state.update { it.copy(recommendedRoutes = emptyList(), selectedRouteIndex = 0) }
         loadRecommendedRoutes(latitude, longitude)
     }
 
@@ -505,12 +506,37 @@ class WalkViewModel @Inject constructor(
     // ── 산책 ID 관리 ───────────────────────────────────────────────────────────
 
     /**
+     * 산책 시작 실패 시 상태를 완전히 원복
+     */
+    private fun resetWalkStateOnFailure(errorMessage: String) {
+        timerJob?.cancel()
+        timerJob = null
+        stopPhotoObserver()
+        walkIdDeferred?.complete(null)
+        walkIdDeferred = null
+        currentWalkId = null
+        _routePoints.value = emptyList()
+        pendingPoints.clear()
+        _state.update {
+            it.copy(
+                isWalking = false,
+                isPaused = false,
+                elapsedSeconds = 0,
+                distanceMeters = 0.0,
+                currentWalkId = null,
+                walkError = errorMessage,
+            )
+        }
+    }
+
+    /**
      * 산책 시작 (자유 산책 / 추천 경로 산책 통합)
      *
      * - selectedRouteIndex == 0: 자유 산책 (selectedType = null)
      * - selectedRouteIndex > 0: 추천 경로 산책 (selectedType, placeIds, recommendedPath 포함)
      *
      * 버튼 클릭 즉시 UI 전환 후 백그라운드에서 서버 요청
+     * 실패 시 상태를 완전히 원복하여 산책 중 상태가 남지 않도록 보장
      */
     fun startFreeWalk() {
         // 즉시 UI 전환
@@ -534,14 +560,18 @@ class WalkViewModel @Inject constructor(
         viewModelScope.launch {
             // dogId 조회
             val dogId = tokenDataStore.getDogId().first()
-                ?: run {
-                    deferred.complete(null)
-                    _state.update { it.copy(walkError = "강아지 정보가 없습니다") }
-                    return@launch
-                }
+            if (dogId == null) {
+                resetWalkStateOnFailure("강아지 정보가 없습니다")
+                return@launch
+            }
 
             // 선택된 경로에 따라 요청 바디 구성
             val request = buildStartWalkRequest(dogId)
+            if (request == null) {
+                // 추천 경로 선택했으나 경로 데이터가 없는 경우
+                resetWalkStateOnFailure("선택한 추천 경로를 찾을 수 없습니다. 경로를 다시 선택해주세요.")
+                return@launch
+            }
 
             startFreeWalkUseCase(request)
                 .onSuccess { walkId ->
@@ -553,16 +583,17 @@ class WalkViewModel @Inject constructor(
                     startNearbyDogsPolling()
                 }
                 .onFailure { e ->
-                    deferred.complete(null)
-                    _state.update { it.copy(walkError = "산책 시작 실패: ${e.message}") }
+                    resetWalkStateOnFailure("산책 시작 실패: ${e.message}")
                 }
         }
     }
 
     /**
      * 선택된 경로에 따라 StartWalkRequest 생성
+     *
+     * @return StartWalkRequest 또는 null (추천 경로 선택했으나 경로 데이터가 없는 경우)
      */
-    private fun buildStartWalkRequest(dogId: Long): StartWalkRequest {
+    private fun buildStartWalkRequest(dogId: Long): StartWalkRequest? {
         val selectedIndex = _state.value.selectedRouteIndex
 
         // 자유 산책 (index == 0)
@@ -570,9 +601,9 @@ class WalkViewModel @Inject constructor(
             return StartWalkRequest(dogId = dogId)
         }
 
-        // 추천 경로 산책
+        // 추천 경로 산책: 경로가 없으면 null 반환 (자유 산책 fallback 금지)
         val recommendedRoute = getSelectedRecommendedRoute()
-            ?: return StartWalkRequest(dogId = dogId)  // fallback to free walk
+            ?: return null
 
         // recommendedPath: actualPathPoints 우선, 없으면 polyline 사용
         // 각 좌표를 [latitude, longitude] 형태로 변환
