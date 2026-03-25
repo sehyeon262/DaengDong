@@ -16,15 +16,14 @@ spring:
   sql:
     init:
       encoding: UTF-8
-      data-locations:
-        - classpath:sql/badges.sql
       continue-on-error: true
+      mode: never
 
   # 개발용 JPA 설정
   jpa:
     defer-datasource-initialization: true
     hibernate:
-      ddl-auto: update
+      ddl-auto: validate
     show-sql: true
     properties:
       hibernate:

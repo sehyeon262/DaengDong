@@ -30,6 +30,7 @@ import com.frontend.domain.model.RecommendedRoute
 import com.frontend.domain.model.WalkRoute
 import com.frontend.domain.usecase.EndWalkUseCase
 import com.frontend.domain.usecase.GetDangerZonesUseCase
+import com.frontend.domain.usecase.GetFootprintPlacesUseCase
 import com.frontend.domain.usecase.GetPlaceDetailUseCase
 import com.frontend.domain.usecase.GetPlacesUseCase
 import com.frontend.domain.usecase.GetRecommendedRoutesUseCase
@@ -66,6 +67,7 @@ class WalkViewModel @Inject constructor(
     private val reportDangerZoneUseCase: ReportDangerZoneUseCase,
     private val getDangerZonesUseCase: GetDangerZonesUseCase,
     private val getPlacesUseCase: GetPlacesUseCase,
+    private val getFootprintPlacesUseCase: GetFootprintPlacesUseCase,
     private val walkRepository: WalkRepository,
     private val tokenDataStore: TokenDataStore,
     private val dogRepository: DogRepository,
@@ -426,6 +428,8 @@ class WalkViewModel @Inject constructor(
         val pending = _state.value.pendingFilters
         val wasPlaceActive = WalkFilterType.PLACE in _state.value.activeFilters
         val isPlaceActive = WalkFilterType.PLACE in pending
+        val wasFootprintActive = WalkFilterType.FOOTPRINT in _state.value.activeFilters
+        val isFootprintActive = WalkFilterType.FOOTPRINT in pending
 
         _state.update { it.copy(activeFilters = pending, showFilterSheet = false) }
 
@@ -435,8 +439,30 @@ class WalkViewModel @Inject constructor(
         }
         // 장소 필터 ON 시 로드는 WalkScreen의 LaunchedEffect(activeFilters)에서 지도 중심으로 처리
 
+        // 발자국 필터 ON → 도장 찍은 장소 로드 / OFF → 초기화
+        if (isFootprintActive && !wasFootprintActive) {
+            loadFootprintPlaces()
+        } else if (!isFootprintActive && wasFootprintActive) {
+            _state.update { it.copy(footprintPlaces = emptyList()) }
+        }
+
         // 주변 강아지 필터는 마커 표시만 제어 (폴링은 산책 중 항상 실행 - 알림용)
         // 마커 표시/숨김은 WalkScreen에서 처리
+    }
+
+    /** 발자국 도장 찍은 장소 목록 로드 */
+    fun loadFootprintPlaces() {
+        viewModelScope.launch {
+            val dogId = tokenDataStore.getDogId().first() ?: return@launch
+            _state.update { it.copy(isFootprintPlacesLoading = true) }
+            getFootprintPlacesUseCase(dogId)
+                .onSuccess { places ->
+                    _state.update { it.copy(footprintPlaces = places, isFootprintPlacesLoading = false) }
+                }
+                .onFailure {
+                    _state.update { it.copy(isFootprintPlacesLoading = false) }
+                }
+        }
     }
 
     /** 지정 좌표 기반 주변 장소 로드 */
