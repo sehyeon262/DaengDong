@@ -2,6 +2,8 @@ package com.frontend.ui.screen.walk
 
 import android.content.Context
 import android.database.ContentObserver
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.hardware.Sensor
 import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
@@ -218,18 +220,21 @@ class WalkViewModel @Inject constructor(
     // ── 카메라 사진 자동 감지 ───────────────────────────────────────────────────
 
     private fun startPhotoObserver() {
-        // 미디어 읽기 권한 확인
-        val mediaPermission = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
-            android.Manifest.permission.READ_MEDIA_IMAGES
+        // 미디어 전체 접근 권한 확인
+        // 자동 감지는 MediaStore 쿼리로 새 사진을 찾으므로 전체 접근 필수
+        // (Android 14+ "사진 선택" 부분 접근으로는 새 카메라 사진 감지 불가)
+        val hasFullAccess = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+            androidx.core.content.ContextCompat.checkSelfPermission(
+                context, android.Manifest.permission.READ_MEDIA_IMAGES
+            ) == android.content.pm.PackageManager.PERMISSION_GRANTED
         } else {
-            android.Manifest.permission.READ_EXTERNAL_STORAGE
+            androidx.core.content.ContextCompat.checkSelfPermission(
+                context, android.Manifest.permission.READ_EXTERNAL_STORAGE
+            ) == android.content.pm.PackageManager.PERMISSION_GRANTED
         }
-        val hasPermission = androidx.core.content.ContextCompat.checkSelfPermission(
-            context, mediaPermission
-        ) == android.content.pm.PackageManager.PERMISSION_GRANTED
 
-        if (!hasPermission) {
-            android.util.Log.w("WalkVM", "미디어 읽기 권한 없음 — 사진 자동 감지 비활성화")
+        if (!hasFullAccess) {
+            android.util.Log.w("WalkVM", "미디어 전체 접근 권한 없음 — 사진 자동 감지 비활성화 (산책 후 수동 업로드 가능)")
             return
         }
 
@@ -267,17 +272,25 @@ class WalkViewModel @Inject constructor(
         uploadedPhotoIds.clear()
     }
 
+    private val uploadMutex = kotlinx.coroutines.sync.Mutex()
+
     private fun checkAndUploadNewPhotos(walkId: Long) {
         viewModelScope.launch {
+            // 동시 실행 방지 — ContentObserver가 같은 사진에 여러 번 호출될 수 있음
+            if (!uploadMutex.tryLock()) return@launch
             try {
                 val projection = arrayOf(
                     MediaStore.Images.Media._ID,
                     MediaStore.Images.Media.DATE_TAKEN,
+                    MediaStore.Images.Media.DATE_ADDED,
                     MediaStore.Images.Media.MIME_TYPE,
                 )
-                val selection = "${MediaStore.Images.Media.DATE_TAKEN} >= ?"
-                val selectionArgs = arrayOf(walkStartTimestamp.toString())
-                val sortOrder = "${MediaStore.Images.Media.DATE_TAKEN} DESC"
+                // DATE_ADDED(초 단위)를 primary로 사용 — 항상 시스템이 설정하므로 안정적
+                // DATE_TAKEN은 EXIF 의존이라 에뮬레이터/일부 카메라 앱에서 누락됨
+                val walkStartSeconds = walkStartTimestamp / 1000
+                val selection = "${MediaStore.Images.Media.DATE_ADDED} >= ?"
+                val selectionArgs = arrayOf(walkStartSeconds.toString())
+                val sortOrder = "${MediaStore.Images.Media.DATE_ADDED} DESC"
 
                 context.contentResolver.query(
                     MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
@@ -289,26 +302,60 @@ class WalkViewModel @Inject constructor(
                     while (cursor.moveToNext()) {
                         val photoId = cursor.getLong(idCol)
                         if (photoId in uploadedPhotoIds) continue
-                        uploadedPhotoIds.add(photoId)
 
                         val mime = cursor.getString(mimeCol) ?: "image/jpeg"
+                        val ext = when {
+                            mime.contains("png") -> "png"
+                            mime.contains("webp") -> "webp"
+                            mime.contains("heic") || mime.contains("heif") -> "heic"
+                            else -> "jpg"
+                        }
                         val contentUri = android.content.ContentUris.withAppendedId(
                             MediaStore.Images.Media.EXTERNAL_CONTENT_URI, photoId
                         )
 
-                        val stream = context.contentResolver.openInputStream(contentUri) ?: continue
-                        val bytes = stream.readBytes()
-                        stream.close()
-                        val requestBody = bytes.toRequestBody(mime.toMediaTypeOrNull())
+                        val bytes = compressImage(contentUri) ?: continue
+                        val requestBody = bytes.toRequestBody("image/jpeg".toMediaTypeOrNull())
                         val part = MultipartBody.Part.createFormData(
-                            "files", "walk_photo_${photoId}.jpg", requestBody
+                            "files", "walk_photo_${photoId}.${ext}", requestBody
                         )
-                        walkRepository.uploadPhotos(walkId, listOf(part))
+                        val result = walkRepository.uploadPhotos(walkId, listOf(part))
+                        if (result.isSuccess) {
+                            uploadedPhotoIds.add(photoId)
+                        } else {
+                            android.util.Log.w("WalkVM", "사진 업로드 실패 (photoId=$photoId): ${result.exceptionOrNull()?.message}")
+                        }
                     }
                 }
             } catch (e: Exception) {
                 android.util.Log.w("WalkVM", "사진 자동 업로드 실패: ${e.message}")
+            } finally {
+                uploadMutex.unlock()
             }
+        }
+    }
+
+    /** 사진을 최대 1920px, JPEG 80% 품질로 압축 (413 방지) */
+    private fun compressImage(uri: Uri, maxDimension: Int = 1920, quality: Int = 80): ByteArray? {
+        return try {
+            val inputStream = context.contentResolver.openInputStream(uri) ?: return null
+            val original = BitmapFactory.decodeStream(inputStream)
+            inputStream.close()
+            if (original == null) return null
+
+            val ratio = minOf(maxDimension.toFloat() / original.width, maxDimension.toFloat() / original.height, 1f)
+            val scaled = if (ratio < 1f) {
+                Bitmap.createScaledBitmap(original, (original.width * ratio).toInt(), (original.height * ratio).toInt(), true)
+            } else original
+
+            val output = java.io.ByteArrayOutputStream()
+            scaled.compress(Bitmap.CompressFormat.JPEG, quality, output)
+            if (scaled !== original) scaled.recycle()
+            original.recycle()
+            output.toByteArray()
+        } catch (e: Exception) {
+            android.util.Log.w("WalkVM", "사진 압축 실패: ${e.message}")
+            null
         }
     }
 
@@ -639,6 +686,11 @@ class WalkViewModel @Inject constructor(
         timerJob?.cancel()
         timerJob = null
         stopNearbyDogsPolling()
+
+        // 산책 종료 직전 마지막으로 새 사진 스캔 (ContentObserver 누락 대비)
+        currentWalkId?.let { walkId ->
+            viewModelScope.launch { checkAndUploadNewPhotos(walkId) }
+        }
         stopPhotoObserver()
 
         // 비선호 강아지 알림 정리
