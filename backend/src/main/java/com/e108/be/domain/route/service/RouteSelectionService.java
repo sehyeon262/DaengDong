@@ -37,17 +37,17 @@ public class RouteSelectionService {
     private final PlaceRepository placeRepository;
     private final DogRepository dogRepository;
 
-    @CacheEvict(value = "walkPattern", key = "#memberId")
+    @CacheEvict(value = "walkPattern", key = "#userId")
     @Transactional
-    public void logSelection(Long memberId, RouteSelectionRequest request) {
+    public void logSelection(Long userId, RouteSelectionRequest request) {
         LocalDateTime now = LocalDateTime.now();
 
-        Long dogId = dogRepository.findFirstByUser_Id(memberId)
+        Long dogId = dogRepository.findFirstByUser_Id(userId)
                 .map(Dog::getId)
                 .orElse(null);
 
         RouteSelectionLog log = RouteSelectionLog.builder()
-                .memberId(memberId)
+                .userId(userId)
                 .dogId(dogId)
                 .selectedType(request.getSelectedType())
                 .selectedDistanceM(request.getSelectedDistanceM())
@@ -80,21 +80,21 @@ public class RouteSelectionService {
         selectionLogRepository.save(log);
 
         // 카테고리별 선호도 갱신
-        updateCategoryPreferences(memberId, log.getSelectedPlaces());
+        updateCategoryPreferences(userId, log.getSelectedPlaces());
     }
 
     /**
      * 선택된 장소의 카테고리별 선호도를 갱신한다.
      * 기존 선호도를 한 번에 조회 후, 일괄 갱신하여 쿼리 수를 최소화한다.
      */
-    private void updateCategoryPreferences(Long memberId, List<RouteSelectionPlace> selectedPlaces) {
+    private void updateCategoryPreferences(Long userId, List<RouteSelectionPlace> selectedPlaces) {
         if (selectedPlaces == null || selectedPlaces.isEmpty()) {
             return;
         }
 
         // 기존 선호도 한 번에 조회
         Map<Integer, UserCategoryPreference> existingPrefs = preferenceRepository
-                .findByMemberId(memberId).stream()
+                .findByUserId(userId).stream()
                 .collect(Collectors.toMap(
                         p -> p.getCategory().getId(),
                         Function.identity()));
@@ -106,7 +106,7 @@ public class RouteSelectionService {
             UserCategoryPreference pref = existingPrefs.computeIfAbsent(
                     category.getId(),
                     k -> UserCategoryPreference.builder()
-                            .memberId(memberId)
+                            .userId(userId)
                             .category(category)
                             .selectionCount(0)
                             .preferenceScore(0.0)

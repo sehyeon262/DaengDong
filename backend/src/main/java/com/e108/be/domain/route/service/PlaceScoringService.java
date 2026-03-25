@@ -136,15 +136,15 @@ public class PlaceScoringService {
      * 2. 세그먼트 선호도 (같은 체중 구간, 콜드스타트 대응)
      * 3. null (전역 가중치만 사용)
      *
-     * @param memberId   회원 ID
+     * @param userId   회원 ID
      * @param dogWeight  반려견 체중 (세그먼트 판별용, nullable)
      * @return categoryName -> preferenceScore 맵
      */
-    public Map<String, Double> loadPreferenceMap(Long memberId, BigDecimal dogWeight) {
-        if (memberId == null) return null;
+    public Map<String, Double> loadPreferenceMap(Long userId, BigDecimal dogWeight) {
+        if (userId == null) return null;
 
         // 1순위: 개인 선호도
-        Map<String, Double> personalMap = loadPersonalPreferenceMap(memberId);
+        Map<String, Double> personalMap = loadPersonalPreferenceMap(userId);
         if (personalMap != null) {
             return personalMap;
         }
@@ -156,8 +156,8 @@ public class PlaceScoringService {
     /**
      * 개인 카테고리 선호도 조회
      */
-    private Map<String, Double> loadPersonalPreferenceMap(Long memberId) {
-        List<UserCategoryPreference> prefs = preferenceRepository.findByMemberId(memberId);
+    private Map<String, Double> loadPersonalPreferenceMap(Long userId) {
+        List<UserCategoryPreference> prefs = preferenceRepository.findByUserId(userId);
 
         int totalSelections = prefs.stream()
                 .mapToInt(UserCategoryPreference::getSelectionCount)

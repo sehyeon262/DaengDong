@@ -16,7 +16,7 @@ import lombok.NoArgsConstructor;
  */
 @Entity
 @Table(name = "user_category_preferences",
-        uniqueConstraints = @UniqueConstraint(columnNames = {"member_id", "category_id"}))
+        uniqueConstraints = @UniqueConstraint(columnNames = {"user_id", "category_id"}))
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class UserCategoryPreference extends BaseEntity {
@@ -25,8 +25,8 @@ public class UserCategoryPreference extends BaseEntity {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(name = "member_id", nullable = false)
-    private Long memberId;
+    @Column(name = "user_id", nullable = false)
+    private Long userId;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "category_id", nullable = false)
@@ -39,9 +39,9 @@ public class UserCategoryPreference extends BaseEntity {
     private double preferenceScore;
 
     @Builder
-    public UserCategoryPreference(Long memberId, PlaceCategory category,
+    public UserCategoryPreference(Long userId, PlaceCategory category,
                                    int selectionCount, double preferenceScore) {
-        this.memberId = memberId;
+        this.userId = userId;
         this.category = category;
         this.selectionCount = selectionCount;
         this.preferenceScore = preferenceScore;

@@ -26,6 +26,7 @@ import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.DirectionsWalk
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.FilterAlt
 import androidx.compose.material.icons.filled.GpsFixed
 import androidx.compose.material.icons.filled.Navigation
@@ -127,6 +128,7 @@ fun WalkScreen(
     onNavigateToRecord: () -> Unit = {},
     onNavigateToWalkDetail: (Long) -> Unit = {},
     onNavigateToHome: () -> Unit = {},
+    onNavigateToAddPlace: () -> Unit = {},
     viewModel: WalkViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsState()
@@ -755,6 +757,12 @@ fun WalkScreen(
                 icon = Icons.Filled.FilterAlt,
                 contentDescription = "필터",
                 onClick = { viewModel.showFilter() }
+            )
+            // 신규 장소 등록 버튼
+            MapOverlayButton(
+                icon = Icons.Filled.Add,
+                contentDescription = "장소 추가",
+                onClick = { onNavigateToAddPlace() }
             )
         }
 

@@ -42,6 +42,12 @@ __pycache__/
 # Android local files
 /.android-user-home/debug.keystore
 /.android-user-home/*.lock
+# Android build outputs
+frontend/app/build/
+frontend/wear/build/
+frontend/build/
+frontend/.gradle/
+
 
 # Markdown
 *.md

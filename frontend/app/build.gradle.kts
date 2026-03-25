@@ -31,6 +31,7 @@ fun usesCleartext(url: String): String =
     url.startsWith("http://", ignoreCase = true).toString()
 
 val kakaoMapApiKey = resolveConfig("KAKAO_MAP_API_KEY")
+val kakaoRestApiKey = resolveConfig("KAKAO_REST_API_KEY")
 val localBaseUrl = resolveConfig("BASE_URL_LOCAL", resolveConfig("BASE_URL", "http://10.0.2.2:8080/api/v1/"))
 val devBaseUrl = resolveConfig("BASE_URL_DEV", "https://j14e108.p.ssafy.io/dev/api/v1/")
 val prodBaseUrl = resolveConfig("BASE_URL_PROD", "https://j14e108.p.ssafy.io/api/v1/")
@@ -52,6 +53,7 @@ android {
 
         manifestPlaceholders["kakaoMapApiKey"] = kakaoMapApiKey
         buildConfigField("String", "KAKAO_MAP_API_KEY", "\"$kakaoMapApiKey\"")
+        buildConfigField("String", "KAKAO_REST_API_KEY", "\"$kakaoRestApiKey\"")
     }
 
     productFlavors {
@@ -140,6 +142,10 @@ dependencies {
     implementation(libs.coil.compose)
 
     implementation(libs.play.services.location)
+
+    // Wearable Data Layer API
+    implementation(libs.play.services.wearable)
+    // Kakao Maps
 
     implementation(libs.kakao.maps)
 

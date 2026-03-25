@@ -54,11 +54,11 @@ public class WalkPatternService {
      * 결과는 Redis에 캐싱되며, 경로 선택(logSelection) 시 자동 무효화된다.
      *
      * @param dogId    반려견 ID
-     * @param memberId 회원 ID
+     * @param userId 회원 ID
      * @return 산책 패턴 데이터
      */
-    @Cacheable(value = "walkPattern", key = "#memberId")
-    public WalkPattern analyze(Long dogId, Long memberId) {
+    @Cacheable(value = "walkPattern", key = "#userId")
+    public WalkPattern analyze(Long dogId, Long userId) {
         LocalDateTime now = LocalDateTime.now();
         LocalDateTime since = now.minusDays(ANALYSIS_DAYS);
 
@@ -81,10 +81,10 @@ public class WalkPatternService {
         int walkCount = recentWalks.size();
 
         // 선호 경로 유형
-        RouteType preferredType = analyzePreferredType(memberId);
+        RouteType preferredType = analyzePreferredType(userId);
 
         // 선택 로그 기반 평균 거리와 가중 결합
-        Double selectionAvgDistance = selectionLogRepository.findAvgDistanceByMemberId(memberId);
+        Double selectionAvgDistance = selectionLogRepository.findAvgDistanceByUserId(userId);
         if (selectionAvgDistance != null && selectionAvgDistance > 0) {
             avgDistanceM = avgDistanceM > 0
                     ? (avgDistanceM * ACTUAL_WALK_WEIGHT + selectionAvgDistance * SELECTION_LOG_WEIGHT)
@@ -92,7 +92,7 @@ public class WalkPatternService {
         }
 
         // 날씨별 선호 유형
-        Map<WeatherCondition, RouteType> weatherPreferences = analyzeWeatherPreferences(memberId);
+        Map<WeatherCondition, RouteType> weatherPreferences = analyzeWeatherPreferences(userId);
 
         return new WalkPattern(avgDistanceM, preferredHour, preferredType,
                 walkCount, weatherPreferences);
@@ -112,8 +112,8 @@ public class WalkPatternService {
                 .orElse(DEFAULT_PREFERRED_HOUR);
     }
 
-    private RouteType analyzePreferredType(Long memberId) {
-        List<TypeCountProjection> typeCounts = selectionLogRepository.countByMemberIdGroupByType(memberId);
+    private RouteType analyzePreferredType(Long userId) {
+        List<TypeCountProjection> typeCounts = selectionLogRepository.countByUserIdGroupByType(userId);
 
         return typeCounts.stream()
                 .max(Comparator.comparing(TypeCountProjection::getCount))
@@ -125,9 +125,9 @@ public class WalkPatternService {
      * 날씨별 선호 경로 유형 분석
      * 예: CLEAR -> EXPLORE, RAIN -> SHORT
      */
-    private Map<WeatherCondition, RouteType> analyzeWeatherPreferences(Long memberId) {
+    private Map<WeatherCondition, RouteType> analyzeWeatherPreferences(Long userId) {
         List<WeatherTypeCountProjection> rows = selectionLogRepository
-                .countByMemberIdGroupByWeatherAndType(memberId);
+                .countByUserIdGroupByWeatherAndType(userId);
 
         // weather -> (type -> count) 집계
         Map<WeatherCondition, Map<RouteType, Long>> weatherTypeCounts = new HashMap<>();
