@@ -21,6 +21,15 @@ data class DogAlertState(
     val isInsideAlertRadius: Boolean = false, // 현재 알림 반경(50m) 안에 있는지
 )
 
+/**
+ * 장소 발자국 알림 상태 추적용 데이터 클래스
+ * - 20m 반경 진입/이탈 기반으로 알림 제어
+ */
+data class FootprintAlertState(
+    val isInsideRadius: Boolean = false,  // 현재 20m 반경 안에 있는지
+    val hasStamped: Boolean = false,      // 이번 산책에서 이미 도장 찍었는지 (영구 무시)
+)
+
 data class WalkState(
     val selectedRouteIndex: Int = 0,
     val showFilterSheet: Boolean = false,
@@ -46,6 +55,12 @@ data class WalkState(
     // ── 발자국 마커 ────────────────────────────────────────────────────────────
     val footprintPlaces: List<Place> = emptyList(),   // 도장 찍은 장소 목록
     val isFootprintPlacesLoading: Boolean = false,    // 발자국 장소 로딩 중 여부
+
+    // ── 발자국 찍기 오버레이 ────────────────────────────────────────────────
+    val footprintAlertPlace: Place? = null,                        // 현재 20m 이내의 장소 (null=오버레이 없음)
+    val footprintStamped: Boolean = false,                          // 도장 찍기 완료 여부
+    val footprintAlertStates: Map<Long, FootprintAlertState> = emptyMap(), // 장소별 진입/이탈/도장 상태
+    val walkPlaces: List<Place> = emptyList(),                      // 발자국 감지용 주변 장소 목록
 
     // ── 자유 산책 ──────────────────────────────────────────────────────────────
     val isWalking: Boolean = false,       // 산책 진행 중 여부

@@ -70,8 +70,11 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -305,18 +308,14 @@ fun WalkScreen(
                 }
             }
     ) {
-    // 위험 구역 선택 모드 진입/종료 시 TrackingManager 제어
-    // 선택 모드: tracking 중단 → 지도 드래그 위치 유지
-    // 선택 모드 해제: tracking 재개 → 강아지 마커 다시 따라가기
+    // 위험 구역 선택 모드 진입 시 TrackingManager 중단
+    // (트래킹은 GPS 버튼 클릭 시에만 일시적으로 카메라 이동 — startTracking 사용 안 함)
     LaunchedEffect(state.isSelectingDangerZone, kakaoMap) {
         val map = kakaoMap ?: return@LaunchedEffect
         if (state.isSelectingDangerZone) {
             map.trackingManager?.stopTracking()
-        } else {
-            currentLocationLabel?.let { label ->
-                map.trackingManager?.startTracking(label)
-            }
         }
+        // 선택 모드 해제 시에도 자동 트래킹 재개 안 함 → 지도 자유 이동 유지
     }
 
     // 주변 강아지 마커: NEARBY_DOG 필터 활성화 시에만 표시
@@ -554,6 +553,20 @@ fun WalkScreen(
                     .offset(y = (-36).dp)   // 깃발 하단이 지도 좌표에 맞도록
                     .align(Alignment.Center)
             )
+        }
+
+        // ── 발자국 찍기 오버레이 ──────────────────────────────────────────
+        if (state.footprintAlertPlace != null && !state.isSelectingDangerZone) {
+            FootprintStampOverlay(
+                stamped = state.footprintStamped,
+                onTap = { viewModel.stampFootprint() }
+            )
+            if (state.footprintStamped) {
+                LaunchedEffect(Unit) {
+                    kotlinx.coroutines.delay(2000L)
+                    viewModel.dismissFootprintOverlay()
+                }
+            }
         }
 
         // ── 3. 전체 오버레이 레이아웃 (검색바 + 하단 패널) ───────────
@@ -1622,6 +1635,66 @@ private fun BadgeEarnedDialog(
                     )
                 }
             }
+        }
+    }
+}
+
+// ── 발자국 찍기 오버레이 ──────────────────────────────────────────────────────
+@Composable
+private fun FootprintStampOverlay(
+    stamped: Boolean,
+    onTap: () -> Unit,
+) {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color(0x88000000)),
+        contentAlignment = Alignment.Center
+    ) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
+        ) {
+            if (!stamped) {
+                Text(
+                    text = "터치하세요",
+                    color = Color.White,
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.Medium,
+                )
+                Spacer(modifier = Modifier.height(16.dp))
+            }
+
+            Box(
+                modifier = Modifier
+                    .size(160.dp)
+                    .clip(CircleShape)
+                    .background(Color.White)
+                    .then(
+                        if (!stamped) Modifier.clickable(
+                            onClick = onTap,
+                            indication = null,
+                            interactionSource = remember { MutableInteractionSource() }
+                        ) else Modifier
+                    ),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.Pets,
+                    contentDescription = "발자국",
+                    modifier = Modifier.size(90.dp),
+                    tint = if (stamped) PointGreen else PointGreen.copy(alpha = 0.4f)
+                )
+            }
+
+            Spacer(modifier = Modifier.height(20.dp))
+
+            Text(
+                text = if (stamped) "발자국을 남겼어요!" else "발자국을 남겨보세요!",
+                color = Color.White,
+                fontSize = 22.sp,
+                fontWeight = FontWeight.Bold
+            )
         }
     }
 }

@@ -36,7 +36,9 @@ import com.frontend.domain.usecase.GetPlacesUseCase
 import com.frontend.domain.usecase.GetRecommendedRoutesUseCase
 import com.frontend.domain.usecase.ReportDangerZoneUseCase
 import com.frontend.domain.usecase.SaveLocationsUseCase
+import com.frontend.domain.usecase.StampPlaceUseCase
 import com.frontend.domain.usecase.StartFreeWalkUseCase
+import com.frontend.notification.FootprintAlertManager
 import com.frontend.notification.NearbyDogAlertManager
 import com.google.android.gms.location.LocationCallback
 import com.google.android.gms.location.LocationRequest
@@ -77,6 +79,8 @@ class WalkViewModel @Inject constructor(
     private val saveLocationsUseCase: SaveLocationsUseCase,
     private val endWalkUseCase: EndWalkUseCase,
     private val nearbyDogAlertManager: NearbyDogAlertManager,
+    private val footprintAlertManager: FootprintAlertManager,
+    private val stampPlaceUseCase: StampPlaceUseCase,
 ) : ViewModel() {
 
     // ── 비선호 강아지 알림 상수 ─────────────────────────────────────────────────
@@ -84,6 +88,7 @@ class WalkViewModel @Inject constructor(
         private const val ALERT_ENTER_RADIUS_M = 50.0   // 알림 발생 반경
         private const val ALERT_EXIT_RADIUS_M = 70.0    // 반경 이탈 판정 거리
         private const val ALERT_COOLDOWN_MS = 2 * 60 * 1000L  // 2분 쿨다운
+        private const val FOOTPRINT_ALERT_RADIUS_M = 20.0     // 발자국 알림 반경
     }
 
     private val _state = MutableStateFlow(WalkState())
@@ -99,6 +104,9 @@ class WalkViewModel @Inject constructor(
 
     // ── 위험구역 최초 로드 여부 (위치 수신 후 1회만 로드) ───────────────────────
     private var dangerZonesLoaded = false
+
+    // ── 발자국 체크용 주변 장소 최초 로드 여부 (산책 시작 후 1회만 로드) ───────
+    private var walkPlacesLoaded = false
 
     // ── 산책 경로 포인트 (지도 경로 표시용) ────────────────────────────────────
     private val _routePoints = MutableStateFlow<List<LatLng>>(emptyList())
@@ -191,6 +199,14 @@ class WalkViewModel @Inject constructor(
                             timestamp = System.currentTimeMillis()
                         )
                     )
+
+                    // 발자국 체크용 장소 최초 로드
+                    if (!walkPlacesLoaded) {
+                        walkPlacesLoaded = true
+                        loadWalkPlaces(loc.latitude, loc.longitude)
+                    }
+                    // 20m 이내 장소 진입 감지
+                    checkNearbyPlacesForFootprint(newLatLng)
                 }
             }
         }
@@ -512,6 +528,7 @@ class WalkViewModel @Inject constructor(
      */
     fun startFreeWalk() {
         // 즉시 UI 전환
+        walkPlacesLoaded = false
         _state.update {
             it.copy(
                 isWalking = true,
@@ -519,6 +536,10 @@ class WalkViewModel @Inject constructor(
                 elapsedSeconds = 0,
                 distanceMeters = 0.0,
                 walkError = null,
+                walkPlaces = emptyList(),
+                footprintAlertStates = emptyMap(),
+                footprintAlertPlace = null,
+                footprintStamped = false,
             )
         }
         _routePoints.value = emptyList()
@@ -563,7 +584,17 @@ class WalkViewModel @Inject constructor(
 
         // 비선호 강아지 알림 정리
         nearbyDogAlertManager.cancelAllAlerts()
-        _state.update { it.copy(dogAlertStates = emptyMap(), warningDog = null) }
+        footprintAlertManager.cancelAlert()
+        _state.update {
+            it.copy(
+                dogAlertStates = emptyMap(),
+                warningDog = null,
+                footprintAlertPlace = null,
+                footprintStamped = false,
+                walkPlaces = emptyList(),
+                footprintAlertStates = emptyMap(),
+            )
+        }
 
         val summarySeconds = _state.value.elapsedSeconds
         val summaryDistance = _state.value.distanceMeters
@@ -1071,5 +1102,101 @@ class WalkViewModel @Inject constructor(
                 _state.update { it.copy(isLoading = false, error = e.message) }
             }
         }
+    }
+
+    // ── 발자국 찍기 ────────────────────────────────────────────────────────────
+
+    /** 발자국 감지용 주변 장소 로드 (산책 시작 시 1회) */
+    private fun loadWalkPlaces(latitude: Double, longitude: Double) {
+        viewModelScope.launch {
+            getPlacesUseCase(latitude, longitude, radius = 500.0).onSuccess { places ->
+                _state.update { it.copy(walkPlaces = places) }
+            }
+        }
+    }
+
+    /**
+     * 20m 진입/이탈 기반 발자국 알림 처리
+     * - 20m 진입 시: 알림 + 오버레이 표시
+     * - 20m 이탈 시: 알림 취소 + 오버레이 닫기
+     * - 20m 재진입 시: 알림 + 오버레이 다시 표시
+     * - 도장 찍은 장소: hasStamped=true로 영구 무시
+     */
+    private fun checkNearbyPlacesForFootprint(currentPos: LatLng) {
+        val places = _state.value.walkPlaces
+        if (places.isEmpty()) return
+
+        val prevStates = _state.value.footprintAlertStates
+        val newStates = prevStates.toMutableMap()
+        val currentAlertPlace = _state.value.footprintAlertPlace
+
+        // 1단계: 모든 장소의 반경 내/외 상태 갱신
+        for (place in places) {
+            val prev = prevStates[place.id] ?: FootprintAlertState()
+            if (prev.hasStamped) continue
+            val dist = haversineMeters(
+                currentPos.latitude, currentPos.longitude,
+                place.latitude, place.longitude
+            )
+            newStates[place.id] = prev.copy(isInsideRadius = dist <= FOOTPRINT_ALERT_RADIUS_M)
+        }
+
+        // 2단계: 현재 오버레이 중인 장소가 반경을 이탈했으면 닫기
+        var newAlertPlace = currentAlertPlace
+        if (currentAlertPlace != null && newStates[currentAlertPlace.id]?.isInsideRadius != true) {
+            newAlertPlace = null
+            footprintAlertManager.cancelAlert()
+        }
+
+        // 3단계: 오버레이 없는 상태에서 새로 20m 진입한 장소 탐색
+        if (newAlertPlace == null) {
+            for (place in places) {
+                val prev = prevStates[place.id] ?: FootprintAlertState()
+                val next = newStates[place.id] ?: FootprintAlertState()
+                if (next.hasStamped || !next.isInsideRadius) continue
+                // 이번에 새로 진입한 경우에만 알림 발송
+                if (!prev.isInsideRadius) {
+                    footprintAlertManager.showFootprintAlert(place.name)
+                }
+                newAlertPlace = place
+                break
+            }
+        }
+
+        _state.update {
+            it.copy(
+                footprintAlertStates = newStates,
+                footprintAlertPlace = newAlertPlace,
+                // 오버레이가 사라지면 stamped 상태도 초기화
+                footprintStamped = if (newAlertPlace == null) false else it.footprintStamped,
+            )
+        }
+    }
+
+    /** 발자국 도장 찍기 — 해당 장소를 이번 산책 내내 무시(hasStamped=true) */
+    fun stampFootprint() {
+        val place = _state.value.footprintAlertPlace ?: return
+        val walkId = currentWalkId ?: return
+        val dogId = _state.value.myDogId ?: return
+
+        _state.update { state ->
+            val newStates = state.footprintAlertStates.toMutableMap()
+            newStates[place.id] = FootprintAlertState(isInsideRadius = true, hasStamped = true)
+            state.copy(
+                footprintStamped = true,
+                footprintAlertStates = newStates,
+            )
+        }
+        viewModelScope.launch {
+            stampPlaceUseCase(walkId, dogId, place.id)
+                .onFailure { e ->
+                    android.util.Log.w("WalkVM", "발자국 도장 찍기 실패: ${e.message}")
+                }
+        }
+    }
+
+    /** 발자국 오버레이 닫기 (2초 자동 닫힘 후 호출) */
+    fun dismissFootprintOverlay() {
+        _state.update { it.copy(footprintAlertPlace = null, footprintStamped = false) }
     }
 }
