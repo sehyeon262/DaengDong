@@ -19,7 +19,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccessTime
-import androidx.compose.material.icons.filled.DirectionsWalk
+import androidx.compose.material.icons.automirrored.filled.DirectionsWalk
 import androidx.compose.material.icons.filled.Room
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
@@ -155,7 +155,7 @@ fun WalkRouteCard(
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
-                    imageVector = Icons.Filled.DirectionsWalk,
+                    imageVector = Icons.AutoMirrored.Filled.DirectionsWalk,
                     contentDescription = "산책",
                     tint = Color.White,
                     modifier = Modifier.size(24.dp)
