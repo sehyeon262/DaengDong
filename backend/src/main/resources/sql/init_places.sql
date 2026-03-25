@@ -37,6 +37,10 @@ INSERT INTO public.place_category (id, icon_url, name, route_weight) VALUES (10,
 INSERT INTO public.place_category (id, icon_url, name, route_weight) VALUES (11, NULL, '여행지', 8);
 INSERT INTO public.place_category (id, icon_url, name, route_weight) VALUES (12, NULL, '펜션', 3);
 INSERT INTO public.place_category (id, icon_url, name, route_weight) VALUES (13, NULL, '호텔', 3);
+INSERT INTO public.place_category (id, icon_url, name, route_weight) VALUES (14, NULL, '공원', 8);
+INSERT INTO public.place_category (id, icon_url, name, route_weight) VALUES (15, NULL, '화장실', 5);
+INSERT INTO public.place_category (id, icon_url, name, route_weight) VALUES (16, NULL, '산책로', 8);
+INSERT INTO public.place_category (id, icon_url, name, route_weight) VALUES (17, NULL, '편의시설', 5);
 
 
 --
@@ -23977,7 +23981,7 @@ INSERT INTO public.places (id, address, contact, created_at, description, image_
 -- Name: place_category_id_seq; Type: SEQUENCE SET; Schema: public; Owner: postgres
 --
 
-SELECT pg_catalog.setval('public.place_category_id_seq', 13, true);
+SELECT pg_catalog.setval('public.place_category_id_seq', 17, true);
 
 
 --
