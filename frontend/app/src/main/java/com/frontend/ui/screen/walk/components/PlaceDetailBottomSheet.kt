@@ -194,20 +194,22 @@ fun PlaceDetailBottomSheet(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        Box(
-                            modifier = Modifier
-                                .background(
-                                    color = PointGreen.copy(alpha = 0.15f),
-                                    shape = RoundedCornerShape(20.dp)
+                        place.categoryName?.let { category ->
+                            Box(
+                                modifier = Modifier
+                                    .background(
+                                        color = PointGreen.copy(alpha = 0.15f),
+                                        shape = RoundedCornerShape(20.dp)
+                                    )
+                                    .padding(horizontal = 10.dp, vertical = 4.dp)
+                            ) {
+                                Text(
+                                    text = category,
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = PointGreen
                                 )
-                                .padding(horizontal = 10.dp, vertical = 4.dp)
-                        ) {
-                            Text(
-                                text = place.categoryName,
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.SemiBold,
-                                color = PointGreen
-                            )
+                            }
                         }
                     }
 
@@ -235,7 +237,7 @@ fun PlaceDetailBottomSheet(
                     // ── 주소 ─────────────────────────────────────────────────
                     PlaceInfoRow(
                         icon = Icons.Filled.LocationOn,
-                        text = place.address.ifBlank { "주소 정보 없음" }
+                        text = place.address?.ifBlank { "주소 정보 없음" } ?: "주소 정보 없음"
                     )
 
                     Spacer(modifier = Modifier.height(Dimens.SpacingSmall))
@@ -243,7 +245,7 @@ fun PlaceDetailBottomSheet(
                     // ── 연락처 ───────────────────────────────────────────────
                     PlaceInfoRow(
                         icon = Icons.Filled.Phone,
-                        text = place.contact.ifBlank { "연락처 정보 없음" }
+                        text = place.contact?.ifBlank { "연락처 정보 없음" } ?: "연락처 정보 없음"
                     )
 
                     // ── 설명 (있을 경우만 표시) ──────────────────────────────
