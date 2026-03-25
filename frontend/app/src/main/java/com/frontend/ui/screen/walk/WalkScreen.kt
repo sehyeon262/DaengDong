@@ -275,16 +275,12 @@ fun WalkScreen(
         val map = kakaoMap ?: return@LaunchedEffect
 
         if (currentLocationLabel == null) {
-            // 최초: 카메라 이동 + 마커 생성 + TrackingManager 시작
             // 최초: 카메라 이동 + 마커 생성 (트래킹은 GPS 버튼으로만 활성화)
             map.moveCamera(CameraUpdateFactory.newCenterPosition(pos, 15))
             val bitmap = rotateBitmap(createDogMarkerBitmap(context), azimuth)
             val styles = LabelStyles.from(LabelStyle.from(bitmap).setAnchorPoint(0.5f, 0.5f))
             val label = map.labelManager?.layer?.addLabel(LabelOptions.from(pos).setStyles(styles))
             currentLocationLabel = label
-            if (label != null) {
-                map.trackingManager?.startTracking(label)
-            }
 
             // 최초 위치 수신 시 추천 경로 로드
             viewModel.loadRecommendedRoutes(pos.latitude, pos.longitude)
