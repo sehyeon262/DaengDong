@@ -191,7 +191,13 @@ fun WalkScreen(
     val mediaPermissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission()
     ) { granted ->
-        if (granted) viewModel.retryPhotoObserverIfWalking()
+        if (granted) {
+            viewModel.retryPhotoObserverIfWalking()
+        } else {
+            // Android 14+에서 "사진 선택"(부분 접근)을 선택한 경우
+            // 자동 감지는 불가하지만 산책 후 수동 업로드는 가능
+            android.util.Log.w("WalkScreen", "사진 전체 접근 미허용 — 자동 감지 비활성화 (수동 업로드 가능)")
+        }
     }
 
     // 알림 권한 요청 launcher (Android 13+ 비선호 강아지 알림용)
@@ -204,14 +210,20 @@ fun WalkScreen(
     // 산책 시작 시 미디어 권한 + 알림 권한 확인 및 요청
     LaunchedEffect(state.isWalking) {
         if (state.isWalking) {
-            // 미디어 권한 요청
-            val mediaPermission = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                Manifest.permission.READ_MEDIA_IMAGES
+            // 자동 감지에는 전체 접근(READ_MEDIA_IMAGES) 필요
+            // Android 14+ "사진 선택"(부분 접근)으로는 새 카메라 사진을 MediaStore로 감지 불가
+            val hasFullAccess = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                ActivityCompat.checkSelfPermission(context, Manifest.permission.READ_MEDIA_IMAGES) == PackageManager.PERMISSION_GRANTED
             } else {
-                Manifest.permission.READ_EXTERNAL_STORAGE
+                ActivityCompat.checkSelfPermission(context, Manifest.permission.READ_EXTERNAL_STORAGE) == PackageManager.PERMISSION_GRANTED
             }
-            val hasMediaPermission = ActivityCompat.checkSelfPermission(context, mediaPermission) == PackageManager.PERMISSION_GRANTED
-            if (!hasMediaPermission) {
+
+            if (!hasFullAccess) {
+                val mediaPermission = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                    Manifest.permission.READ_MEDIA_IMAGES
+                } else {
+                    Manifest.permission.READ_EXTERNAL_STORAGE
+                }
                 mediaPermissionLauncher.launch(mediaPermission)
             }
 

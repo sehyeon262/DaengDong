@@ -22,6 +22,7 @@ import okhttp3.OkHttpClient
 import okhttp3.logging.HttpLoggingInterceptor
 import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
+import java.util.concurrent.TimeUnit
 import javax.inject.Singleton
 
 /** 카카오 로컬 API 전용 Retrofit 인스턴스를 구분하기 위한 Qualifier */
@@ -38,8 +39,12 @@ object NetworkModule {
     fun provideOkHttpClient(): OkHttpClient {
         return OkHttpClient.Builder()
             .addInterceptor(HttpLoggingInterceptor().apply {
-                level = HttpLoggingInterceptor.Level.BODY  // 통신 내용 로그 출력
+                level = if (BuildConfig.DEBUG) HttpLoggingInterceptor.Level.HEADERS
+                        else HttpLoggingInterceptor.Level.NONE
             })
+            .connectTimeout(30, TimeUnit.SECONDS)
+            .readTimeout(30, TimeUnit.SECONDS)
+            .writeTimeout(60, TimeUnit.SECONDS)  // 사진 업로드를 위해 넉넉하게
             .build()
     }
 
