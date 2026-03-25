@@ -12,6 +12,7 @@ import com.e108.be.domain.badge.repository.UserBadgeRepository;
 import com.e108.be.domain.dog.entity.Dog;
 import com.e108.be.domain.dog.repository.DogRepository;
 import com.e108.be.domain.safety.repository.RiskReportRepository;
+import com.e108.be.domain.walk.repository.FootprintRepository;
 import com.e108.be.domain.walk.repository.MetDogRepository;
 import com.e108.be.domain.walk.repository.WalkRecordRepository;
 import lombok.RequiredArgsConstructor;
@@ -46,6 +47,7 @@ public class BadgeService {
     private final UserRepository userRepository;
     private final DogRepository dogRepository;
     private final WalkRecordRepository walkRecordRepository;
+    private final FootprintRepository footprintRepository;
     private final RiskReportRepository riskReportRepository;
     private final MetDogRepository metDogRepository;
 
@@ -60,10 +62,10 @@ public class BadgeService {
 
         List<BadgeResponse> newBadges = new ArrayList<>();
 
-        // 배지 1,2: 완료 산책 수
-        long completedWalks = walkRecordRepository.countCompletedWalksByDogIds(dogIds);
-        if (completedWalks >= 5) collectAwarded(newBadges, userId, PLACE_5);
-        if (completedWalks >= 20) collectAwarded(newBadges, userId, PLACE_20);
+        // 배지 1,2: 발자국 도장 수
+        long footprintCount = footprintRepository.countByDogIds(dogIds);
+        if (footprintCount >= 5) collectAwarded(newBadges, userId, PLACE_5);
+        if (footprintCount >= 20) collectAwarded(newBadges, userId, PLACE_20);
 
         // 배지 3: 루트 있는 산책 수
         long walksWithRoute = walkRecordRepository.countWalksWithRoute(dogIds);
@@ -145,6 +147,7 @@ public class BadgeService {
         List<UserBadge> earnedBadges = userBadgeRepository.findAllByUserId(userId);
 
         // 현재 진행도 계산
+        long footprintCount = dogIds.isEmpty() ? 0 : footprintRepository.countByDogIds(dogIds);
         long completedWalks = dogIds.isEmpty() ? 0 : walkRecordRepository.countCompletedWalksByDogIds(dogIds);
         long walksWithRoute = dogIds.isEmpty() ? 0 : walkRecordRepository.countWalksWithRoute(dogIds);
         long reportCount = riskReportRepository.countByUserId(userId);
@@ -157,7 +160,7 @@ public class BadgeService {
         List<BadgeProgressResponse> result = new ArrayList<>();
         for (Badge badge : allBadges) {
             int currentValue = getCurrentValue(badge.getBadgeName(),
-                    completedWalks, walksWithRoute, reportCount,
+                    footprintCount, completedWalks, walksWithRoute, reportCount,
                     walksWithPhotoAndDiary, totalPhotos, dogCount, hasMet, metDogCount);
             int targetValue = parseTarget(badge.getConditionValue());
             boolean earned = earnedBadges.stream()
@@ -208,11 +211,11 @@ public class BadgeService {
     }
 
     private int getCurrentValue(String badgeName,
-                                long completedWalks, long walksWithRoute, long reportCount,
+                                long footprintCount, long completedWalks, long walksWithRoute, long reportCount,
                                 long walksWithPhotoAndDiary, long totalPhotos,
                                 long dogCount, boolean hasMet, long metDogCount) {
         return switch (badgeName) {
-            case PLACE_5, PLACE_20 -> (int) completedWalks;
+            case PLACE_5, PLACE_20 -> (int) footprintCount;
             case NEW_COURSE_5 -> (int) walksWithRoute;
             case RISK_REPORT_3 -> (int) reportCount;
             case PHOTO_DIARY_10 -> (int) walksWithPhotoAndDiary;

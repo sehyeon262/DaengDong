@@ -230,14 +230,15 @@ class WalkViewModel @Inject constructor(
             return
         }
 
-        walkStartTimestamp = System.currentTimeMillis() / 1000
+        walkStartTimestamp = System.currentTimeMillis()
         uploadedPhotoIds.clear()
 
         photoObserver = object : ContentObserver(Handler(Looper.getMainLooper())) {
             override fun onChange(selfChange: Boolean, uri: Uri?) {
                 super.onChange(selfChange, uri)
-                val walkId = currentWalkId ?: return
                 viewModelScope.launch {
+                    // walkId가 아직 없으면 서버 응답을 기다림
+                    val walkId = currentWalkId ?: walkIdDeferred?.await() ?: return@launch
                     checkAndUploadNewPhotos(walkId)
                 }
             }
@@ -268,12 +269,12 @@ class WalkViewModel @Inject constructor(
             try {
                 val projection = arrayOf(
                     MediaStore.Images.Media._ID,
-                    MediaStore.Images.Media.DATE_ADDED,
+                    MediaStore.Images.Media.DATE_TAKEN,
                     MediaStore.Images.Media.MIME_TYPE,
                 )
-                val selection = "${MediaStore.Images.Media.DATE_ADDED} >= ?"
+                val selection = "${MediaStore.Images.Media.DATE_TAKEN} >= ?"
                 val selectionArgs = arrayOf(walkStartTimestamp.toString())
-                val sortOrder = "${MediaStore.Images.Media.DATE_ADDED} DESC"
+                val sortOrder = "${MediaStore.Images.Media.DATE_TAKEN} DESC"
 
                 context.contentResolver.query(
                     MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
