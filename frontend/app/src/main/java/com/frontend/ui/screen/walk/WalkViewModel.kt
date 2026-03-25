@@ -166,6 +166,7 @@ class WalkViewModel @Inject constructor(
     private val locationCallback = object : LocationCallback() {
         override fun onLocationResult(result: LocationResult) {
             result.lastLocation?.let { loc ->
+                if (loc.accuracy > 20f) return@let
                 val newLatLng = LatLng.from(loc.latitude, loc.longitude)
                 _currentPosition.value = newLatLng
 
