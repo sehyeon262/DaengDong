@@ -25,6 +25,7 @@ public class DiaryPromptBuilder {
             - 숫자(거리, 칼로리, 정확한 시간)는 절대 쓰지 마세요
             - 산책한 장소가 있으면 자연스럽게 언급해주세요 (예: "오늘 행복공원에 갔는데~", "누나랑 한강공원에서~")
             - 함께 산책한 강아지가 있으면 이름을 넣어서 "(이름)이랑 같이 뛰어다녔다!" 같이 써주세요
+            - 사진에서 발견된 동물이나 사물이 있으면 자연스럽게 언급해주세요 (예: "고양이를 만났다!", "나비가 날아다녔다!")
             - 아래 "상황 힌트"를 반드시 활용해서, 이 산책에서만 느낄 수 있는 구체적인 장면을 만들어주세요
             - 3~5문장, 100~180자
             - 제공된 데이터 기반으로만 쓰고, 없는 사건은 만들지 마세요
@@ -42,8 +43,17 @@ public class DiaryPromptBuilder {
         return buildUserPrompt(dog, walk, weather, nearbyPlaceNames, Map.of());
     }
 
+    /**
+     * Vision 라벨 없이 호출 (하위 호환)
+     */
     public String buildUserPrompt(Dog dog, WalkRecord walk, WeatherService.WeatherData weather,
                                   List<String> nearbyPlaceNames, Map<String, EmotionResult> photoResults) {
+        return buildUserPrompt(dog, walk, weather, nearbyPlaceNames, photoResults, Map.of());
+    }
+
+    public String buildUserPrompt(Dog dog, WalkRecord walk, WeatherService.WeatherData weather,
+                                  List<String> nearbyPlaceNames, Map<String, EmotionResult> photoResults,
+                                  Map<String, VisionLabelResult> visionResults) {
         StringBuilder sb = new StringBuilder();
         sb.append("아래 산책 정보를 바탕으로 일기를 작성해주세요:\n\n");
 
@@ -88,6 +98,33 @@ public class DiaryPromptBuilder {
 
         if (nearbyPlaceNames != null && !nearbyPlaceNames.isEmpty()) {
             sb.append("- 산책 장소: ").append(String.join(", ", nearbyPlaceNames)).append("\n");
+        }
+
+        // 사진에서 감지된 동물/사물 (Vision API)
+        if (visionResults != null && !visionResults.isEmpty()) {
+            // 모든 사진에서 감지된 동물 모으기 (중복 제거)
+            List<String> allAnimals = new ArrayList<>();
+            List<String> allScenes = new ArrayList<>();
+            for (VisionLabelResult vr : visionResults.values()) {
+                for (String animal : vr.animalLabels()) {
+                    String translated = translateLabel(animal);
+                    if (!allAnimals.contains(translated)) {
+                        allAnimals.add(translated);
+                    }
+                }
+                for (String scene : vr.sceneLabels()) {
+                    String translated = translateLabel(scene);
+                    if (!allScenes.contains(translated)) {
+                        allScenes.add(translated);
+                    }
+                }
+            }
+            if (!allAnimals.isEmpty()) {
+                sb.append("- 사진에서 발견된 동물: ").append(String.join(", ", allAnimals)).append("\n");
+            }
+            if (!allScenes.isEmpty()) {
+                sb.append("- 사진에서 보이는 환경: ").append(String.join(", ", allScenes)).append("\n");
+            }
         }
 
         // 강아지 감정 분석 결과 (사진별)
@@ -208,6 +245,28 @@ public class DiaryPromptBuilder {
         }
 
         return hints;
+    }
+
+    private static final Map<String, String> LABEL_KO = Map.ofEntries(
+            Map.entry("dog", "강아지"), Map.entry("puppy", "강아지"), Map.entry("canine", "강아지"),
+            Map.entry("cat", "고양이"), Map.entry("kitten", "고양이"), Map.entry("feline", "고양이"),
+            Map.entry("bird", "새"), Map.entry("duck", "오리"), Map.entry("pigeon", "비둘기"),
+            Map.entry("squirrel", "다람쥐"), Map.entry("rabbit", "토끼"), Map.entry("hamster", "햄스터"),
+            Map.entry("turtle", "거북이"), Map.entry("fish", "물고기"), Map.entry("butterfly", "나비"),
+            Map.entry("insect", "벌레"),
+            Map.entry("park", "공원"), Map.entry("grass", "잔디"), Map.entry("tree", "나무"),
+            Map.entry("flower", "꽃"), Map.entry("garden", "정원"), Map.entry("river", "강"),
+            Map.entry("lake", "호수"), Map.entry("beach", "해변"), Map.entry("mountain", "산"),
+            Map.entry("forest", "숲"), Map.entry("road", "도로"), Map.entry("sidewalk", "인도"),
+            Map.entry("bridge", "다리"), Map.entry("playground", "놀이터"), Map.entry("bench", "벤치"),
+            Map.entry("fountain", "분수"), Map.entry("sky", "하늘"), Map.entry("cloud", "구름"),
+            Map.entry("sunset", "노을"), Map.entry("snow", "눈"), Map.entry("rain", "비"),
+            Map.entry("leaf", "나뭇잎"), Map.entry("trail", "산책로"), Map.entry("path", "길"),
+            Map.entry("field", "들판")
+    );
+
+    private String translateLabel(String label) {
+        return LABEL_KO.getOrDefault(label.toLowerCase(), label);
     }
 
     /**
