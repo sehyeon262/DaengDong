@@ -30,7 +30,6 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.FilterAlt
 import androidx.compose.material.icons.filled.GpsFixed
-import androidx.compose.material.icons.filled.Navigation
 import androidx.compose.material.icons.filled.Route
 import androidx.compose.material.icons.outlined.Route
 import androidx.compose.material.icons.filled.LocalFireDepartment
@@ -65,8 +64,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.input.pointer.PointerEventPass
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
@@ -118,7 +115,6 @@ import com.kakao.vectormap.LatLng
 import com.kakao.vectormap.MapLifeCycleCallback
 import com.kakao.vectormap.MapView
 import androidx.core.graphics.scale
-import com.kakao.vectormap.camera.CameraPosition
 import com.kakao.vectormap.camera.CameraUpdateFactory
 import com.kakao.vectormap.label.Label
 import com.kakao.vectormap.label.LabelOptions
@@ -155,10 +151,6 @@ fun WalkScreen(
     var currentLocationLabel by remember { mutableStateOf<Label?>(null) }
     val currentPosition by viewModel.currentPosition.collectAsState()
     var fovOverlay by remember { mutableStateOf<Polygon?>(null) }
-    // GPS 버튼으로 트래킹 활성화 여부 (사용자가 지도를 드래그하면 자동 해제)
-    var isTrackingActive by remember { mutableStateOf(false) }
-    // GPS 버튼 모드: 0=꺼짐, 1=위치 추적, 2=방향 추적(heading up)
-    var gpsMode by remember { mutableStateOf(0) }
 
     // 산책 경로 폴리라인 (실제 산책 중 GPS 트래킹)
     val routePoints by viewModel.routePoints.collectAsState()
@@ -285,16 +277,8 @@ fun WalkScreen(
             // 최초 위치 수신 시 추천 경로 로드
             viewModel.loadRecommendedRoutes(pos.latitude, pos.longitude)
         } else {
-            // 이후: moveTo()로 이동 (마커 사라짐 없이)
+            // 이후: moveTo()로 이동 (마커 사라짐 없이, 카메라는 자유이동 유지)
             currentLocationLabel?.moveTo(pos)
-            // 방향 추적 모드: 위치 변경 시 카메라도 이동 (rotation 유지)
-            if (gpsMode == 2) {
-                map.moveCamera(
-                    CameraUpdateFactory.newCameraPosition(
-                        CameraPosition.from(pos.latitude, pos.longitude, 15, 0.0, azimuth.toDouble(), 0.0)
-                    )
-                )
-            }
         }
 
         // FOV cone 갱신
@@ -313,15 +297,6 @@ fun WalkScreen(
 
         // FOV cone 업데이트
         fovOverlay = updateFovCone(map, pos, azimuth, fovOverlay)
-
-        // 방향 추적 모드: azimuth 변경 시 카메라 회전
-        if (gpsMode == 2) {
-            map.moveCamera(
-                CameraUpdateFactory.newCameraPosition(
-                    CameraPosition.from(pos.latitude, pos.longitude, 15, 0.0, azimuth.toDouble(), 0.0)
-                )
-            )
-        }
     }
 
     // 외부에서 selectedRouteIndex 변경 시 페이저 스크롤
@@ -332,23 +307,7 @@ fun WalkScreen(
     }
 
     Box(
-        modifier = Modifier
-            .fillMaxSize()
-            // 사용자가 지도를 드래그하면 트래킹 중단 (이벤트는 소비하지 않아 지도에 그대로 전달)
-            .pointerInput(gpsMode) {
-                if (gpsMode == 0) return@pointerInput
-                awaitPointerEventScope {
-                    while (true) {
-                        val event = awaitPointerEvent(PointerEventPass.Initial)
-                        if (event.changes.any { it.position != it.previousPosition }) {
-                            kakaoMap?.trackingManager?.stopTracking()
-                            isTrackingActive = false
-                            gpsMode = 0
-                            break
-                        }
-                    }
-                }
-            }
+        modifier = Modifier.fillMaxSize()
     ) {
     // 위험 구역 선택 모드 진입 시 TrackingManager 중단
     // (트래킹은 GPS 버튼 클릭 시에만 일시적으로 카메라 이동 — startTracking 사용 안 함)
@@ -743,36 +702,12 @@ fun WalkScreen(
                 }
             )
             MapOverlayButton(
-                icon = if (gpsMode == 2) Icons.Filled.Navigation else Icons.Filled.GpsFixed,
+                icon = Icons.Filled.GpsFixed,
                 contentDescription = "현재 위치",
                 onClick = {
-                    when (gpsMode) {
-                        0 -> {
-                            // 1번 누름: 현재 위치로 카메라 이동 + 위치 추적 시작
-                            currentLocationLabel?.let { label ->
-                                kakaoMap?.trackingManager?.startTracking(label)
-                                isTrackingActive = true
-                                gpsMode = 1
-                            }
-                        }
-                        1 -> {
-                            // 2번 누름: 방향 추적 모드 (heading up)
-                            kakaoMap?.trackingManager?.stopTracking()
-                            isTrackingActive = false
-                            gpsMode = 2
-                            currentPosition?.let { pos ->
-                                kakaoMap?.moveCamera(
-                                    CameraUpdateFactory.newCameraPosition(
-                                        CameraPosition.from(pos.latitude, pos.longitude, 15, 0.0, azimuth.toDouble(), 0.0)
-                                    )
-                                )
-                            }
-                        }
-                        else -> {
-                            // 3번 누름: 초기화 (North up)
-                            gpsMode = 0
-                            isTrackingActive = false
-                        }
+                    // 현재 위치로 카메라 이동 (한 번만, 이후 지도 자유이동 유지)
+                    currentPosition?.let { pos ->
+                        kakaoMap?.moveCamera(CameraUpdateFactory.newCenterPosition(pos, 15))
                     }
                 }
             )
