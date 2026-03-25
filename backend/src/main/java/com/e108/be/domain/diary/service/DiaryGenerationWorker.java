@@ -41,6 +41,7 @@ public class DiaryGenerationWorker {
     private final DiaryPromptBuilder promptBuilder;
     private final RedisTemplate<String, String> redisTemplate;
     private final DogEmotionAnalyzer emotionAnalyzer;
+    private final VisionService visionService;
 
     @Async("diaryExecutor")
     @Transactional
@@ -53,21 +54,31 @@ public class DiaryGenerationWorker {
             Dog dog = dogRepository.findById(dogId)
                     .orElseThrow(() -> new IllegalStateException("Dog not found: " + dogId));
 
-            // 날씨 + 장소 + 사진 감정분석을 동시에 실행
+            // 날씨 + 장소를 비동기로 조회
             CompletableFuture<WeatherService.WeatherData> weatherFuture =
                     CompletableFuture.supplyAsync(() -> fetchWeather(walkId));
             CompletableFuture<List<String>> placesFuture =
                     CompletableFuture.supplyAsync(() -> fetchNearbyPlaces(walkId));
-            Map<String, EmotionResult> photoResults = analyzeAllPhotos(walk.getPhotoUrls());
+
+            // 1단계: Vision API로 사진 라벨 분석 (강아지 탐지 + 주변 사물)
+            Map<String, VisionLabelResult> visionResults = analyzeAllPhotosWithVision(walk.getPhotoUrls());
+
+            // 2단계: 강아지가 감지된 사진만 감정 분석 실행
+            List<String> dogPhotoUrls = visionResults.entrySet().stream()
+                    .filter(e -> e.getValue() != null && e.getValue().hasDog())
+                    .map(Map.Entry::getKey)
+                    .toList();
+            Map<String, EmotionResult> photoResults = analyzeAllPhotos(dogPhotoUrls);
 
             WeatherService.WeatherData weather = weatherFuture.join();
             List<String> nearbyPlaceNames = placesFuture.join();
-            log.debug("[일기생성] 데이터 수집 완료 - weather={}, places={}", weather != null, nearbyPlaceNames);
+            log.debug("[일기생성] 데이터 수집 완료 - weather={}, places={}, vision={}장, emotion={}장",
+                    weather != null, nearbyPlaceNames, visionResults.size(), photoResults.size());
 
             EmotionResult bestResult = findBestResult(photoResults);
 
-            // 프롬프트 구성 + LLM 호출 (전체 분석 결과를 프롬프트에 반영)
-            String userPrompt = promptBuilder.buildUserPrompt(dog, walk, weather, nearbyPlaceNames, photoResults);
+            // 프롬프트 구성 + LLM 호출 (Vision 라벨 + 감정 분석 결과 모두 반영)
+            String userPrompt = promptBuilder.buildUserPrompt(dog, walk, weather, nearbyPlaceNames, photoResults, visionResults);
             log.debug("[일기생성] 프롬프트 생성 완료, AI 호출 시작...");
             String content = gmsAiClient.generate(DiaryPromptBuilder.DEVELOPER_PROMPT, userPrompt);
             log.debug("[일기생성] AI 응답 수신: {}자", content != null ? content.length() : 0);
@@ -107,7 +118,39 @@ public class DiaryGenerationWorker {
     }
 
     /**
-     * 모든 사진에 대해 감정 분석을 수행한다.
+     * Vision API로 모든 사진의 라벨을 분석한다 (강아지 탐지 + 주변 사물/동물).
+     */
+    private Map<String, VisionLabelResult> analyzeAllPhotosWithVision(List<String> photoUrls) {
+        Map<String, VisionLabelResult> results = new LinkedHashMap<>();
+
+        if (photoUrls == null || photoUrls.isEmpty()) {
+            return results;
+        }
+
+        ExecutorService executor = Executors.newFixedThreadPool(Math.min(photoUrls.size(), 4));
+        Map<String, CompletableFuture<VisionLabelResult>> futures = new LinkedHashMap<>();
+
+        for (String url : photoUrls) {
+            futures.put(url, CompletableFuture.supplyAsync(() -> visionService.analyze(url), executor));
+        }
+
+        CompletableFuture.allOf(futures.values().toArray(new CompletableFuture[0])).join();
+        executor.shutdown();
+
+        for (String url : photoUrls) {
+            VisionLabelResult result = futures.get(url).join();
+            if (result != null) {
+                results.put(url, result);
+            }
+        }
+
+        long dogCount = results.values().stream().filter(VisionLabelResult::hasDog).count();
+        log.info("[일기생성] Vision 분석 완료: 전체 {}장, 강아지 감지 {}장", results.size(), dogCount);
+        return results;
+    }
+
+    /**
+     * 강아지가 감지된 사진에 대해 감정 분석을 수행한다.
      * 이미지 다운로드+전처리는 병렬, ONNX 추론은 순차(세션이 thread-safe하지 않음).
      *
      * @return URL → EmotionResult 맵 (강아지가 감지된 사진만 포함)
