@@ -3,6 +3,7 @@ package com.frontend.data.local
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import kotlinx.coroutines.flow.Flow
@@ -38,12 +39,28 @@ class TokenDataStore @Inject constructor(
         return dataStore.data.map { prefs -> prefs[DOG_ID_KEY] }
     }
 
+    // 리프레시 토큰 가져오기
+    fun getRefreshToken(): Flow<String?> {
+        return dataStore.data.map { prefs -> prefs[REFRESH_TOKEN_KEY] }
+    }
+
+    // 로그인 유지 여부 저장
+    suspend fun saveKeepLogin(keep: Boolean) {
+        dataStore.edit { prefs -> prefs[KEEP_LOGIN_KEY] = keep }
+    }
+
+    // 로그인 유지 여부 가져오기
+    fun getKeepLogin(): Flow<Boolean> {
+        return dataStore.data.map { prefs -> prefs[KEEP_LOGIN_KEY] ?: false }
+    }
+
     // 토큰 삭제 (로그아웃때)
     suspend fun clearTokens() {
         dataStore.edit { prefs ->
             prefs.remove(ACCESS_TOKEN_KEY)
             prefs.remove(REFRESH_TOKEN_KEY)
             prefs.remove(DOG_ID_KEY)
+            prefs.remove(KEEP_LOGIN_KEY)
         }
     }
 
@@ -51,5 +68,6 @@ class TokenDataStore @Inject constructor(
         val ACCESS_TOKEN_KEY = stringPreferencesKey("access_token")
         val REFRESH_TOKEN_KEY = stringPreferencesKey("refresh_token")
         val DOG_ID_KEY = longPreferencesKey("dog_id")
+        val KEEP_LOGIN_KEY = booleanPreferencesKey("keep_login")
     }
 }

@@ -10,8 +10,9 @@ class LoginUseCase @Inject constructor(
 
     suspend operator fun invoke(
         email: String,
-        password: String
+        password: String,
+        keepLogin: Boolean = false
     ): LoginResponse {
-        return repository.login(email, password)
+        return repository.login(email, password, keepLogin)
     }
 }

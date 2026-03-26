@@ -9,8 +9,10 @@ package com.e108.be.domain.auth.service;
  */
 
 import com.e108.be.domain.auth.dto.request.LoginRequest;
+import com.e108.be.domain.auth.dto.request.RefreshTokenRequest;
 import com.e108.be.domain.auth.dto.request.RegisterRequest;
 import com.e108.be.domain.auth.dto.response.LoginResponse;
+import com.e108.be.domain.auth.dto.response.RefreshTokenResponse;
 import com.e108.be.domain.auth.dto.response.RegisterResponse;
 import com.e108.be.domain.auth.dto.response.ValidateTokenResponse;
 import com.e108.be.domain.auth.entity.User;
@@ -121,6 +123,32 @@ public class AuthService {
         return ValidateTokenResponse.builder()
                 .isValid(true)
                 .userId(userId)
+                .build();
+    }
+
+    /**
+     * Refresh Token으로 새 Access Token + Refresh Token 재발급:
+     * 1) Refresh Token 유효성 검증
+     * 2) memberId로 유저 조회
+     * 3) 새 토큰 발급 후 반환
+     */
+    public RefreshTokenResponse refreshToken(RefreshTokenRequest request) {
+        String refreshToken = request.getRefreshToken();
+
+        if (!jwtTokenProvider.validateToken(refreshToken)) {
+            throw new AuthException("유효하지 않은 Refresh Token입니다.");
+        }
+
+        Long memberId = jwtTokenProvider.getMemberId(refreshToken);
+        User user = userRepository.findById(memberId)
+                .orElseThrow(() -> new AuthException("존재하지 않는 사용자입니다."));
+
+        String newAccessToken = jwtTokenProvider.createToken(user.getId(), user.getEmail());
+        String newRefreshToken = jwtTokenProvider.createRefreshToken(user.getId(), user.getEmail());
+
+        return RefreshTokenResponse.builder()
+                .accessToken(newAccessToken)
+                .refreshToken(newRefreshToken)
                 .build();
     }
 
