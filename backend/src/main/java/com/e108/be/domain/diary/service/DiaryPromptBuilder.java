@@ -25,7 +25,35 @@ public class DiaryPromptBuilder {
             - 숫자(거리, 칼로리, 정확한 시간)는 절대 쓰지 마세요
             - 산책한 장소가 있으면 자연스럽게 언급해주세요 (예: "오늘 행복공원에 갔는데~", "누나랑 한강공원에서~")
             - 함께 산책한 강아지가 있으면 이름을 넣어서 "(이름)이랑 같이 뛰어다녔다!" 같이 써주세요
-            - 사진에서 발견된 동물이나 사물이 있으면 자연스럽게 언급해주세요 (예: "고양이를 만났다!", "나비가 날아다녔다!")
+
+            [중요] 사진에서 감지된 동물/풍경 처리 규칙:
+            - "~를 만났다", "~가 있었다", "~를 발견했다" 같은 사실 전달/보고 톤은 절대 금지!
+            - 반드시 강아지 본인이 직접 행동하고 반응하는 생생한 장면으로 써야 해요
+            - 감각(냄새, 소리, 촉감)을 넣어서 그 순간에 있는 것처럼 써주세요
+            - 여러 요소가 있으면 하나의 장면으로 합쳐주세요. 하나씩 나열하면 안 돼요!
+            - 좋은 예시:
+              "풀밭에서 킁킁거리는데 고양이가 나를 빤히 쳐다봤다! 코가 간질간질해서 재채기가 나왔어"
+              "나비가 코앞에서 팔랑팔랑~ 잡으려고 깡충 뛰었는데 휙 날아가버렸다!"
+              "벤치 밑에서 뭔가 바스락 소리가 나서 머리를 쑥 들이밀었더니 다람쥐가 쪼르르 도망갔어!"
+            - 나쁜 예시 (이렇게 쓰면 안 됨):
+              "고양이랑 강아지도 있었어" ← 보고 톤, 금지!
+              "공원에서 고양이를 만났다" ← 사실 전달, 금지!
+              "나비도 보고 고양이도 보고 잔디도 있었어" ← 나열식, 금지!
+
+            [중요] 날씨 반영 규칙:
+            - 날씨 정보가 주어지면 반드시 일기에 반영해야 해요!
+            - 비 오면 비 맞는 느낌, 흐리면 흐린 느낌, 맑으면 햇살 느낌을 강아지 감각으로 표현
+            - "날씨가 좋았다" 같은 뻔한 표현 금지! 강아지가 직접 느끼는 감각으로 써주세요
+            - 예: 비→"빗방울이 코에 톡톡!", 흐림→"하늘이 뿌옇고 바람이 쌀쌀~", 맑음→"햇살이 등을 따끈따끈 데워줬어!"
+
+            [중요] 첫 문장 다양하게 쓰기:
+            - "오늘 ○○랑 산책했다" 패턴으로 시작하지 마세요!
+            - 아래 중 하나를 골라서 매번 다르게 시작해주세요:
+              · 감각으로 시작: "바람이 쌩~ 불어서 귀가 펄럭펄럭!"
+              · 행동으로 시작: "현관문이 열리자마자 냅다 뛰쳐나갔다!"
+              · 발견으로 시작: "킁킁... 뭔가 맛있는 냄새가 코를 간질간질!"
+              · 감정으로 시작: "오늘은 왠지 발걸음이 통통통 가벼웠어!"
+
             - 아래 "상황 힌트"를 반드시 활용해서, 이 산책에서만 느낄 수 있는 구체적인 장면을 만들어주세요
             - 3~5문장, 100~180자
             - 제공된 데이터 기반으로만 쓰고, 없는 사건은 만들지 마세요
@@ -100,14 +128,15 @@ public class DiaryPromptBuilder {
             sb.append("- 산책 장소: ").append(String.join(", ", nearbyPlaceNames)).append("\n");
         }
 
-        // 사진에서 감지된 동물/사물 (Vision API)
+        // 사진에서 감지된 동물/사물 (Vision API) → 장면 재료로 전달
         if (visionResults != null && !visionResults.isEmpty()) {
-            // 모든 사진에서 감지된 동물 모으기 (중복 제거)
             List<String> allAnimals = new ArrayList<>();
             List<String> allScenes = new ArrayList<>();
             for (VisionLabelResult vr : visionResults.values()) {
                 for (String animal : vr.animalLabels()) {
                     String translated = translateLabel(animal);
+                    // "강아지"는 일기 쓰는 본인이므로 제외
+                    if ("강아지".equals(translated)) continue;
                     if (!allAnimals.contains(translated)) {
                         allAnimals.add(translated);
                     }
@@ -119,11 +148,17 @@ public class DiaryPromptBuilder {
                     }
                 }
             }
-            if (!allAnimals.isEmpty()) {
-                sb.append("- 사진에서 발견된 동물: ").append(String.join(", ", allAnimals)).append("\n");
-            }
-            if (!allScenes.isEmpty()) {
-                sb.append("- 사진에서 보이는 환경: ").append(String.join(", ", allScenes)).append("\n");
+            if (!allAnimals.isEmpty() || !allScenes.isEmpty()) {
+                // 장면 재료를 하나의 상황으로 묶어서 전달
+                sb.append("- 산책 중 장면 재료 (이것들을 하나의 장면으로 합쳐서, 강아지가 직접 행동·반응하는 묘사로 써주세요. 나열 금지!): ");
+                if (!allScenes.isEmpty()) {
+                    sb.append("배경=").append(String.join("+", allScenes));
+                }
+                if (!allAnimals.isEmpty()) {
+                    if (!allScenes.isEmpty()) sb.append(", ");
+                    sb.append("등장=").append(String.join("+", allAnimals));
+                }
+                sb.append("\n");
             }
         }
 
@@ -193,24 +228,34 @@ public class DiaryPromptBuilder {
             }
         }
 
-        // 3. 날씨 특수 상황
+        // 3. 날씨 (반드시 힌트 생성 - 모든 경우 커버)
         if (weather != null) {
             SkyStatus sky = SkyStatus.from(weather.skyCode(), weather.ptyCode());
             String label = sky.getLabel();
 
             if (label.contains("비")) {
-                hints.add("비 오는 날: 발이 축축해지고, 웅덩이에 첨벙! 빗방울이 코에 톡톡 떨어져요");
+                hints.add("★날씨[비]: 발이 축축해지고, 웅덩이에 첨벙! 빗방울이 코에 톡톡 떨어져요. 털이 축축해져서 몸을 부르르 털었어요");
             } else if (label.contains("눈")) {
-                hints.add("눈 오는 날: 하얀 눈 위에 발자국이 콕콕 찍혀요. 눈을 킁킁 맡아봤어요");
+                hints.add("★날씨[눈]: 하얀 눈 위에 발자국이 콕콕 찍혀요. 눈을 킁킁 맡아봤더니 차가웠어요!");
+            } else if (label.contains("흐")) {
+                hints.add("★날씨[흐림]: 하늘이 잔뜩 찌푸려 있고, 바람이 쌀쌀하게 불어요. 햇살이 없어서 좀 심심해요");
+            } else if (label.contains("구름")) {
+                hints.add("★날씨[구름많음]: 구름이 뭉게뭉게 떠다녀요. 햇살이 구름 사이로 숨바꼭질해요");
+            } else {
+                hints.add("★날씨[맑음]: 햇살이 등을 따끈따끈하게 데워줘요. 눈이 부셔서 눈을 찡그렸어요");
             }
 
             double temp = weather.temperature();
             if (temp >= 30) {
-                hints.add("아주 더운 날: 혀가 쭉 나오고 물이 너무 마셔요. 그늘에서 쉬고 싶어요");
+                hints.add("★기온[매우더움]: 혀가 쭉 나오고 헥헥헥! 물이 너무 먹고 싶어요. 그늘에서 쉬고 싶어요");
+            } else if (temp >= 25) {
+                hints.add("★기온[더움]: 좀 더워서 혀가 슬슬 나와요. 바람이 불면 시원해서 좋아요");
             } else if (temp <= 0) {
-                hints.add("아주 추운 날: 몸이 부르르 떨려요. 빨리 집에 가서 이불 속에 들어가고 싶어요");
-            } else if (temp >= 20 && temp <= 25) {
-                hints.add("딱 좋은 날씨: 산책하기 너무 좋아서 기분이 최고예요!");
+                hints.add("★기온[매우추움]: 몸이 부르르 떨려요. 발이 시려서 빨리 집에 가고 싶어요");
+            } else if (temp <= 10) {
+                hints.add("★기온[쌀쌀]: 바람이 차가워서 코가 시려요. 몸을 웅크리고 종종걸음 쳤어요");
+            } else if (temp >= 15 && temp <= 25) {
+                hints.add("★기온[적당]: 산책하기 딱 좋은 기온이에요! 발걸음이 가벼워요");
             }
         }
 

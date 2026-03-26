@@ -869,7 +869,7 @@ private fun formatDate(dateTimeStr: String): String {
     }
 }
 
-/** 사진을 최대 1920px, JPEG 80% 품질로 압축 (413 방지) */
+/** 사진을 최대 1920px, JPEG 80% 품질로 압축 + EXIF 회전 보정 (413 방지) */
 private fun compressImage(context: android.content.Context, uri: Uri, maxDimension: Int = 1920, quality: Int = 80): ByteArray? {
     return try {
         val inputStream = context.contentResolver.openInputStream(uri) ?: return null
@@ -877,15 +877,38 @@ private fun compressImage(context: android.content.Context, uri: Uri, maxDimensi
         inputStream.close()
         if (original == null) return null
 
-        val ratio = minOf(maxDimension.toFloat() / original.width, maxDimension.toFloat() / original.height, 1f)
+        // EXIF orientation 읽어서 회전 보정
+        val rotated = context.contentResolver.openInputStream(uri)?.use { exifStream ->
+            val exif = androidx.exifinterface.media.ExifInterface(exifStream)
+            val orientation = exif.getAttributeInt(
+                androidx.exifinterface.media.ExifInterface.TAG_ORIENTATION,
+                androidx.exifinterface.media.ExifInterface.ORIENTATION_NORMAL
+            )
+            val matrix = android.graphics.Matrix()
+            when (orientation) {
+                androidx.exifinterface.media.ExifInterface.ORIENTATION_ROTATE_90 -> matrix.postRotate(90f)
+                androidx.exifinterface.media.ExifInterface.ORIENTATION_ROTATE_180 -> matrix.postRotate(180f)
+                androidx.exifinterface.media.ExifInterface.ORIENTATION_ROTATE_270 -> matrix.postRotate(270f)
+                androidx.exifinterface.media.ExifInterface.ORIENTATION_FLIP_HORIZONTAL -> matrix.preScale(-1f, 1f)
+                androidx.exifinterface.media.ExifInterface.ORIENTATION_FLIP_VERTICAL -> matrix.preScale(1f, -1f)
+                androidx.exifinterface.media.ExifInterface.ORIENTATION_TRANSPOSE -> { matrix.postRotate(90f); matrix.preScale(-1f, 1f) }
+                androidx.exifinterface.media.ExifInterface.ORIENTATION_TRANSVERSE -> { matrix.postRotate(270f); matrix.preScale(-1f, 1f) }
+                else -> null
+            }?.let {
+                android.graphics.Bitmap.createBitmap(original, 0, 0, original.width, original.height, matrix, true)
+            }
+        } ?: original
+        if (rotated !== original) original.recycle()
+
+        val ratio = minOf(maxDimension.toFloat() / rotated.width, maxDimension.toFloat() / rotated.height, 1f)
         val scaled = if (ratio < 1f) {
-            android.graphics.Bitmap.createScaledBitmap(original, (original.width * ratio).toInt(), (original.height * ratio).toInt(), true)
-        } else original
+            android.graphics.Bitmap.createScaledBitmap(rotated, (rotated.width * ratio).toInt(), (rotated.height * ratio).toInt(), true)
+        } else rotated
 
         val output = java.io.ByteArrayOutputStream()
         scaled.compress(android.graphics.Bitmap.CompressFormat.JPEG, quality, output)
-        if (scaled !== original) scaled.recycle()
-        original.recycle()
+        if (scaled !== rotated) scaled.recycle()
+        rotated.recycle()
         output.toByteArray()
     } catch (e: Exception) {
         null

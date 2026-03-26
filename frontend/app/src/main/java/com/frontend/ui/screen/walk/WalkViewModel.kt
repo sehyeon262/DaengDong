@@ -4,6 +4,8 @@ import android.content.Context
 import android.database.ContentObserver
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.graphics.Matrix
+import androidx.exifinterface.media.ExifInterface
 import android.hardware.Sensor
 import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
@@ -327,69 +329,85 @@ class WalkViewModel @Inject constructor(
     }
 
     private val uploadMutex = kotlinx.coroutines.sync.Mutex()
+    private var pendingUploadJob: kotlinx.coroutines.Job? = null
 
     private fun checkAndUploadNewPhotos(walkId: Long) {
-        viewModelScope.launch {
-            // 동시 실행 방지 — ContentObserver가 같은 사진에 여러 번 호출될 수 있음
-            if (!uploadMutex.tryLock()) return@launch
-            try {
-                val projection = arrayOf(
-                    MediaStore.Images.Media._ID,
-                    MediaStore.Images.Media.DATE_TAKEN,
-                    MediaStore.Images.Media.DATE_ADDED,
-                    MediaStore.Images.Media.MIME_TYPE,
-                )
-                // DATE_ADDED(초 단위)를 primary로 사용 — 항상 시스템이 설정하므로 안정적
-                // DATE_TAKEN은 EXIF 의존이라 에뮬레이터/일부 카메라 앱에서 누락됨
-                val walkStartSeconds = walkStartTimestamp / 1000
-                val selection = "${MediaStore.Images.Media.DATE_ADDED} >= ?"
-                val selectionArgs = arrayOf(walkStartSeconds.toString())
-                val sortOrder = "${MediaStore.Images.Media.DATE_ADDED} DESC"
+        // debounce: ContentObserver가 사진 하나에 여러 번 fire → 500ms 대기 후 한 번만 처리
+        // 단, debounce만 취소하고 이미 진행 중인 업로드는 취소하지 않음
+        pendingUploadJob?.cancel()
+        pendingUploadJob = viewModelScope.launch {
+            kotlinx.coroutines.delay(500)
+            // NonCancellable: 업로드 시작 후에는 취소 방지 → uploadedPhotoIds 누락 방지
+            kotlinx.coroutines.withContext(kotlinx.coroutines.NonCancellable) {
+                uploadMutex.lock()
+                try {
+                    val projection = arrayOf(
+                        MediaStore.Images.Media._ID,
+                        MediaStore.Images.Media.DATE_ADDED,
+                        MediaStore.Images.Media.MIME_TYPE,
+                    )
+                    val walkStartSeconds = walkStartTimestamp / 1000
+                    val selection = "${MediaStore.Images.Media.DATE_ADDED} >= ?"
+                    val selectionArgs = arrayOf(walkStartSeconds.toString())
+                    val sortOrder = "${MediaStore.Images.Media.DATE_ADDED} ASC"
 
-                context.contentResolver.query(
-                    MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
-                    projection, selection, selectionArgs, sortOrder
-                )?.use { cursor ->
-                    val idCol = cursor.getColumnIndexOrThrow(MediaStore.Images.Media._ID)
-                    val mimeCol = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.MIME_TYPE)
+                    context.contentResolver.query(
+                        MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
+                        projection, selection, selectionArgs, sortOrder
+                    )?.use { cursor ->
+                        val idCol = cursor.getColumnIndexOrThrow(MediaStore.Images.Media._ID)
+                        val mimeCol = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.MIME_TYPE)
 
-                    while (cursor.moveToNext()) {
-                        val photoId = cursor.getLong(idCol)
-                        if (photoId in uploadedPhotoIds) continue
+                        // 먼저 업로드할 사진 목록을 수집 (cursor 순회 중 네트워크 호출 방지)
+                        data class PendingPhoto(val id: Long, val mime: String)
+                        val pendingPhotos = mutableListOf<PendingPhoto>()
 
-                        val mime = cursor.getString(mimeCol) ?: "image/jpeg"
-                        val ext = when {
-                            mime.contains("png") -> "png"
-                            mime.contains("webp") -> "webp"
-                            mime.contains("heic") || mime.contains("heif") -> "heic"
-                            else -> "jpg"
-                        }
-                        val contentUri = android.content.ContentUris.withAppendedId(
-                            MediaStore.Images.Media.EXTERNAL_CONTENT_URI, photoId
-                        )
-
-                        val bytes = compressImage(contentUri) ?: continue
-                        val requestBody = bytes.toRequestBody("image/jpeg".toMediaTypeOrNull())
-                        val part = MultipartBody.Part.createFormData(
-                            "files", "walk_photo_${photoId}.${ext}", requestBody
-                        )
-                        val result = walkRepository.uploadPhotos(walkId, listOf(part))
-                        if (result.isSuccess) {
+                        while (cursor.moveToNext()) {
+                            val photoId = cursor.getLong(idCol)
+                            if (photoId in uploadedPhotoIds) continue
+                            // 업로드 시작 전에 미리 등록 → 중복 방지
                             uploadedPhotoIds.add(photoId)
-                        } else {
-                            android.util.Log.w("WalkVM", "사진 업로드 실패 (photoId=$photoId): ${result.exceptionOrNull()?.message}")
+                            val mime = cursor.getString(mimeCol) ?: "image/jpeg"
+                            pendingPhotos.add(PendingPhoto(photoId, mime))
+                        }
+
+                        for (photo in pendingPhotos) {
+                            val ext = when {
+                                photo.mime.contains("png") -> "png"
+                                photo.mime.contains("webp") -> "webp"
+                                photo.mime.contains("heic") || photo.mime.contains("heif") -> "heic"
+                                else -> "jpg"
+                            }
+                            val contentUri = android.content.ContentUris.withAppendedId(
+                                MediaStore.Images.Media.EXTERNAL_CONTENT_URI, photo.id
+                            )
+
+                            val bytes = compressImage(contentUri)
+                            if (bytes == null) {
+                                uploadedPhotoIds.remove(photo.id) // 압축 실패 시 재시도 허용
+                                continue
+                            }
+                            val requestBody = bytes.toRequestBody("image/jpeg".toMediaTypeOrNull())
+                            val part = MultipartBody.Part.createFormData(
+                                "files", "walk_photo_${photo.id}.${ext}", requestBody
+                            )
+                            val result = walkRepository.uploadPhotos(walkId, listOf(part))
+                            if (!result.isSuccess) {
+                                uploadedPhotoIds.remove(photo.id) // 업로드 실패 시 재시도 허용
+                                android.util.Log.w("WalkVM", "사진 업로드 실패 (photoId=${photo.id}): ${result.exceptionOrNull()?.message}")
+                            }
                         }
                     }
+                } catch (e: Exception) {
+                    android.util.Log.w("WalkVM", "사진 자동 업로드 실패: ${e.message}")
+                } finally {
+                    uploadMutex.unlock()
                 }
-            } catch (e: Exception) {
-                android.util.Log.w("WalkVM", "사진 자동 업로드 실패: ${e.message}")
-            } finally {
-                uploadMutex.unlock()
             }
         }
     }
 
-    /** 사진을 최대 1920px, JPEG 80% 품질로 압축 (413 방지) */
+    /** 사진을 최대 1920px, JPEG 80% 품질로 압축 + EXIF 회전 보정 (413 방지) */
     private fun compressImage(uri: Uri, maxDimension: Int = 1920, quality: Int = 80): ByteArray? {
         return try {
             val inputStream = context.contentResolver.openInputStream(uri) ?: return null
@@ -397,15 +415,37 @@ class WalkViewModel @Inject constructor(
             inputStream.close()
             if (original == null) return null
 
-            val ratio = minOf(maxDimension.toFloat() / original.width, maxDimension.toFloat() / original.height, 1f)
+            // EXIF orientation 읽어서 회전 보정
+            val rotated = context.contentResolver.openInputStream(uri)?.use { exifStream ->
+                val exif = ExifInterface(exifStream)
+                val orientation = exif.getAttributeInt(
+                    ExifInterface.TAG_ORIENTATION, ExifInterface.ORIENTATION_NORMAL
+                )
+                val matrix = Matrix()
+                when (orientation) {
+                    ExifInterface.ORIENTATION_ROTATE_90 -> matrix.postRotate(90f)
+                    ExifInterface.ORIENTATION_ROTATE_180 -> matrix.postRotate(180f)
+                    ExifInterface.ORIENTATION_ROTATE_270 -> matrix.postRotate(270f)
+                    ExifInterface.ORIENTATION_FLIP_HORIZONTAL -> matrix.preScale(-1f, 1f)
+                    ExifInterface.ORIENTATION_FLIP_VERTICAL -> matrix.preScale(1f, -1f)
+                    ExifInterface.ORIENTATION_TRANSPOSE -> { matrix.postRotate(90f); matrix.preScale(-1f, 1f) }
+                    ExifInterface.ORIENTATION_TRANSVERSE -> { matrix.postRotate(270f); matrix.preScale(-1f, 1f) }
+                    else -> null
+                }?.let {
+                    Bitmap.createBitmap(original, 0, 0, original.width, original.height, matrix, true)
+                }
+            } ?: original
+            if (rotated !== original) original.recycle()
+
+            val ratio = minOf(maxDimension.toFloat() / rotated.width, maxDimension.toFloat() / rotated.height, 1f)
             val scaled = if (ratio < 1f) {
-                Bitmap.createScaledBitmap(original, (original.width * ratio).toInt(), (original.height * ratio).toInt(), true)
-            } else original
+                Bitmap.createScaledBitmap(rotated, (rotated.width * ratio).toInt(), (rotated.height * ratio).toInt(), true)
+            } else rotated
 
             val output = java.io.ByteArrayOutputStream()
             scaled.compress(Bitmap.CompressFormat.JPEG, quality, output)
-            if (scaled !== original) scaled.recycle()
-            original.recycle()
+            if (scaled !== rotated) scaled.recycle()
+            rotated.recycle()
             output.toByteArray()
         } catch (e: Exception) {
             android.util.Log.w("WalkVM", "사진 압축 실패: ${e.message}")
