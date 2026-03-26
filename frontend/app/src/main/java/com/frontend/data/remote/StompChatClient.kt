@@ -74,6 +74,13 @@ class StompChatClient @Inject constructor(
     val isConnected: Boolean get() = webSocket != null && _connected.value
 
     /**
+     * 현재 사용자가 열람 중인 채팅방 ID.
+     * ChatScreen 진입 시 set, 퇴장 시 null로 초기화.
+     * WalkViewModel 배너 알림이 이미 열람 중인 채팅방에 대해 뜨지 않도록 사용.
+     */
+    var activeChatRoomId: Long? = null
+
+    /**
      * WebSocket 연결 및 STOMP CONNECT 전송.
      * @param wsUrl  ws://host:port/ws-native 형태
      * @param token  JWT 액세스 토큰 (Bearer 접두사 없이)

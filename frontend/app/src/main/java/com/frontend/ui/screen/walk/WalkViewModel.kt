@@ -61,6 +61,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 import javax.inject.Inject
 import kotlin.math.abs
 import kotlin.math.atan2
@@ -1364,13 +1365,17 @@ class WalkViewModel @Inject constructor(
             val wsUrl = buildWsUrl()
             if (!stompChatClient.isConnected) {
                 stompChatClient.connect(wsUrl, token)
-                stompChatClient.connected.first { it }
+                // CONNECTED 신호 대기 (최대 15초) — 연결 실패 시 무한 대기 방지
+                val connected = withTimeoutOrNull(15_000L) {
+                    stompChatClient.connected.first { it }
+                }
+                if (connected == null) return@launch
             }
             stompChatClient.subscribe(chatRoomId)
 
-            // 수신 메시지 → 배너 알림
+            // 수신 메시지 → 배너 알림 (ChatScreen에서 이미 보고 있으면 억제)
             stompChatClient.messages.collect { (roomId, message) ->
-                if (roomId == chatRoomId) {
+                if (roomId == chatRoomId && stompChatClient.activeChatRoomId != chatRoomId) {
                     _state.update { it.copy(
                         chatBanner = ChatBannerNotification(
                             chatRoomId = roomId,

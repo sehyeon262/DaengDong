@@ -14,6 +14,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 import javax.inject.Inject
 
 @HiltViewModel
@@ -30,6 +31,7 @@ class ChatViewModel @Inject constructor(
     val state = _state.asStateFlow()
 
     init {
+        stompChatClient.activeChatRoomId = chatRoomId  // 이 채팅방을 열람 중임을 알림 (배너 억제)
         loadHistory()
         connectAndSubscribe()
         observeMessages()
@@ -63,8 +65,14 @@ class ChatViewModel @Inject constructor(
             val wsUrl = buildWsUrl()
             if (!stompChatClient.isConnected) {
                 stompChatClient.connect(wsUrl, token)
-                // CONNECTED 신호 대기 후 구독
-                stompChatClient.connected.first { it }
+                // CONNECTED 신호 대기 (최대 15초) — 연결 실패 시 무한 대기 방지
+                val connected = withTimeoutOrNull(15_000L) {
+                    stompChatClient.connected.first { it }
+                }
+                if (connected == null) {
+                    _state.update { it.copy(error = "서버 연결에 실패했습니다. 네트워크를 확인해주세요.") }
+                    return@launch
+                }
             }
             stompChatClient.subscribe(chatRoomId)
         }
@@ -126,6 +134,11 @@ class ChatViewModel @Inject constructor(
 
     override fun onCleared() {
         super.onCleared()
-        stompChatClient.unsubscribe(chatRoomId)
+        // 열람 중인 채팅방 초기화 → WalkViewModel 배너 다시 활성화
+        if (stompChatClient.activeChatRoomId == chatRoomId) {
+            stompChatClient.activeChatRoomId = null
+        }
+        // WalkViewModel이 동일 chatRoomId를 구독 중일 수 있으므로 브로커 구독은 해제하지 않는다.
+        // 구독 해제 시 WalkViewModel의 배너 알림 수신이 중단되는 버그 방지.
     }
 }
