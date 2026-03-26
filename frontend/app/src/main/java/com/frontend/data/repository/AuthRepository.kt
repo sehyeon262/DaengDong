@@ -11,7 +11,7 @@ class AuthRepository @Inject constructor(
     private val tokenDataStore: TokenDataStore
 ) {
 
-    suspend fun login(email: String, password: String): LoginResponse {
+    suspend fun login(email: String, password: String, keepLogin: Boolean = false): LoginResponse {
         val response = api.login(LoginRequest(email, password))
         val loginData = response.data ?: throw Exception("로그인 응답 데이터가 없습니다")
 
@@ -19,6 +19,7 @@ class AuthRepository @Inject constructor(
             accessToken = loginData.accessToken,
             refreshToken = loginData.refreshToken
         )
+        tokenDataStore.saveKeepLogin(keepLogin)
         loginData.dogId?.let { tokenDataStore.saveDogId(it) }
 
         return loginData

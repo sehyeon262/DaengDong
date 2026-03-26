@@ -6,10 +6,12 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.sp
+import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -28,12 +30,23 @@ import com.frontend.ui.screen.record.RecordScreen
 import com.frontend.ui.screen.splash.SplashScreen
 import com.frontend.ui.screen.walk.WalkDetailScreen
 import com.frontend.ui.screen.walk.WalkScreen
+import com.frontend.navigation.NavGraphViewModel
 
 @Composable
 fun NavGraph() {
     val navController = rememberNavController()
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = navBackStackEntry?.destination?.route
+
+    // 토큰 만료 시 로그인 화면으로 이동
+    val navGraphViewModel: NavGraphViewModel = hiltViewModel()
+    LaunchedEffect(Unit) {
+        navGraphViewModel.unauthorizedEvent.collect {
+            navController.navigate(Routes.LOGIN) {
+                popUpTo(0) { inclusive = true }
+            }
+        }
+    }
 
     val showBottomBar = currentRoute in listOf(
         Routes.HOME, Routes.WALK, Routes.RECORD, Routes.MY_INFO
@@ -48,7 +61,6 @@ fun NavGraph() {
     ) { innerPadding ->
         NavHost(
             navController = navController,
-            // TODO: (로그인 우회 : Routes.HOME) (원래: Routes.SPLASH)
             startDestination = Routes.SPLASH,
             modifier = Modifier.padding(innerPadding)
         ) {

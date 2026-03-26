@@ -18,11 +18,11 @@ class LoginViewModel @Inject constructor(
     private val _state = MutableStateFlow(LoginState())
     val state = _state.asStateFlow()
 
-    fun login(email: String, password: String) {
+    fun login(email: String, password: String, keepLogin: Boolean = false) {
         viewModelScope.launch {
             _state.update { it.copy(isLoading = true, error = null) }
             try {
-                loginUseCase(email, password)
+                loginUseCase(email, password, keepLogin)
                 _state.update { it.copy(isLoading = false, isSuccess = true) }
             } catch (e: Exception) {
                 _state.update { it.copy(isLoading = false, error = e.message) }

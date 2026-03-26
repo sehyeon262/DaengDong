@@ -1,6 +1,7 @@
 package com.frontend.di
 
 import com.frontend.BuildConfig
+import com.frontend.data.local.TokenDataStore
 import com.frontend.data.remote.AuthApi
 import com.frontend.data.remote.BadgeApi
 import com.frontend.data.remote.ChatApi
@@ -18,6 +19,9 @@ import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
 import dagger.hilt.components.SingletonComponent
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.runBlocking
+import okhttp3.Interceptor
 import okhttp3.OkHttpClient
 import okhttp3.logging.HttpLoggingInterceptor
 import retrofit2.Retrofit
@@ -30,18 +34,91 @@ import javax.inject.Singleton
 @Retention(AnnotationRetention.BINARY)
 annotation class KakaoRetrofit
 
+/** Auth 전용 OkHttpClient — TokenAuthenticator 미포함 (순환의존 방지) */
+@Qualifier
+@Retention(AnnotationRetention.BINARY)
+annotation class AuthOkHttp
+
+/** Auth 전용 Retrofit — AuthApi 주입에 사용 */
+@Qualifier
+@Retention(AnnotationRetention.BINARY)
+annotation class AuthRetrofit
+
 @Module
 @InstallIn(SingletonComponent::class)
 object NetworkModule {
 
+    // ─────────────────────────────────────────────────────────────────
+    // Auth 전용 OkHttpClient / Retrofit
+    // TokenAuthenticator 가 AuthApi 를 필요로 하기 때문에,
+    // AuthApi 는 Authenticator 없는 별도 클라이언트로 만들어 순환의존을 방지
+    // ─────────────────────────────────────────────────────────────────
+
     @Provides
     @Singleton
-    fun provideOkHttpClient(): OkHttpClient {
+    @AuthOkHttp
+    fun provideAuthOkHttpClient(): OkHttpClient {
         return OkHttpClient.Builder()
             .addInterceptor(HttpLoggingInterceptor().apply {
                 level = if (BuildConfig.DEBUG) HttpLoggingInterceptor.Level.HEADERS
                         else HttpLoggingInterceptor.Level.NONE
             })
+            .connectTimeout(30, TimeUnit.SECONDS)
+            .readTimeout(30, TimeUnit.SECONDS)
+            .build()
+    }
+
+    @Provides
+    @Singleton
+    @AuthRetrofit
+    fun provideAuthRetrofit(@AuthOkHttp okHttpClient: OkHttpClient): Retrofit {
+        return Retrofit.Builder()
+            .baseUrl(Constants.BASE_URL)
+            .client(okHttpClient)
+            .addConverterFactory(GsonConverterFactory.create())
+            .build()
+    }
+
+    @Provides
+    @Singleton
+    fun provideAuthApi(@AuthRetrofit retrofit: Retrofit): AuthApi {
+        return retrofit.create(AuthApi::class.java)
+    }
+
+    // ─────────────────────────────────────────────────────────────────
+    // 메인 OkHttpClient / Retrofit
+    // AuthInterceptor(토큰 자동 삽입) + TokenAuthenticator(401 처리) 포함
+    // ─────────────────────────────────────────────────────────────────
+
+    @Provides
+    @Singleton
+    fun provideAuthInterceptor(tokenDataStore: TokenDataStore): Interceptor {
+        return Interceptor { chain ->
+            val token = runBlocking { tokenDataStore.getAccessToken().first() }
+            val request = if (token != null) {
+                chain.request().newBuilder()
+                    .header("Authorization", "Bearer $token")
+                    .build()
+            } else {
+                chain.request()
+            }
+            chain.proceed(request)
+        }
+    }
+
+    @Provides
+    @Singleton
+    fun provideOkHttpClient(
+        authInterceptor: Interceptor,
+        tokenAuthenticator: TokenAuthenticator
+    ): OkHttpClient {
+        return OkHttpClient.Builder()
+            .addInterceptor(HttpLoggingInterceptor().apply {
+                level = if (BuildConfig.DEBUG) HttpLoggingInterceptor.Level.HEADERS
+                        else HttpLoggingInterceptor.Level.NONE
+            })
+            .addInterceptor(authInterceptor)
+            .authenticator(tokenAuthenticator)
             .connectTimeout(30, TimeUnit.SECONDS)
             .readTimeout(30, TimeUnit.SECONDS)
             .writeTimeout(60, TimeUnit.SECONDS)  // 사진 업로드를 위해 넉넉하게
@@ -56,12 +133,6 @@ object NetworkModule {
             .client(okHttpClient)
             .addConverterFactory(GsonConverterFactory.create())
             .build()
-    }
-
-    @Provides
-    @Singleton
-    fun provideAuthApi(retrofit: Retrofit): AuthApi {
-        return retrofit.create(AuthApi::class.java)
     }
 
     @Provides
@@ -116,7 +187,7 @@ object NetworkModule {
     @Provides
     @Singleton
     @KakaoRetrofit
-    fun provideKakaoRetrofit(okHttpClient: OkHttpClient): Retrofit {
+    fun provideKakaoRetrofit(@AuthOkHttp okHttpClient: OkHttpClient): Retrofit {
         return Retrofit.Builder()
             .baseUrl("https://dapi.kakao.com/")
             .client(okHttpClient)

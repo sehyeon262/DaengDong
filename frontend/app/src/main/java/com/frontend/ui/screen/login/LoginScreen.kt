@@ -156,7 +156,7 @@ fun LoginScreen(
 
                     // 로그인 버튼
                     Button(
-                        onClick = { viewModel.login(email, password) },
+                        onClick = { viewModel.login(email, password, keepLogin) },
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(52.dp),
