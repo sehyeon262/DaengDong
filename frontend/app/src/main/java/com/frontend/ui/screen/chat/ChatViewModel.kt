@@ -138,7 +138,8 @@ class ChatViewModel @Inject constructor(
         if (stompChatClient.activeChatRoomId == chatRoomId) {
             stompChatClient.activeChatRoomId = null
         }
-        // WalkViewModel이 동일 chatRoomId를 구독 중일 수 있으므로 브로커 구독은 해제하지 않는다.
-        // 구독 해제 시 WalkViewModel의 배너 알림 수신이 중단되는 버그 방지.
+        // reference counting으로 관리되므로 안전하게 해제 가능.
+        // WalkViewModel도 같은 방을 구독 중이라면 count만 감소하고 브로커 구독은 유지된다.
+        stompChatClient.unsubscribe(chatRoomId)
     }
 }
