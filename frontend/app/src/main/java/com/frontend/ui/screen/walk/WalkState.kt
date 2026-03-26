@@ -46,6 +46,8 @@ data class WalkState(
     // ── 발자국 마커 ────────────────────────────────────────────────────────────
     val footprintPlaces: List<Place> = emptyList(),   // 도장 찍은 장소 목록
     val isFootprintPlacesLoading: Boolean = false,    // 발자국 장소 로딩 중 여부
+    val nearbyStampablePlace: Place? = null,          // 50m 이내 도장 찍을 수 있는 장소
+    val stampedPlaceIds: Set<Long> = emptySet(),      // 이번 산책에서 도장 찍은 장소 ID
 
     // ── 자유 산책 ──────────────────────────────────────────────────────────────
     val isWalking: Boolean = false,       // 산책 진행 중 여부
