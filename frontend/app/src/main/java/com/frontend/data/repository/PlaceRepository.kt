@@ -73,6 +73,15 @@ class PlaceRepository constructor(
         ).data ?: emptyList()
     }
 
+    /** 발자국 도장 찍기 — POST /maps/stamps */
+    suspend fun stampPlace(walkId: Long, dogId: Long, placeId: Long): Result<Unit> = runCatching {
+        val token = tokenDataStore.getAccessToken().first() ?: error("인증 토큰 없음")
+        placeApi.stampPlace(
+            authorization = "Bearer $token",
+            request = StampRequest(walkId, dogId, placeId)
+        )
+    }
+
     /** 신규 장소 등록 — POST /places (multipart/form-data)
      *  @param context  Uri → InputStream 변환에 필요
      *  @param imageUri 사용자가 선택한 이미지 Uri (null이면 이미지 없이 등록)

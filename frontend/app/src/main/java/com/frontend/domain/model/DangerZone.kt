@@ -29,3 +29,44 @@ data class RiskReportData(
     val description: String,
     val createdAt: String
 )
+
+/**
+ * 백엔드 NearbyRiskReportResponse와 매핑되는 서버 응답 DTO
+ * - GET /api/v1/safety/risk-zones/nearby 응답용
+ * - distanceM: 현재 위치에서 위험 구역까지의 거리 (미터)
+ */
+data class NearbyRiskReportData(
+    val riskReportId: Long,
+    val walkSessionId: Long?,
+    val latitude: Double,
+    val longitude: Double,
+    val description: String,
+    val createdAt: String,
+    val distanceM: Double
+)
+
+/**
+ * 개인 위험장소 (서버에 영구 저장된 상태)
+ * - mine API 응답 기반
+ * - isPersisted: 서버에 저장 완료 여부
+ */
+data class PersistedDangerZone(
+    val id: Long,
+    val location: DangerLocation,
+    val reason: DangerReason,
+    val customReason: String? = null,
+    val createdAt: String? = null
+)
+
+/**
+ * 근접 위험장소 (nearby API 응답 기반)
+ * - 알림 트리거 용도
+ * - distanceM: 현재 위치에서의 거리 (미터)
+ */
+data class NearbyDangerZone(
+    val id: Long,
+    val location: DangerLocation,
+    val reason: DangerReason,
+    val customReason: String? = null,
+    val distanceM: Double
+)

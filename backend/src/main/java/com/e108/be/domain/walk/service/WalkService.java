@@ -509,12 +509,15 @@ public class WalkService {
      * PATCH /walks/proposals/{proposalId}
      */
     @Transactional
-    public void respondToProposal(String proposalId, ProposalRespondRequest request) {
+    public Long respondToProposal(String proposalId, ProposalRespondRequest request) {
         String hashKey = PROPOSAL_KEY_PREFIX + request.getMyWalkRecordId();
         Object raw = redisTemplate.opsForHash().get(hashKey, proposalId);
         if (raw == null) {
             throw new ProposalNotFoundException();
         }
+
+        // 수락 시 채팅방 ID를 반환하기 위한 메서드 레벨 변수
+        Long resultChatRoomId = null;
 
         if (ProposalAction.ACCEPT == request.getAction()) {
             try {
@@ -551,6 +554,8 @@ public class WalkService {
                         log.warn("[respondToProposal] 채팅방 생성 오류: {}", e.getMessage());
                     }
                 }
+                // 수락자도 chatRoomId를 알 수 있도록 메서드 레벨 변수에 저장
+                resultChatRoomId = chatRoomId;
 
                 // 제안자(fromWalkRecordId)에게 수락 알림 저장 (30분 TTL)
                 Dog myDog = dogRepository.findById(myRecord.getDogId()).orElse(null);
@@ -610,6 +615,9 @@ public class WalkService {
 
         // ACCEPT / REJECT 모두 Redis에서 삭제
         redisTemplate.opsForHash().delete(hashKey, proposalId);
+
+        // ACCEPT 시 생성된 chatRoomId 반환, REJECT 시 null 반환
+        return resultChatRoomId;
     }
 
     /**

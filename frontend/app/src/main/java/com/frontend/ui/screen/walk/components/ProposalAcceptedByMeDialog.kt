@@ -12,6 +12,7 @@ import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -28,6 +29,8 @@ import com.frontend.ui.theme.PointGreen
 @Composable
 fun ProposalAcceptedByMeDialog(
     onDismiss: () -> Unit,
+    chatRoomId: Long? = null,
+    onStartChat: (Long) -> Unit = {},
 ) {
     Dialog(onDismissRequest = onDismiss) {
         Surface(
@@ -69,15 +72,41 @@ fun ProposalAcceptedByMeDialog(
 
                 Spacer(Modifier.height(22.dp))
 
-                Button(
-                    onClick = onDismiss,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(46.dp),
-                    shape = RoundedCornerShape(12.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = PointGreen)
-                ) {
-                    Text("확인", color = Color.White, fontWeight = FontWeight.Bold)
+                if (chatRoomId != null) {
+                    Button(
+                        onClick = {
+                            onDismiss()
+                            onStartChat(chatRoomId)
+                        },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(46.dp),
+                        shape = RoundedCornerShape(12.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = PointGreen)
+                    ) {
+                        Text("채팅하기", color = Color.White, fontWeight = FontWeight.Bold)
+                    }
+                    Spacer(Modifier.height(8.dp))
+                    OutlinedButton(
+                        onClick = onDismiss,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(46.dp),
+                        shape = RoundedCornerShape(12.dp),
+                    ) {
+                        Text("확인", color = PointGreen, fontWeight = FontWeight.Bold)
+                    }
+                } else {
+                    Button(
+                        onClick = onDismiss,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(46.dp),
+                        shape = RoundedCornerShape(12.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = PointGreen)
+                    ) {
+                        Text("확인", color = Color.White, fontWeight = FontWeight.Bold)
+                    }
                 }
             }
         }

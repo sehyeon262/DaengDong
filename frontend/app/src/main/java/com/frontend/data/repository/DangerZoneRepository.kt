@@ -6,7 +6,8 @@ import com.frontend.domain.model.DangerLocation
 import com.frontend.domain.model.DangerReason
 import com.frontend.domain.model.DangerZone
 import com.frontend.domain.model.DangerZoneResult
-import com.frontend.domain.model.NewBadgeInfo
+import com.frontend.domain.model.NearbyDangerZone
+import com.frontend.domain.model.PersistedDangerZone
 import com.frontend.domain.model.ReportDangerZoneRequest
 import kotlinx.coroutines.flow.first
 import javax.inject.Inject
@@ -18,10 +19,8 @@ class DangerZoneRepository @Inject constructor(
 
     /**
      * 위험 구역 신고 API 호출.
-     * - reason + customReason을 합쳐 백엔드 description 필드로 전송합니다.
-     * - walkId → walkSessionId 로 필드명 수정.
-     * - API 성공 시 서버 ID(riskReportId)를 DangerZone.id로 사용합니다.
-     * - API 실패 시에도 로컬 마커는 표시됩니다.
+     * - 서버 실패 시 Result.failure 반환 (실패를 삼키지 않음)
+     * - 성공 시 서버 ID(riskReportId) 기반 DangerZoneResult 반환
      */
     suspend fun reportDangerZone(
         walkId: Long?,
@@ -35,31 +34,26 @@ class DangerZoneRepository @Inject constructor(
             reason.label
         }
 
-        var newBadges: List<NewBadgeInfo> = emptyList()
-        var serverId: Long? = null
+        val token = tokenDataStore.getAccessToken().first()
+            ?: error("로그인이 필요합니다.")
 
-        try {
-            val token = tokenDataStore.getAccessToken().first()
-            if (token != null) {
-                val response = dangerZoneApi.reportDangerZone(
-                    authorization = "Bearer $token",
-                    request = ReportDangerZoneRequest(
-                        walkSessionId = walkId,
-                        latitude = location.latitude,
-                        longitude = location.longitude,
-                        description = description
-                    )
-                )
-                serverId = response.data?.riskReportId
-                newBadges = response.data?.newBadges ?: emptyList()
-            }
-        } catch (e: Exception) {
-            android.util.Log.w("DangerZoneRepository", "API 신고 실패: ${e.message}")
-        }
+        val response = dangerZoneApi.reportDangerZone(
+            authorization = "Bearer $token",
+            request = ReportDangerZoneRequest(
+                walkSessionId = walkId,
+                latitude = location.latitude,
+                longitude = location.longitude,
+                description = description
+            )
+        )
+
+        val serverId = response.data?.riskReportId
+            ?: error("서버 응답에 riskReportId가 없습니다.")
+        val newBadges = response.data?.newBadges ?: emptyList()
 
         DangerZoneResult(
             dangerZone = DangerZone(
-                id = serverId ?: System.currentTimeMillis(),
+                id = serverId,
                 location = location,
                 reason = reason,
                 customReason = customReason
@@ -69,8 +63,8 @@ class DangerZoneRepository @Inject constructor(
     }
 
     /**
-     * 현재 위치 주변 위험 구역 목록 조회.
-     * 백엔드에서 서버 DB에 저장된 모든 위험 구역을 반환합니다.
+     * 현재 위치 주변 위험 구역 목록 조회 (전체 사용자).
+     * - 지도 표시용 (알림용 아님)
      */
     suspend fun getDangerZones(
         latitude: Double,
@@ -94,6 +88,63 @@ class DangerZoneRepository @Inject constructor(
                 location = DangerLocation(data.latitude, data.longitude),
                 reason = parsedReason,
                 customReason = parsedCustomReason
+            )
+        }
+    }
+
+    /**
+     * 내 위험 구역 전체 목록 조회 (영구 저장 목록).
+     * - 앱/화면 재진입 시 복원 용도
+     * - GET /api/v1/safety/risk-zones/mine
+     */
+    suspend fun getMyRiskZones(): Result<List<PersistedDangerZone>> = runCatching {
+        val token = tokenDataStore.getAccessToken().first()
+            ?: error("로그인이 필요합니다.")
+
+        val response = dangerZoneApi.getMyRiskZones(
+            authorization = "Bearer $token"
+        )
+
+        (response.data ?: emptyList()).map { data ->
+            val (parsedReason, parsedCustomReason) = parseDescription(data.description)
+            PersistedDangerZone(
+                id = data.riskReportId,
+                location = DangerLocation(data.latitude, data.longitude),
+                reason = parsedReason,
+                customReason = parsedCustomReason,
+                createdAt = data.createdAt
+            )
+        }
+    }
+
+    /**
+     * 내 주변 위험 구역 조회 (거리 포함).
+     * - 산책 중 근접 알림 입력 용도
+     * - GET /api/v1/safety/risk-zones/nearby
+     */
+    suspend fun getNearbyMyRiskZones(
+        latitude: Double,
+        longitude: Double,
+        radiusMeters: Double = 200.0
+    ): Result<List<NearbyDangerZone>> = runCatching {
+        val token = tokenDataStore.getAccessToken().first()
+            ?: error("로그인이 필요합니다.")
+
+        val response = dangerZoneApi.getNearbyMyRiskZones(
+            authorization = "Bearer $token",
+            latitude = latitude,
+            longitude = longitude,
+            radiusMeters = radiusMeters
+        )
+
+        (response.data ?: emptyList()).map { data ->
+            val (parsedReason, parsedCustomReason) = parseDescription(data.description)
+            NearbyDangerZone(
+                id = data.riskReportId,
+                location = DangerLocation(data.latitude, data.longitude),
+                reason = parsedReason,
+                customReason = parsedCustomReason,
+                distanceM = data.distanceM
             )
         }
     }

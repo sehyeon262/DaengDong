@@ -19,6 +19,7 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.ui.platform.LocalContext
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
@@ -182,16 +183,14 @@ private fun WalkDetailContent(
     val context = LocalContext.current
     val state by viewModel.state.collectAsState()
 
-    // 갤러리 선택 런처
+    // 갤러리 선택 런처 (PickMultipleVisualMedia: 권한 없이도 모든 사진 선택 가능)
     val galleryLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.GetMultipleContents()
+        contract = ActivityResultContracts.PickMultipleVisualMedia()
     ) { uris: List<Uri> ->
         if (uris.isNotEmpty()) {
             val parts = uris.mapNotNull { uri ->
-                val stream = context.contentResolver.openInputStream(uri) ?: return@mapNotNull null
-                val bytes = stream.readBytes()
-                val mimeType = context.contentResolver.getType(uri) ?: "image/jpeg"
-                val requestBody = bytes.toRequestBody(mimeType.toMediaTypeOrNull())
+                val bytes = compressImage(context, uri) ?: return@mapNotNull null
+                val requestBody = bytes.toRequestBody("image/jpeg".toMediaTypeOrNull())
                 MultipartBody.Part.createFormData("files", "photo_${System.currentTimeMillis()}.jpg", requestBody)
             }
             if (parts.isNotEmpty()) viewModel.uploadPhotos(parts)
@@ -206,14 +205,14 @@ private fun WalkDetailContent(
             isUploading = state.isPhotoUploading,
             onDismiss = { showViewer = false },
             onDelete = { url -> viewModel.deletePhoto(url) },
-            onAddPhotos = { galleryLauncher.launch("image/*") }
+            onAddPhotos = { galleryLauncher.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) }
         )
     }
 
     // 사진 없을 때 갤러리 런처 직접 실행 후 뷰어 닫기
     if (showViewer && detail.photoUrls.isEmpty()) {
         LaunchedEffect(Unit) {
-            galleryLauncher.launch("image/*")
+            galleryLauncher.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
             showViewer = false
         }
     }
@@ -233,7 +232,7 @@ private fun WalkDetailContent(
                 initialPage = page
                 showViewer = true
             },
-            onAddPhotos = { galleryLauncher.launch("image/*") }
+            onAddPhotos = { galleryLauncher.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) }
         )
 
         // 산책 통계 카드
@@ -867,6 +866,52 @@ private fun formatDate(dateTimeStr: String): String {
         "${parts[0]}년 ${parts[1].toInt()}월 ${parts[2].toInt()}일"
     } catch (e: Exception) {
         dateTimeStr
+    }
+}
+
+/** 사진을 최대 1920px, JPEG 80% 품질로 압축 + EXIF 회전 보정 (413 방지) */
+private fun compressImage(context: android.content.Context, uri: Uri, maxDimension: Int = 1920, quality: Int = 80): ByteArray? {
+    return try {
+        val inputStream = context.contentResolver.openInputStream(uri) ?: return null
+        val original = android.graphics.BitmapFactory.decodeStream(inputStream)
+        inputStream.close()
+        if (original == null) return null
+
+        // EXIF orientation 읽어서 회전 보정
+        val rotated = context.contentResolver.openInputStream(uri)?.use { exifStream ->
+            val exif = androidx.exifinterface.media.ExifInterface(exifStream)
+            val orientation = exif.getAttributeInt(
+                androidx.exifinterface.media.ExifInterface.TAG_ORIENTATION,
+                androidx.exifinterface.media.ExifInterface.ORIENTATION_NORMAL
+            )
+            val matrix = android.graphics.Matrix()
+            when (orientation) {
+                androidx.exifinterface.media.ExifInterface.ORIENTATION_ROTATE_90 -> matrix.postRotate(90f)
+                androidx.exifinterface.media.ExifInterface.ORIENTATION_ROTATE_180 -> matrix.postRotate(180f)
+                androidx.exifinterface.media.ExifInterface.ORIENTATION_ROTATE_270 -> matrix.postRotate(270f)
+                androidx.exifinterface.media.ExifInterface.ORIENTATION_FLIP_HORIZONTAL -> matrix.preScale(-1f, 1f)
+                androidx.exifinterface.media.ExifInterface.ORIENTATION_FLIP_VERTICAL -> matrix.preScale(1f, -1f)
+                androidx.exifinterface.media.ExifInterface.ORIENTATION_TRANSPOSE -> { matrix.postRotate(90f); matrix.preScale(-1f, 1f) }
+                androidx.exifinterface.media.ExifInterface.ORIENTATION_TRANSVERSE -> { matrix.postRotate(270f); matrix.preScale(-1f, 1f) }
+                else -> null
+            }?.let {
+                android.graphics.Bitmap.createBitmap(original, 0, 0, original.width, original.height, matrix, true)
+            }
+        } ?: original
+        if (rotated !== original) original.recycle()
+
+        val ratio = minOf(maxDimension.toFloat() / rotated.width, maxDimension.toFloat() / rotated.height, 1f)
+        val scaled = if (ratio < 1f) {
+            android.graphics.Bitmap.createScaledBitmap(rotated, (rotated.width * ratio).toInt(), (rotated.height * ratio).toInt(), true)
+        } else rotated
+
+        val output = java.io.ByteArrayOutputStream()
+        scaled.compress(android.graphics.Bitmap.CompressFormat.JPEG, quality, output)
+        if (scaled !== rotated) scaled.recycle()
+        rotated.recycle()
+        output.toByteArray()
+    } catch (e: Exception) {
+        null
     }
 }
 

@@ -56,6 +56,13 @@ interface PlaceApi {
         @Query("dogId") dogId: Long
     ): ApiResponse<List<Place>>
 
+    /** 발자국 도장 찍기 — POST /api/v1/maps/stamps */
+    @POST("maps/stamps")
+    suspend fun stampPlace(
+        @Header("Authorization") authorization: String,
+        @Body request: StampRequest
+    ): ApiResponse<Void>
+
     /** 신규 장소 등록 — POST /api/v1/places (multipart/form-data)
      *  name, categoryName, latitude, longitude, address, memo, image(선택) */
     @Multipart

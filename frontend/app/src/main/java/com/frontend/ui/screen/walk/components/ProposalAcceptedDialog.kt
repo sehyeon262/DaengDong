@@ -10,6 +10,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -35,6 +36,7 @@ private val acceptedFallbackDrawables = listOf(R.drawable.husky, R.drawable.pood
 fun ProposalAcceptedDialog(
     accepted: AcceptedProposalInfo,
     onDismiss: () -> Unit,
+    onStartChat: (Long) -> Unit = {},
 ) {
     val fallback = acceptedFallbackDrawables[accepted.dogId.toInt() % acceptedFallbackDrawables.size]
 
@@ -84,13 +86,36 @@ fun ProposalAcceptedDialog(
 
                 Spacer(Modifier.height(20.dp))
 
-                Button(
-                    onClick = onDismiss,
-                    modifier = Modifier.fillMaxWidth().height(46.dp),
-                    shape = RoundedCornerShape(12.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = PointGreen)
-                ) {
-                    Text("확인", color = Color.White, fontWeight = FontWeight.Bold)
+                // 채팅방이 있으면 '채팅하기' 버튼도 표시
+                if (accepted.chatRoomId != null) {
+                    Button(
+                        onClick = {
+                            onDismiss()
+                            onStartChat(accepted.chatRoomId)
+                        },
+                        modifier = Modifier.fillMaxWidth().height(46.dp),
+                        shape = RoundedCornerShape(12.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = PointGreen)
+                    ) {
+                        Text("채팅하기", color = Color.White, fontWeight = FontWeight.Bold)
+                    }
+                    Spacer(Modifier.height(8.dp))
+                    OutlinedButton(
+                        onClick = onDismiss,
+                        modifier = Modifier.fillMaxWidth().height(46.dp),
+                        shape = RoundedCornerShape(12.dp),
+                    ) {
+                        Text("확인", color = PointGreen, fontWeight = FontWeight.Bold)
+                    }
+                } else {
+                    Button(
+                        onClick = onDismiss,
+                        modifier = Modifier.fillMaxWidth().height(46.dp),
+                        shape = RoundedCornerShape(12.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = PointGreen)
+                    ) {
+                        Text("확인", color = Color.White, fontWeight = FontWeight.Bold)
+                    }
                 }
             }
         }

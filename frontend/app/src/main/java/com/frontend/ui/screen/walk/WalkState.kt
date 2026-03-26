@@ -1,13 +1,16 @@
 package com.frontend.ui.screen.walk
 
+import com.frontend.domain.model.ChatBannerNotification
 import com.frontend.domain.model.DangerLocation
 import com.frontend.domain.model.DangerReason
 import com.frontend.domain.model.DangerZone
 import com.frontend.domain.model.AcceptedProposalInfo
 import com.frontend.domain.model.DogProfileResponse
+import com.frontend.domain.model.NearbyDangerZone
 import com.frontend.domain.model.NearbyDogResponse
 import com.frontend.domain.model.NewBadgeInfo
 import com.frontend.domain.model.PendingProposalInfo
+import com.frontend.domain.model.PersistedDangerZone
 import com.frontend.domain.model.RejectedProposalInfo
 import com.frontend.domain.model.Place
 import com.frontend.domain.model.RecommendedRoute
@@ -19,6 +22,24 @@ import com.frontend.domain.model.RecommendedRoute
 data class DogAlertState(
     val lastAlertTimeMs: Long = 0L,         // 마지막 알림 발송 시간
     val isInsideAlertRadius: Boolean = false, // 현재 알림 반경(50m) 안에 있는지
+)
+
+/**
+ * 장소 발자국 알림 상태 추적용 데이터 클래스
+ * - 20m 반경 진입/이탈 기반으로 알림 제어
+ */
+data class FootprintAlertState(
+    val isInsideRadius: Boolean = false,  // 현재 20m 반경 안에 있는지
+    val hasStamped: Boolean = false,      // 이번 산책에서 이미 도장 찍었는지 (영구 무시)
+)
+
+/**
+ * 위험장소 알림 상태 추적용 데이터 클래스
+ * - 진입 40m / 이탈 60m / 쿨다운 3분 기반 중복 알림 방지
+ */
+data class RiskZoneAlertState(
+    val lastAlertTimeMs: Long = 0L,          // 마지막 알림 발송 시간
+    val isInsideAlertRadius: Boolean = false, // 현재 알림 반경(40m) 안에 있는지
 )
 
 data class WalkState(
@@ -48,6 +69,12 @@ data class WalkState(
     val isFootprintPlacesLoading: Boolean = false,    // 발자국 장소 로딩 중 여부
     val nearbyStampablePlace: Place? = null,          // 50m 이내 도장 찍을 수 있는 장소
     val stampedPlaceIds: Set<Long> = emptySet(),      // 이번 산책에서 도장 찍은 장소 ID
+
+    // ── 발자국 찍기 오버레이 ────────────────────────────────────────────────
+    val footprintAlertPlace: Place? = null,                        // 현재 20m 이내의 장소 (null=오버레이 없음)
+    val footprintStamped: Boolean = false,                          // 도장 찍기 완료 여부
+    val footprintAlertStates: Map<Long, FootprintAlertState> = emptyMap(), // 장소별 진입/이탈/도장 상태
+    val walkPlaces: List<Place> = emptyList(),                      // 발자국 감지용 주변 장소 목록
 
     // ── 자유 산책 ──────────────────────────────────────────────────────────────
     val isWalking: Boolean = false,       // 산책 진행 중 여부
@@ -95,10 +122,24 @@ data class WalkState(
     val isDangerReportDialogOpen: Boolean = false,    // 신고 모달 열림 여부
     val selectedDangerReason: DangerReason? = null,   // 선택된 위험 사유
     val customDangerReason: String = "",              // "기타" 직접 입력 텍스트
-    val dangerZones: List<DangerZone> = emptyList(),  // 신고 완료된 위험 구역 목록
+    val dangerZones: List<DangerZone> = emptyList(),  // (레거시) 세션 중 신고된 위험 구역 임시 목록
     val isLoading: Boolean = false,                   // 제출 중 여부
     val error: String? = null,                        // 에러 메시지 (없으면 null)
 
+    // ── 개인 위험장소 (영구저장/근접알림) ──────────────────────────────────────
+    val persistedDangerZones: List<PersistedDangerZone> = emptyList(),  // 서버 영구저장 목록 (mine API)
+    val nearbyDangerZones: List<NearbyDangerZone> = emptyList(),        // 산책 중 반경 조회 결과 (nearby API)
+    val riskZoneAlertStates: Map<Long, RiskZoneAlertState> = emptyMap(), // 위험장소별 알림 상태
+    val warningRiskZoneQueue: List<NearbyDangerZone> = emptyList(),      // 경고 대기열 (큐 방식, 첫 번째가 현재 표시)
+
     // ── 배지 획득 알림 ──────────────────────────────────────────────────────
-    val newBadges: List<NewBadgeInfo> = emptyList()   // 새로 획득한 배지 목록
+    val newBadges: List<NewBadgeInfo> = emptyList(),   // 새로 획득한 배지 목록
+
+    // ── 채팅 관련 상태 ──────────────────────────────────────────────────────
+    /** dogId → chatRoomId: 수락된 제안의 채팅방 정보 보관 (프로필 팝업에서 채팅 버튼 표시용) */
+    val acceptedChatRooms: Map<Long, Long> = emptyMap(),
+    /** 수락자 확인 다이얼로그에서 바로 채팅방 이동할 수 있도록 최근 수락한 chatRoomId 보관 */
+    val acceptedByMeChatRoomId: Long? = null,
+    /** 화면 상단에 표시할 채팅 배너 알림 (null이면 숨김) */
+    val chatBanner: ChatBannerNotification? = null,
 )

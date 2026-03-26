@@ -39,7 +39,11 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import coil.compose.AsyncImage
+import androidx.compose.foundation.Image
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.ui.platform.LocalContext
+import coil.compose.SubcomposeAsyncImage
+import coil.request.ImageRequest
 import com.frontend.R
 import com.frontend.domain.model.Place
 import com.frontend.ui.theme.Dimens
@@ -95,21 +99,64 @@ fun PlaceDetailBottomSheet(
                         .fillMaxWidth()
                         .height(200.dp)
                 ) {
-                    AsyncImage(
-                        model = place.imageUrl,
-                        contentDescription = place.name,
-                        contentScale = ContentScale.Crop,
-                        placeholder = painterResource(R.drawable.place_mark),
-                        error = painterResource(R.drawable.place_mark),
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .clip(
-                                RoundedCornerShape(
-                                    topStart = Dimens.RadiusLarge,
-                                    topEnd = Dimens.RadiusLarge
+                    val validImageUrl = place.imageUrl
+                        ?.takeIf { it.startsWith("http://") || it.startsWith("https://") }
+
+                    if (validImageUrl != null) {
+                        val context = LocalContext.current
+                        SubcomposeAsyncImage(
+                            model = ImageRequest.Builder(context)
+                                .data(validImageUrl)
+                                .crossfade(true)
+                                .build(),
+                            contentDescription = place.name,
+                            contentScale = ContentScale.Crop,
+                            loading = {
+                                Box(
+                                    modifier = Modifier.fillMaxSize(),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    CircularProgressIndicator(
+                                        color = PointGreen,
+                                        modifier = Modifier.size(32.dp)
+                                    )
+                                }
+                            },
+                            error = {
+                                Image(
+                                    painter = painterResource(R.drawable.place_mark),
+                                    contentDescription = place.name,
+                                    contentScale = ContentScale.Fit,
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .padding(32.dp)
                                 )
-                            )
-                    )
+                            },
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .clip(
+                                    RoundedCornerShape(
+                                        topStart = Dimens.RadiusLarge,
+                                        topEnd = Dimens.RadiusLarge
+                                    )
+                                )
+                        )
+                    } else {
+                        Image(
+                            painter = painterResource(R.drawable.place_mark),
+                            contentDescription = place.name,
+                            contentScale = ContentScale.Fit,
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .clip(
+                                    RoundedCornerShape(
+                                        topStart = Dimens.RadiusLarge,
+                                        topEnd = Dimens.RadiusLarge
+                                    )
+                                )
+                                .padding(32.dp)
+                        )
+                    }
                     // 이미지 위 그라디언트 (가독성을 위해 하단을 살짝 어둡게)
                     Box(
                         modifier = Modifier
@@ -194,20 +241,22 @@ fun PlaceDetailBottomSheet(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        Box(
-                            modifier = Modifier
-                                .background(
-                                    color = PointGreen.copy(alpha = 0.15f),
-                                    shape = RoundedCornerShape(20.dp)
+                        place.categoryName?.let { category ->
+                            Box(
+                                modifier = Modifier
+                                    .background(
+                                        color = PointGreen.copy(alpha = 0.15f),
+                                        shape = RoundedCornerShape(20.dp)
+                                    )
+                                    .padding(horizontal = 10.dp, vertical = 4.dp)
+                            ) {
+                                Text(
+                                    text = category,
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = PointGreen
                                 )
-                                .padding(horizontal = 10.dp, vertical = 4.dp)
-                        ) {
-                            Text(
-                                text = place.categoryName,
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.SemiBold,
-                                color = PointGreen
-                            )
+                            }
                         }
                     }
 
@@ -235,7 +284,7 @@ fun PlaceDetailBottomSheet(
                     // ── 주소 ─────────────────────────────────────────────────
                     PlaceInfoRow(
                         icon = Icons.Filled.LocationOn,
-                        text = place.address.ifBlank { "주소 정보 없음" }
+                        text = place.address?.ifBlank { "주소 정보 없음" } ?: "주소 정보 없음"
                     )
 
                     Spacer(modifier = Modifier.height(Dimens.SpacingSmall))
@@ -243,7 +292,7 @@ fun PlaceDetailBottomSheet(
                     // ── 연락처 ───────────────────────────────────────────────
                     PlaceInfoRow(
                         icon = Icons.Filled.Phone,
-                        text = place.contact.ifBlank { "연락처 정보 없음" }
+                        text = place.contact?.ifBlank { "연락처 정보 없음" } ?: "연락처 정보 없음"
                     )
 
                     // ── 설명 (있을 경우만 표시) ──────────────────────────────

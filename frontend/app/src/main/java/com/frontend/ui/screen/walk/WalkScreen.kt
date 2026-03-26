@@ -30,7 +30,6 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.FilterAlt
 import androidx.compose.material.icons.filled.GpsFixed
-import androidx.compose.material.icons.filled.Navigation
 import androidx.compose.material.icons.filled.Route
 import androidx.compose.material.icons.outlined.Route
 import androidx.compose.material.icons.filled.LocalFireDepartment
@@ -68,15 +67,22 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.input.pointer.PointerEventPass
-import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -90,10 +96,13 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.frontend.R
 import com.frontend.domain.model.DangerLocation
 import com.frontend.domain.model.DangerZone
+import com.frontend.domain.model.NearbyDangerZone
 import com.frontend.domain.model.NearbyDogResponse
+import com.frontend.domain.model.PersistedDangerZone
 import com.frontend.ui.component.MapOverlayButton
 import com.frontend.ui.screen.walk.components.DangerReportModal
 import com.frontend.ui.screen.walk.components.DogWarningDialog
+import com.frontend.ui.screen.walk.components.RiskZoneWarningDialog
 import com.frontend.ui.screen.walk.components.NearbyDogProfilePopup
 import com.frontend.ui.screen.walk.components.PlaceDetailBottomSheet
 import com.frontend.ui.screen.walk.components.ProposalAcceptedByMeDialog
@@ -112,7 +121,6 @@ import com.kakao.vectormap.LatLng
 import com.kakao.vectormap.MapLifeCycleCallback
 import com.kakao.vectormap.MapView
 import androidx.core.graphics.scale
-import com.kakao.vectormap.camera.CameraPosition
 import com.kakao.vectormap.camera.CameraUpdateFactory
 import com.kakao.vectormap.label.Label
 import com.kakao.vectormap.label.LabelOptions
@@ -133,6 +141,7 @@ fun WalkScreen(
     onNavigateToWalkDetail: (Long) -> Unit = {},
     onNavigateToHome: () -> Unit = {},
     onNavigateToAddPlace: () -> Unit = {},
+    onNavigateToChat: (Long) -> Unit = {},
     viewModel: WalkViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsState()
@@ -148,10 +157,6 @@ fun WalkScreen(
     var currentLocationLabel by remember { mutableStateOf<Label?>(null) }
     val currentPosition by viewModel.currentPosition.collectAsState()
     var fovOverlay by remember { mutableStateOf<Polygon?>(null) }
-    // GPS 버튼으로 트래킹 활성화 여부 (사용자가 지도를 드래그하면 자동 해제)
-    var isTrackingActive by remember { mutableStateOf(false) }
-    // GPS 버튼 모드: 0=꺼짐, 1=위치 추적, 2=방향 추적(heading up)
-    var gpsMode by remember { mutableStateOf(0) }
 
     // 산책 경로 폴리라인 (실제 산책 중 GPS 트래킹)
     val routePoints by viewModel.routePoints.collectAsState()
@@ -187,7 +192,13 @@ fun WalkScreen(
     val mediaPermissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission()
     ) { granted ->
-        if (granted) viewModel.retryPhotoObserverIfWalking()
+        if (granted) {
+            viewModel.retryPhotoObserverIfWalking()
+        } else {
+            // Android 14+에서 "사진 선택"(부분 접근)을 선택한 경우
+            // 자동 감지는 불가하지만 산책 후 수동 업로드는 가능
+            android.util.Log.w("WalkScreen", "사진 전체 접근 미허용 — 자동 감지 비활성화 (수동 업로드 가능)")
+        }
     }
 
     // 알림 권한 요청 launcher (Android 13+ 비선호 강아지 알림용)
@@ -200,14 +211,20 @@ fun WalkScreen(
     // 산책 시작 시 미디어 권한 + 알림 권한 확인 및 요청
     LaunchedEffect(state.isWalking) {
         if (state.isWalking) {
-            // 미디어 권한 요청
-            val mediaPermission = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                Manifest.permission.READ_MEDIA_IMAGES
+            // 자동 감지에는 전체 접근(READ_MEDIA_IMAGES) 필요
+            // Android 14+ "사진 선택"(부분 접근)으로는 새 카메라 사진을 MediaStore로 감지 불가
+            val hasFullAccess = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                ActivityCompat.checkSelfPermission(context, Manifest.permission.READ_MEDIA_IMAGES) == PackageManager.PERMISSION_GRANTED
             } else {
-                Manifest.permission.READ_EXTERNAL_STORAGE
+                ActivityCompat.checkSelfPermission(context, Manifest.permission.READ_EXTERNAL_STORAGE) == PackageManager.PERMISSION_GRANTED
             }
-            val hasMediaPermission = ActivityCompat.checkSelfPermission(context, mediaPermission) == PackageManager.PERMISSION_GRANTED
-            if (!hasMediaPermission) {
+
+            if (!hasFullAccess) {
+                val mediaPermission = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                    Manifest.permission.READ_MEDIA_IMAGES
+                } else {
+                    Manifest.permission.READ_EXTERNAL_STORAGE
+                }
                 mediaPermissionLauncher.launch(mediaPermission)
             }
 
@@ -256,30 +273,18 @@ fun WalkScreen(
         val map = kakaoMap ?: return@LaunchedEffect
 
         if (currentLocationLabel == null) {
-            // 최초: 카메라 이동 + 마커 생성 + TrackingManager 시작
             // 최초: 카메라 이동 + 마커 생성 (트래킹은 GPS 버튼으로만 활성화)
             map.moveCamera(CameraUpdateFactory.newCenterPosition(pos, 15))
             val bitmap = rotateBitmap(createDogMarkerBitmap(context), azimuth)
             val styles = LabelStyles.from(LabelStyle.from(bitmap).setAnchorPoint(0.5f, 0.5f))
             val label = map.labelManager?.layer?.addLabel(LabelOptions.from(pos).setStyles(styles))
             currentLocationLabel = label
-            if (label != null) {
-                map.trackingManager?.startTracking(label)
-            }
 
             // 최초 위치 수신 시 추천 경로 로드
             viewModel.loadRecommendedRoutes(pos.latitude, pos.longitude)
         } else {
-            // 이후: moveTo()로 이동 (마커 사라짐 없이)
+            // 이후: moveTo()로 이동 (마커 사라짐 없이, 카메라는 자유이동 유지)
             currentLocationLabel?.moveTo(pos)
-            // 방향 추적 모드: 위치 변경 시 카메라도 이동 (rotation 유지)
-            if (gpsMode == 2) {
-                map.moveCamera(
-                    CameraUpdateFactory.newCameraPosition(
-                        CameraPosition.from(pos.latitude, pos.longitude, 15, 0.0, azimuth.toDouble(), 0.0)
-                    )
-                )
-            }
         }
 
         // FOV cone 갱신
@@ -298,15 +303,6 @@ fun WalkScreen(
 
         // FOV cone 업데이트
         fovOverlay = updateFovCone(map, pos, azimuth, fovOverlay)
-
-        // 방향 추적 모드: azimuth 변경 시 카메라 회전
-        if (gpsMode == 2) {
-            map.moveCamera(
-                CameraUpdateFactory.newCameraPosition(
-                    CameraPosition.from(pos.latitude, pos.longitude, 15, 0.0, azimuth.toDouble(), 0.0)
-                )
-            )
-        }
     }
 
     // 외부에서 selectedRouteIndex 변경 시 페이저 스크롤
@@ -317,36 +313,16 @@ fun WalkScreen(
     }
 
     Box(
-        modifier = Modifier
-            .fillMaxSize()
-            // 사용자가 지도를 드래그하면 트래킹 중단 (이벤트는 소비하지 않아 지도에 그대로 전달)
-            .pointerInput(gpsMode) {
-                if (gpsMode == 0) return@pointerInput
-                awaitPointerEventScope {
-                    while (true) {
-                        val event = awaitPointerEvent(PointerEventPass.Initial)
-                        if (event.changes.any { it.position != it.previousPosition }) {
-                            kakaoMap?.trackingManager?.stopTracking()
-                            isTrackingActive = false
-                            gpsMode = 0
-                            break
-                        }
-                    }
-                }
-            }
+        modifier = Modifier.fillMaxSize()
     ) {
-    // 위험 구역 선택 모드 진입/종료 시 TrackingManager 제어
-    // 선택 모드: tracking 중단 → 지도 드래그 위치 유지
-    // 선택 모드 해제: tracking 재개 → 강아지 마커 다시 따라가기
+    // 위험 구역 선택 모드 진입 시 TrackingManager 중단
+    // (트래킹은 GPS 버튼 클릭 시에만 일시적으로 카메라 이동 — startTracking 사용 안 함)
     LaunchedEffect(state.isSelectingDangerZone, kakaoMap) {
         val map = kakaoMap ?: return@LaunchedEffect
         if (state.isSelectingDangerZone) {
             map.trackingManager?.stopTracking()
-        } else {
-            currentLocationLabel?.let { label ->
-                map.trackingManager?.startTracking(label)
-            }
         }
+        // 선택 모드 해제 시에도 자동 트래킹 재개 안 함 → 지도 자유 이동 유지
     }
 
     // 주변 강아지 마커: NEARBY_DOG 필터 활성화 시에만 표시
@@ -411,11 +387,45 @@ fun WalkScreen(
         }
     }
 
-    // 새 위험 구역이 추가될 때마다 지도에 깃발 마커 그리기 (기존 마커 유지)
-    LaunchedEffect(state.dangerZones, kakaoMap) {
+    // 위험 구역 마커 동적 렌더링 (persistedDangerZones + nearbyDangerZones id 기준 dedupe)
+    LaunchedEffect(state.persistedDangerZones, state.nearbyDangerZones, state.dangerZones, kakaoMap) {
         val map = kakaoMap ?: return@LaunchedEffect
-        val newZones = state.dangerZones.drop(dangerZoneLabels.size)
-        newZones.forEach { zone ->
+        val labelLayer = map.labelManager?.layer ?: return@LaunchedEffect
+
+        // 기존 마커 모두 제거
+        dangerZoneLabels.forEach { label ->
+            try {
+                labelLayer.remove(label)
+            } catch (_: Exception) {}
+        }
+        dangerZoneLabels.clear()
+
+        // persistedDangerZones를 DangerZone으로 변환
+        val persistedAsZones = state.persistedDangerZones.map { persisted ->
+            DangerZone(
+                id = persisted.id,
+                location = persisted.location,
+                reason = persisted.reason,
+                customReason = persisted.customReason
+            )
+        }
+
+        // nearbyDangerZones를 DangerZone으로 변환
+        val nearbyAsZones = state.nearbyDangerZones.map { nearby ->
+            DangerZone(
+                id = nearby.id,
+                location = nearby.location,
+                reason = nearby.reason,
+                customReason = nearby.customReason
+            )
+        }
+
+        // 세션 신고 + persisted + nearby 합치고 id 기준 dedupe
+        val allZones = (state.dangerZones + persistedAsZones + nearbyAsZones)
+            .distinctBy { it.id }
+
+        // 새 마커 추가
+        allZones.forEach { zone ->
             val label = addDangerZoneMarker(context, map, zone)
             if (label != null) dangerZoneLabels.add(label)
         }
@@ -586,6 +596,20 @@ fun WalkScreen(
             )
         }
 
+        // ── 발자국 찍기 오버레이 ──────────────────────────────────────────
+        if (state.footprintAlertPlace != null && !state.isSelectingDangerZone) {
+            FootprintStampOverlay(
+                stamped = state.footprintStamped,
+                onTap = { viewModel.stampFootprint() }
+            )
+            if (state.footprintStamped) {
+                LaunchedEffect(Unit) {
+                    kotlinx.coroutines.delay(2000L)
+                    viewModel.dismissFootprintOverlay()
+                }
+            }
+        }
+
         // ── 3. 전체 오버레이 레이아웃 (검색바 + 하단 패널) ───────────
         Column(
             modifier = Modifier.fillMaxSize()
@@ -731,36 +755,12 @@ fun WalkScreen(
                 }
             )
             MapOverlayButton(
-                icon = if (gpsMode == 2) Icons.Filled.Navigation else Icons.Filled.GpsFixed,
+                icon = Icons.Filled.GpsFixed,
                 contentDescription = "현재 위치",
                 onClick = {
-                    when (gpsMode) {
-                        0 -> {
-                            // 1번 누름: 현재 위치로 카메라 이동 + 위치 추적 시작
-                            currentLocationLabel?.let { label ->
-                                kakaoMap?.trackingManager?.startTracking(label)
-                                isTrackingActive = true
-                                gpsMode = 1
-                            }
-                        }
-                        1 -> {
-                            // 2번 누름: 방향 추적 모드 (heading up)
-                            kakaoMap?.trackingManager?.stopTracking()
-                            isTrackingActive = false
-                            gpsMode = 2
-                            currentPosition?.let { pos ->
-                                kakaoMap?.moveCamera(
-                                    CameraUpdateFactory.newCameraPosition(
-                                        CameraPosition.from(pos.latitude, pos.longitude, 15, 0.0, azimuth.toDouble(), 0.0)
-                                    )
-                                )
-                            }
-                        }
-                        else -> {
-                            // 3번 누름: 초기화 (North up)
-                            gpsMode = 0
-                            isTrackingActive = false
-                        }
+                    // 현재 위치로 카메라 이동 (한 번만, 이후 지도 자유이동 유지)
+                    currentPosition?.let { pos ->
+                        kakaoMap?.moveCamera(CameraUpdateFactory.newCenterPosition(pos, 15))
                     }
                 }
             )
@@ -809,10 +809,33 @@ fun WalkScreen(
                 isLoading = state.isDogProfileLoading,
                 proposalSent = state.proposalSentDogId == dog.dogId,
                 isSendingProposal = state.isSendingProposal,
+                chatRoomId = state.acceptedChatRooms[dog.dogId],
                 onDismiss = { viewModel.dismissDogProfile() },
                 onPropose = { viewModel.sendProposal(dog.walkRecordId, dog.dogId) },
                 onFeedback = { feedback -> viewModel.updateFeedback(dog.dogId, feedback) },
+                onStartChat = { chatRoomId -> onNavigateToChat(chatRoomId) },
             )
+        }
+
+        // ── 채팅 메시지 배너 알림 (상단 슬라이드) ──────────────────────
+        AnimatedVisibility(
+            visible = state.chatBanner != null,
+            enter = slideInVertically(initialOffsetY = { -it }) + fadeIn(),
+            exit = slideOutVertically(targetOffsetY = { -it }) + fadeOut(),
+            modifier = androidx.compose.ui.Modifier
+                .align(Alignment.TopCenter)
+                .padding(top = 12.dp, start = 12.dp, end = 12.dp),
+        ) {
+            state.chatBanner?.let { banner ->
+                ChatBannerCard(
+                    banner = banner,
+                    onDismiss = { viewModel.dismissChatBanner() },
+                    onClick = {
+                        viewModel.dismissChatBanner()
+                        onNavigateToChat(banner.chatRoomId)
+                    },
+                )
+            }
         }
 
         // ── 9. 받은 산책 제안 다이얼로그 ────────────────────────────────
@@ -828,7 +851,11 @@ fun WalkScreen(
         state.acceptedProposals.firstOrNull()?.let { accepted ->
             ProposalAcceptedDialog(
                 accepted = accepted,
-                onDismiss = { viewModel.dismissAcceptedProposal(accepted.proposalId) }
+                onDismiss = { viewModel.dismissAcceptedProposal(accepted.proposalId) },
+                onStartChat = { chatRoomId ->
+                    viewModel.dismissAcceptedProposal(accepted.proposalId)
+                    onNavigateToChat(chatRoomId)
+                },
             )
         }
 
@@ -843,7 +870,12 @@ fun WalkScreen(
         // ── 10b. 수락자 — 수락 완료 확인 모달 (optimistic) ───────────────
         if (state.showAcceptedByMeDialog) {
             ProposalAcceptedByMeDialog(
-                onDismiss = { viewModel.dismissAcceptedByMe() }
+                onDismiss = { viewModel.dismissAcceptedByMe() },
+                chatRoomId = state.acceptedByMeChatRoomId,
+                onStartChat = { chatRoomId ->
+                    viewModel.dismissAcceptedByMe()
+                    onNavigateToChat(chatRoomId)
+                },
             )
         }
 
@@ -859,6 +891,17 @@ fun WalkScreen(
             DogWarningDialog(
                 dog = dog,
                 onDismiss = { viewModel.dismissWarning() },
+            )
+        }
+
+        // ── 12. 위험장소 근접 경고 다이얼로그 (S14P21E108-275) ──────────
+        // 큐 방식: 첫 번째 것 표시, 닫으면 다음 것 표시
+        state.warningRiskZoneQueue.firstOrNull()?.let { zone ->
+            RiskZoneWarningDialog(
+                zone = zone,
+                currentLatitude = currentPosition?.latitude,
+                currentLongitude = currentPosition?.longitude,
+                onDismiss = { viewModel.dismissRiskZoneWarning() },
             )
         }
 
@@ -1655,6 +1698,77 @@ private fun createDogMarkerBitmap(context: android.content.Context): android.gra
     return source.scale(targetWidth, targetHeight)
 }
 
+// ── 채팅 메시지 배너 카드 ──────────────────────────────────────────────────────
+@Composable
+private fun ChatBannerCard(
+    banner: com.frontend.domain.model.ChatBannerNotification,
+    onDismiss: () -> Unit,
+    onClick: () -> Unit,
+) {
+    LaunchedEffect(banner) {
+        kotlinx.coroutines.delay(3_500)
+        onDismiss()
+    }
+
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+            ) { onClick() },
+        shape = RoundedCornerShape(14.dp),
+        colors = CardDefaults.cardColors(containerColor = Color.White),
+        elevation = CardDefaults.cardElevation(defaultElevation = 6.dp),
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 14.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            coil.compose.AsyncImage(
+                model = banner.senderImageUrl.takeIf { !it.isNullOrBlank() },
+                contentDescription = banner.senderName,
+                placeholder = painterResource(R.drawable.husky),
+                error = painterResource(R.drawable.husky),
+                fallback = painterResource(R.drawable.husky),
+                contentScale = ContentScale.Crop,
+                modifier = Modifier
+                    .size(44.dp)
+                    .clip(androidx.compose.foundation.shape.CircleShape)
+            )
+            Spacer(modifier = Modifier.width(12.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = banner.senderName,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 14.sp,
+                    color = Color.Black,
+                )
+                Text(
+                    text = banner.messagePreview,
+                    fontSize = 13.sp,
+                    color = Color.Gray,
+                    maxLines = 1,
+                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                )
+            }
+            androidx.compose.material3.IconButton(
+                onClick = onDismiss,
+                modifier = Modifier.size(32.dp),
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.Close,
+                    contentDescription = "닫기",
+                    tint = Color.Gray,
+                    modifier = Modifier.size(18.dp),
+                )
+            }
+        }
+    }
+}
+
 // ── 배지 획득 팝업 ───────────────────────────────────────────────────────────
 @Composable
 private fun BadgeEarnedDialog(
@@ -1739,6 +1853,66 @@ private fun BadgeEarnedDialog(
                     )
                 }
             }
+        }
+    }
+}
+
+// ── 발자국 찍기 오버레이 ──────────────────────────────────────────────────────
+@Composable
+private fun FootprintStampOverlay(
+    stamped: Boolean,
+    onTap: () -> Unit,
+) {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color(0x88000000)),
+        contentAlignment = Alignment.Center
+    ) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
+        ) {
+            if (!stamped) {
+                Text(
+                    text = "터치하세요",
+                    color = Color.White,
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.Medium,
+                )
+                Spacer(modifier = Modifier.height(16.dp))
+            }
+
+            Box(
+                modifier = Modifier
+                    .size(160.dp)
+                    .clip(CircleShape)
+                    .background(Color.White)
+                    .then(
+                        if (!stamped) Modifier.clickable(
+                            onClick = onTap,
+                            indication = null,
+                            interactionSource = remember { MutableInteractionSource() }
+                        ) else Modifier
+                    ),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.Pets,
+                    contentDescription = "발자국",
+                    modifier = Modifier.size(90.dp),
+                    tint = if (stamped) PointGreen else PointGreen.copy(alpha = 0.4f)
+                )
+            }
+
+            Spacer(modifier = Modifier.height(20.dp))
+
+            Text(
+                text = if (stamped) "발자국을 남겼어요!" else "발자국을 남겨보세요!",
+                color = Color.White,
+                fontSize = 22.sp,
+                fontWeight = FontWeight.Bold
+            )
         }
     }
 }

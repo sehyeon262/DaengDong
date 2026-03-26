@@ -49,20 +49,23 @@ fun MonthlySummarySection(summary: CalendarSummary) {
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(top = 16.dp),
-            horizontalArrangement = Arrangement.SpaceEvenly
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             SummaryItem(
                 label = "산책률",
                 value = "${summary.walkRate}%",
-                valueColor = PointGreen
+                valueColor = PointGreen,
+                modifier = Modifier.weight(1f)
             )
             SummaryItem(
                 label = "총 시간",
-                value = formatDuration(summary.totalDurationMinutes)
+                value = formatDuration(summary.totalDurationMinutes),
+                modifier = Modifier.weight(1f)
             )
             SummaryItem(
                 label = "총 거리",
-                value = "${"%.1f".format(summary.totalDistanceKm)}km"
+                value = "${"%.1f".format(summary.totalDistanceKm)}km",
+                modifier = Modifier.weight(1f)
             )
         }
     }
@@ -72,11 +75,12 @@ fun MonthlySummarySection(summary: CalendarSummary) {
 private fun SummaryItem(
     label: String,
     value: String,
-    valueColor: androidx.compose.ui.graphics.Color = TextMain
+    valueColor: androidx.compose.ui.graphics.Color = TextMain,
+    modifier: Modifier = Modifier
 ) {
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
-        modifier = Modifier
+        modifier = modifier
             .clip(RoundedCornerShape(Dimens.RadiusSmall))
             .background(Color(0xFFFFFEF8))
             .border(
@@ -84,7 +88,7 @@ private fun SummaryItem(
                 color = Color(0xFFCCA040).copy(alpha = 0.15f),
                 shape = RoundedCornerShape(Dimens.RadiusSmall)
             )
-            .padding(horizontal = 20.dp, vertical = 10.dp)
+            .padding(horizontal = 12.dp, vertical = 10.dp)
     ) {
         Text(
             text = label,
@@ -93,9 +97,11 @@ private fun SummaryItem(
         )
         Text(
             text = value,
-            fontSize = 18.sp,
+            fontSize = 16.sp,
             fontWeight = FontWeight.Bold,
             color = valueColor,
+            maxLines = 1,
+            softWrap = false,
             modifier = Modifier.padding(top = 4.dp)
         )
     }
@@ -104,5 +110,9 @@ private fun SummaryItem(
 private fun formatDuration(minutes: Int): String {
     val hours = minutes / 60
     val mins = minutes % 60
-    return if (hours > 0) "${hours}h ${mins}m" else "${mins}m"
+    return when {
+        hours > 0 && mins > 0 -> "${hours}h ${mins}m"
+        hours > 0 -> "${hours}h"
+        else -> "${mins}m"
+    }
 }

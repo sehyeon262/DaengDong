@@ -24,6 +24,19 @@ import java.util.List;
 public interface RiskReportRepository extends JpaRepository<RiskReport, Long> {
 
     /**
+     * Projection interface for nearby risk report query results with distance
+     */
+    interface NearbyRiskReportProjection {
+        Long getRiskReportId();
+        Long getWalkSessionId();
+        Double getLatitude();
+        Double getLongitude();
+        String getDescription();
+        java.time.LocalDateTime getCreatedAt();
+        Double getDistanceM();
+    }
+
+    /**
      * [대안] PostGIS ST_SetSRID + ST_MakePoint 를 사용한 네이티브 INSERT
      *
      * Hibernate Spatial 매핑이 불가한 경우에만 활성화하여 사용.
@@ -61,10 +74,9 @@ public interface RiskReportRepository extends JpaRepository<RiskReport, Long> {
     long countByUserId(Long userId);
 
     /**
-     * 현재 위치 기준 반경 내 위험 구역 목록 조회
+     * 현재 위치 기준 반경 내 위험 구역 목록 조회 (전체 사용자)
      *
      * ST_DWithin(geography, geography, meters) — PostGIS 지리 거리 필터
-     * is_deleted = false 조건으로 소프트딜리트된 레코드 제외
      */
     @Query(value = """
             SELECT * FROM risk_reports
@@ -76,6 +88,49 @@ public interface RiskReportRepository extends JpaRepository<RiskReport, Long> {
             ORDER BY created_at DESC
             """, nativeQuery = true)
     List<RiskReport> findWithinRadius(
+            @Param("latitude") double latitude,
+            @Param("longitude") double longitude,
+            @Param("radiusMeters") double radiusMeters
+    );
+
+    /**
+     * 특정 사용자의 위험 구역 전체 목록 조회
+     *
+     * 앱 재실행 시 개인 위험장소 복원 용도
+     */
+    List<RiskReport> findByUserIdOrderByCreatedAtDesc(Long userId);
+
+    /**
+     * 특정 사용자의 위험 구역 중 반경 내 목록 조회 (거리 포함)
+     *
+     * ST_DWithin — 반경 필터
+     * ST_Distance — 실제 거리 계산 (미터 단위)
+     *
+     * 산책 중 근접 알림 입력 용도
+     */
+    @Query(value = """
+            SELECT
+                r.risk_report_id AS riskReportId,
+                r.walk_session_id AS walkSessionId,
+                ST_Y(r.location::geometry) AS latitude,
+                ST_X(r.location::geometry) AS longitude,
+                r.description AS description,
+                r.created_at AS createdAt,
+                ST_Distance(
+                    r.location::geography,
+                    ST_SetSRID(ST_MakePoint(:longitude, :latitude), 4326)::geography
+                ) AS distanceM
+            FROM risk_reports r
+            WHERE r.user_id = :userId
+              AND ST_DWithin(
+                    r.location::geography,
+                    ST_SetSRID(ST_MakePoint(:longitude, :latitude), 4326)::geography,
+                    :radiusMeters
+              )
+            ORDER BY distanceM ASC
+            """, nativeQuery = true)
+    List<NearbyRiskReportProjection> findByUserIdWithinRadius(
+            @Param("userId") Long userId,
             @Param("latitude") double latitude,
             @Param("longitude") double longitude,
             @Param("radiusMeters") double radiusMeters
