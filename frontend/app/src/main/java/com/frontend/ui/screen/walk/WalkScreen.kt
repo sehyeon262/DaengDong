@@ -93,10 +93,13 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.frontend.R
 import com.frontend.domain.model.DangerLocation
 import com.frontend.domain.model.DangerZone
+import com.frontend.domain.model.NearbyDangerZone
 import com.frontend.domain.model.NearbyDogResponse
+import com.frontend.domain.model.PersistedDangerZone
 import com.frontend.ui.component.MapOverlayButton
 import com.frontend.ui.screen.walk.components.DangerReportModal
 import com.frontend.ui.screen.walk.components.DogWarningDialog
+import com.frontend.ui.screen.walk.components.RiskZoneWarningDialog
 import com.frontend.ui.screen.walk.components.NearbyDogProfilePopup
 import com.frontend.ui.screen.walk.components.PlaceDetailBottomSheet
 import com.frontend.ui.screen.walk.components.ProposalAcceptedByMeDialog
@@ -381,11 +384,45 @@ fun WalkScreen(
         }
     }
 
-    // 새 위험 구역이 추가될 때마다 지도에 깃발 마커 그리기 (기존 마커 유지)
-    LaunchedEffect(state.dangerZones, kakaoMap) {
+    // 위험 구역 마커 동적 렌더링 (persistedDangerZones + nearbyDangerZones id 기준 dedupe)
+    LaunchedEffect(state.persistedDangerZones, state.nearbyDangerZones, state.dangerZones, kakaoMap) {
         val map = kakaoMap ?: return@LaunchedEffect
-        val newZones = state.dangerZones.drop(dangerZoneLabels.size)
-        newZones.forEach { zone ->
+        val labelLayer = map.labelManager?.layer ?: return@LaunchedEffect
+
+        // 기존 마커 모두 제거
+        dangerZoneLabels.forEach { label ->
+            try {
+                labelLayer.remove(label)
+            } catch (_: Exception) {}
+        }
+        dangerZoneLabels.clear()
+
+        // persistedDangerZones를 DangerZone으로 변환
+        val persistedAsZones = state.persistedDangerZones.map { persisted ->
+            DangerZone(
+                id = persisted.id,
+                location = persisted.location,
+                reason = persisted.reason,
+                customReason = persisted.customReason
+            )
+        }
+
+        // nearbyDangerZones를 DangerZone으로 변환
+        val nearbyAsZones = state.nearbyDangerZones.map { nearby ->
+            DangerZone(
+                id = nearby.id,
+                location = nearby.location,
+                reason = nearby.reason,
+                customReason = nearby.customReason
+            )
+        }
+
+        // 세션 신고 + persisted + nearby 합치고 id 기준 dedupe
+        val allZones = (state.dangerZones + persistedAsZones + nearbyAsZones)
+            .distinctBy { it.id }
+
+        // 새 마커 추가
+        allZones.forEach { zone ->
             val label = addDangerZoneMarker(context, map, zone)
             if (label != null) dangerZoneLabels.add(label)
         }
@@ -838,6 +875,17 @@ fun WalkScreen(
             DogWarningDialog(
                 dog = dog,
                 onDismiss = { viewModel.dismissWarning() },
+            )
+        }
+
+        // ── 12. 위험장소 근접 경고 다이얼로그 (S14P21E108-275) ──────────
+        // 큐 방식: 첫 번째 것 표시, 닫으면 다음 것 표시
+        state.warningRiskZoneQueue.firstOrNull()?.let { zone ->
+            RiskZoneWarningDialog(
+                zone = zone,
+                currentLatitude = currentPosition?.latitude,
+                currentLongitude = currentPosition?.longitude,
+                onDismiss = { viewModel.dismissRiskZoneWarning() },
             )
         }
 
