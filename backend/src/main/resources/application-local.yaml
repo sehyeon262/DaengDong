@@ -27,6 +27,7 @@ spring:
         - classpath:sql/init_places.sql
         - classpath:sql/walk_records.sql
         - classpath:sql/badges.sql
+        - classpath:sql/demo_personas.sql
       continue-on-error: true
 
   # 개발용 JPA 설정
