@@ -33,9 +33,12 @@ import com.frontend.domain.model.Place
 import com.frontend.domain.model.RecommendedRoute
 import com.frontend.domain.model.StartWalkRequest
 import com.frontend.domain.model.WalkRoute
+import com.frontend.domain.model.NearbyDangerZone
 import com.frontend.domain.usecase.EndWalkUseCase
 import com.frontend.domain.usecase.GetDangerZonesUseCase
 import com.frontend.domain.usecase.GetFootprintPlacesUseCase
+import com.frontend.domain.usecase.GetMyRiskZonesUseCase
+import com.frontend.domain.usecase.GetNearbyMyRiskZonesUseCase
 import com.frontend.domain.usecase.GetPlaceDetailUseCase
 import com.frontend.domain.usecase.GetPlacesUseCase
 import com.frontend.domain.usecase.GetRecommendedRoutesUseCase
@@ -45,6 +48,7 @@ import com.frontend.domain.usecase.StampPlaceUseCase
 import com.frontend.domain.usecase.StartFreeWalkUseCase
 import com.frontend.notification.FootprintAlertManager
 import com.frontend.notification.NearbyDogAlertManager
+import com.frontend.notification.RiskZoneAlertManager
 import com.google.android.gms.location.LocationCallback
 import com.google.android.gms.location.LocationRequest
 import com.google.android.gms.location.LocationResult
@@ -74,6 +78,8 @@ class WalkViewModel @Inject constructor(
     @ApplicationContext private val context: Context,
     private val reportDangerZoneUseCase: ReportDangerZoneUseCase,
     private val getDangerZonesUseCase: GetDangerZonesUseCase,
+    private val getMyRiskZonesUseCase: GetMyRiskZonesUseCase,
+    private val getNearbyMyRiskZonesUseCase: GetNearbyMyRiskZonesUseCase,
     private val getPlacesUseCase: GetPlacesUseCase,
     private val getFootprintPlacesUseCase: GetFootprintPlacesUseCase,
     private val walkRepository: WalkRepository,
@@ -86,6 +92,7 @@ class WalkViewModel @Inject constructor(
     private val endWalkUseCase: EndWalkUseCase,
     private val nearbyDogAlertManager: NearbyDogAlertManager,
     private val footprintAlertManager: FootprintAlertManager,
+    private val riskZoneAlertManager: RiskZoneAlertManager,
     private val stampPlaceUseCase: StampPlaceUseCase,
     private val stompChatClient: StompChatClient,
 ) : ViewModel() {
@@ -96,6 +103,13 @@ class WalkViewModel @Inject constructor(
         private const val ALERT_EXIT_RADIUS_M = 70.0    // 반경 이탈 판정 거리
         private const val ALERT_COOLDOWN_MS = 2 * 60 * 1000L  // 2분 쿨다운
         private const val FOOTPRINT_ALERT_RADIUS_M = 20.0     // 발자국 알림 반경
+
+        // 위험장소 알림 상수
+        private const val RISK_ZONE_ENTER_RADIUS_M = 100.0    // 알림 발생 반경 (테스트: 100m)
+        private const val RISK_ZONE_EXIT_RADIUS_M = 150.0     // 반경 이탈 판정 거리
+        private const val RISK_ZONE_COOLDOWN_MS = 3 * 60 * 1000L  // 3분 쿨다운
+        private const val RISK_ZONE_POLLING_INTERVAL_MS = 15_000L // 15초 폴링
+        private const val RISK_ZONE_QUERY_RADIUS_M = 500.0    // nearby 조회 반경 (테스트: 500m)
     }
 
     private val _state = MutableStateFlow(WalkState())
@@ -103,6 +117,9 @@ class WalkViewModel @Inject constructor(
 
     // ── 주변 강아지 폴링 Job ───────────────────────────────────────────────────
     private var nearbyDogsJob: Job? = null
+
+    // ── 위험장소 근접 알림 폴링 Job ───────────────────────────────────────────────
+    private var riskZonePollingJob: Job? = null
 
     // ── 현재 산책 ID (산책 시작 후 서버에서 발급) ──────────────────────────────
     private var currentWalkId: Long? = null
@@ -169,6 +186,25 @@ class WalkViewModel @Inject constructor(
             tokenDataStore.getDogId().first()?.let { dogId ->
                 _state.update { it.copy(myDogId = dogId) }
             }
+        }
+        // 내 위험장소 영구 목록 로드 (앱/화면 진입 시)
+        loadPersistedDangerZones()
+    }
+
+    /**
+     * 내 위험장소 영구 목록 로드 (mine API)
+     * - 앱/화면 재진입 시 개인 위험장소 복원
+     */
+    fun loadPersistedDangerZones() {
+        viewModelScope.launch {
+            getMyRiskZonesUseCase()
+                .onSuccess { zones ->
+                    _state.update { it.copy(persistedDangerZones = zones) }
+                    android.util.Log.d("WalkVM", "내 위험장소 로드 성공: ${zones.size}개")
+                }
+                .onFailure { e ->
+                    android.util.Log.w("WalkVM", "내 위험장소 로드 실패: ${e.message}")
+                }
         }
     }
 
@@ -656,6 +692,8 @@ class WalkViewModel @Inject constructor(
                     startBatchSending(walkId)
                     // 산책 시작 시 항상 nearby dogs 폴링 시작 (알림은 필터와 무관하게 동작)
                     startNearbyDogsPolling()
+                    // 산책 시작 시 위험장소 근접 알림 폴링 시작
+                    startRiskZonePolling()
                 }
                 .onFailure { e ->
                     resetWalkStateOnFailure("산책 시작 실패: ${e.message}")
@@ -709,6 +747,7 @@ class WalkViewModel @Inject constructor(
         timerJob?.cancel()
         timerJob = null
         stopNearbyDogsPolling()
+        stopRiskZonePolling()
 
         // 산책 종료 직전 마지막으로 새 사진 스캔 (ContentObserver 누락 대비)
         currentWalkId?.let { walkId ->
@@ -719,6 +758,8 @@ class WalkViewModel @Inject constructor(
         // 비선호 강아지 알림 정리
         nearbyDogAlertManager.cancelAllAlerts()
         footprintAlertManager.cancelAlert()
+        // 위험장소 알림 정리
+        riskZoneAlertManager.cancelAllAlerts()
         _state.update {
             it.copy(
                 dogAlertStates = emptyMap(),
@@ -727,6 +768,10 @@ class WalkViewModel @Inject constructor(
                 footprintStamped = false,
                 walkPlaces = emptyList(),
                 footprintAlertStates = emptyMap(),
+                // 위험장소 알림 상태 초기화
+                nearbyDangerZones = emptyList(),
+                riskZoneAlertStates = emptyMap(),
+                warningRiskZoneQueue = emptyList(),
             )
         }
 
@@ -1014,6 +1059,144 @@ class WalkViewModel @Inject constructor(
         nearbyDogsJob = null
     }
 
+    // ── 위험장소 근접 알림 ───────────────────────────────────────────────────────
+
+    /** 15초 간격 위험장소 폴링 시작 (산책 중에만 동작) */
+    private fun startRiskZonePolling() {
+        android.util.Log.d("WalkVM", "=== startRiskZonePolling 호출됨 ===")
+        riskZonePollingJob?.cancel()
+        riskZonePollingJob = viewModelScope.launch {
+            while (true) {
+                loadNearbyRiskZones()
+                delay(RISK_ZONE_POLLING_INTERVAL_MS)
+            }
+        }
+    }
+
+    /** 위험장소 폴링 중단 */
+    private fun stopRiskZonePolling() {
+        riskZonePollingJob?.cancel()
+        riskZonePollingJob = null
+    }
+
+    /** 현재 위치 기반 nearby 위험장소 조회 */
+    private fun loadNearbyRiskZones() {
+        val pos = _currentPosition.value
+        if (pos == null) {
+            android.util.Log.w("WalkVM", "loadNearbyRiskZones: 현재 위치 없음 (pos=null)")
+            return
+        }
+        android.util.Log.d("WalkVM", "loadNearbyRiskZones: lat=${pos.latitude}, lon=${pos.longitude}, radius=$RISK_ZONE_QUERY_RADIUS_M")
+        viewModelScope.launch {
+            getNearbyMyRiskZonesUseCase(
+                latitude = pos.latitude,
+                longitude = pos.longitude,
+                radiusMeters = RISK_ZONE_QUERY_RADIUS_M
+            ).onSuccess { nearbyZones ->
+                android.util.Log.d("WalkVM", "nearbyRiskZones 조회 성공: ${nearbyZones.size}개")
+                nearbyZones.forEach { zone ->
+                    android.util.Log.d("WalkVM", "  - id=${zone.id}, distanceM=${zone.distanceM}, reason=${zone.reason}")
+                }
+                _state.update { it.copy(nearbyDangerZones = nearbyZones) }
+                processRiskZoneAlerts(nearbyZones)
+            }.onFailure { e ->
+                android.util.Log.w("WalkVM", "nearbyRiskZones 조회 실패: ${e.message}")
+            }
+        }
+    }
+
+    /**
+     * 위험장소 근접 알림 로직
+     * - distanceM <= 100m → 알림 발생 (enter) - 테스트: 100m
+     * - distanceM > 150m 또는 목록에서 사라짐 → 다시 알림 가능 (exit)
+     * - 같은 riskReportId에 대해 3분 쿨다운
+     * - 반경 안에 머무는 동안 알림 반복하지 않음
+     */
+    private fun processRiskZoneAlerts(nearbyZones: List<NearbyDangerZone>) {
+        android.util.Log.d("WalkVM", "processRiskZoneAlerts: ${nearbyZones.size}개 처리")
+        if (nearbyZones.isEmpty()) {
+            android.util.Log.d("WalkVM", "  → 근처 위험장소 없음, 스킵")
+            return
+        }
+        val now = System.currentTimeMillis()
+        val currentStates = _state.value.riskZoneAlertStates.toMutableMap()
+        val nearbyZoneIds = nearbyZones.map { it.id }.toSet()
+
+        // 1. 목록에서 사라진 위험장소 → 상태 초기화 (다시 알림 가능)
+        val removedZoneIds = currentStates.keys - nearbyZoneIds
+        removedZoneIds.forEach { zoneId ->
+            android.util.Log.d("WalkVM", "위험장소 $zoneId 목록에서 사라짐 → 상태 초기화")
+            currentStates.remove(zoneId)
+        }
+
+        // 2. 각 위험장소 처리 - 새로 알림할 것들을 리스트로 수집
+        val newWarningZones = mutableListOf<NearbyDangerZone>()
+
+        for (zone in nearbyZones) {
+            val zoneId = zone.id
+            val alertState = currentStates[zoneId] ?: RiskZoneAlertState()
+            val wasInsideRadius = alertState.isInsideAlertRadius
+            val isNowInsideRadius = zone.distanceM <= RISK_ZONE_ENTER_RADIUS_M
+            val hasExitedRadius = zone.distanceM > RISK_ZONE_EXIT_RADIUS_M
+
+            // 반경 이탈 시 → 다시 알림 가능 상태로 전환
+            if (hasExitedRadius && wasInsideRadius) {
+                android.util.Log.d("WalkVM", "위험장소 $zoneId 반경 이탈 (${zone.distanceM.toInt()}m) → 재알림 가능")
+                currentStates[zoneId] = alertState.copy(isInsideAlertRadius = false)
+                continue
+            }
+
+            // 반경 진입 시 (새로 진입 or 쿨다운 후 재진입)
+            if (isNowInsideRadius) {
+                val timeSinceLastAlert = now - alertState.lastAlertTimeMs
+                val isFirstEntry = !wasInsideRadius
+                val cooldownPassed = timeSinceLastAlert >= RISK_ZONE_COOLDOWN_MS
+
+                // 알림 발생 조건: 새로 진입 && 쿨다운 경과
+                if (isFirstEntry && cooldownPassed) {
+                    android.util.Log.d("WalkVM", "위험장소 $zoneId 반경 진입 (${zone.distanceM.toInt()}m) → 알림 발생")
+
+                    // 시스템 알림 발송
+                    riskZoneAlertManager.showRiskZoneAlert(zoneId, zone.distanceM)
+
+                    // 인앱 다이얼로그 큐에 추가
+                    newWarningZones.add(zone)
+
+                    currentStates[zoneId] = RiskZoneAlertState(
+                        lastAlertTimeMs = now,
+                        isInsideAlertRadius = true,
+                    )
+                } else if (isFirstEntry) {
+                    // 쿨다운 중이면 반경 진입 상태만 업데이트 (알림 없음)
+                    android.util.Log.d("WalkVM", "위험장소 $zoneId 반경 진입 but 쿨다운 중 (${timeSinceLastAlert / 1000}초)")
+                    currentStates[zoneId] = alertState.copy(isInsideAlertRadius = true)
+                }
+                // 이미 반경 안에 있으면 아무 작업 안 함 (반복 알림 방지)
+            }
+        }
+
+        // 3. 상태 업데이트
+        _state.update { it.copy(riskZoneAlertStates = currentStates) }
+
+        // 4. 인앱 경고 다이얼로그 큐에 추가 (거리순 정렬)
+        if (newWarningZones.isNotEmpty()) {
+            val sortedNewZones = newWarningZones.sortedBy { it.distanceM }
+            _state.update { current ->
+                // 기존 큐에 새로운 것들 추가 (중복 제거)
+                val existingIds = current.warningRiskZoneQueue.map { it.id }.toSet()
+                val toAdd = sortedNewZones.filter { it.id !in existingIds }
+                current.copy(warningRiskZoneQueue = current.warningRiskZoneQueue + toAdd)
+            }
+        }
+    }
+
+    /** 위험장소 경고 다이얼로그 닫기 (큐에서 첫 번째 제거) */
+    fun dismissRiskZoneWarning() {
+        _state.update { current ->
+            current.copy(warningRiskZoneQueue = current.warningRiskZoneQueue.drop(1))
+        }
+    }
+
     // ── 강아지 공개 프로필 팝업 ────────────────────────────────────────────────
 
     /** 마커 클릭 → 강아지 선택 후 공개 프로필 로드 */
@@ -1217,7 +1400,11 @@ class WalkViewModel @Inject constructor(
         _state.update { it.copy(customDangerReason = text) }
     }
 
-    /** 위험 구역 신고 제출 */
+    /**
+     * 위험 구역 신고 제출
+     * - 서버 실패 시 Result.failure 반환 (실패를 삼키지 않음)
+     * - 성공 시 mine 목록 재조회하여 persisted 상태 동기화
+     */
     fun submitDangerReport() {
         val location = _state.value.selectedLocation ?: return
         val reason = _state.value.selectedDangerReason ?: return
@@ -1229,14 +1416,12 @@ class WalkViewModel @Inject constructor(
                 _state.value.customDangerReason.takeIf { it.isNotBlank() }
             } else null
 
-            try {
-                val result = reportDangerZoneUseCase(
-                    walkId = currentWalkId,
-                    location = location,
-                    reason = reason,
-                    customReason = customReason
-                ).getOrThrow()
-
+            reportDangerZoneUseCase(
+                walkId = currentWalkId,
+                location = location,
+                reason = reason,
+                customReason = customReason
+            ).onSuccess { result ->
                 _state.update {
                     it.copy(
                         dangerZones = it.dangerZones + result.dangerZone,
@@ -1250,8 +1435,15 @@ class WalkViewModel @Inject constructor(
                         newBadges = it.newBadges + result.newBadges
                     )
                 }
-            } catch (e: Exception) {
-                _state.update { it.copy(isLoading = false, error = e.message) }
+                // 신고 성공 후 mine 목록 재조회하여 persisted 상태 동기화
+                loadPersistedDangerZones()
+            }.onFailure { e ->
+                _state.update {
+                    it.copy(
+                        isLoading = false,
+                        error = "위험장소 신고 실패: ${e.message}"
+                    )
+                }
             }
         }
     }
