@@ -46,6 +46,7 @@ import com.frontend.domain.usecase.GetPlacesUseCase
 import com.frontend.domain.usecase.GetRecommendedRoutesUseCase
 import com.frontend.domain.usecase.ReportDangerZoneUseCase
 import com.frontend.domain.usecase.SaveLocationsUseCase
+import com.frontend.domain.usecase.SendStampUseCase
 import com.frontend.domain.usecase.StampPlaceUseCase
 import com.frontend.domain.usecase.StartFreeWalkUseCase
 import com.frontend.notification.FootprintAlertManager
@@ -84,6 +85,7 @@ class WalkViewModel @Inject constructor(
     private val getNearbyMyRiskZonesUseCase: GetNearbyMyRiskZonesUseCase,
     private val getPlacesUseCase: GetPlacesUseCase,
     private val getFootprintPlacesUseCase: GetFootprintPlacesUseCase,
+    private val sendStampUseCase: SendStampUseCase,
     private val walkRepository: WalkRepository,
     private val tokenDataStore: TokenDataStore,
     private val dogRepository: DogRepository,
@@ -144,6 +146,10 @@ class WalkViewModel @Inject constructor(
     // ── 타이머 / 배치 전송 Job ──────────────────────────────────────────────────
     private var timerJob: Job? = null
     private var batchSendJob: Job? = null
+
+    // ── 발자국 도장 후보 장소 (산책 중 근접 감지용) ────────────────────────────
+    private var stampCandidates: List<Place> = emptyList()
+    private var stampCandidatesCenter: LatLng? = null
 
     // ── 카메라 사진 자동 감지 (산책 중 촬영 사진 자동 업로드) ────────────────────
     private var photoObserver: ContentObserver? = null
@@ -229,7 +235,7 @@ class WalkViewModel @Inject constructor(
                     loadDangerZones(loc.latitude, loc.longitude)
                 }
 
-                // 산책 중이고 일시정지가 아닐 때만 GPS 포인트 기록
+                // 산책 중이고 일시정지가 아닐 때만 GPS 포인트 기록 + 근접 장소 감지
                 if (_state.value.isWalking && !_state.value.isPaused) {
                     val prev = _routePoints.value.lastOrNull()
                     if (prev != null) {
@@ -252,6 +258,8 @@ class WalkViewModel @Inject constructor(
                     }
                     // 20m 이내 장소 진입 감지
                     checkNearbyPlacesForFootprint(newLatLng)
+                    // 발자국 도장 후보 장소 근접 감지
+                    checkAndUpdateStampPrompt(loc.latitude, loc.longitude)
                 }
             }
         }
@@ -613,6 +621,65 @@ class WalkViewModel @Inject constructor(
         }
     }
 
+    // ── 발자국 도장 근접 감지 ──────────────────────────────────────────────────
+
+    /** 현재 위치와 후보 장소 간 근접 여부 확인, 50m 이내 장소가 있으면 stamp prompt 표시 */
+    private fun checkAndUpdateStampPrompt(lat: Double, lon: Double) {
+        val loadedAt = stampCandidatesCenter
+        // 처음이거나 300m 이상 이동했으면 후보 재로드
+        if (loadedAt == null ||
+            haversineMeters(loadedAt.latitude, loadedAt.longitude, lat, lon) > 300.0
+        ) {
+            loadStampCandidates(lat, lon)
+            return
+        }
+        val stampedIds = _state.value.stampedPlaceIds
+        val nearbyPlace = stampCandidates.firstOrNull { place ->
+            place.id !in stampedIds &&
+                haversineMeters(lat, lon, place.latitude, place.longitude) <= 50.0
+        }
+        _state.update { it.copy(nearbyStampablePlace = nearbyPlace) }
+    }
+
+    /** 도장 후보 장소 목록 로드 (반경 500m) */
+    private fun loadStampCandidates(lat: Double, lon: Double) {
+        stampCandidatesCenter = LatLng.from(lat, lon)
+        viewModelScope.launch {
+            getPlacesUseCase(lat, lon, radius = 500.0, limit = 30)
+                .onSuccess { places ->
+                    stampCandidates = places
+                    checkAndUpdateStampPrompt(lat, lon)
+                }
+        }
+    }
+
+    /** 발자국 도장 찍기 */
+    fun stampPlace() {
+        val place = _state.value.nearbyStampablePlace ?: return
+        val walkId = _state.value.currentWalkId ?: return
+        val dogId = _state.value.myDogId ?: return
+        viewModelScope.launch {
+            sendStampUseCase(walkId, dogId, place.id)
+                .onSuccess {
+                    _state.update { state ->
+                        state.copy(
+                            nearbyStampablePlace = null,
+                            stampedPlaceIds = state.stampedPlaceIds + place.id
+                        )
+                    }
+                    // FOOTPRINT 필터 활성화 중이면 목록 즉시 새로고침
+                    if (WalkFilterType.FOOTPRINT in _state.value.activeFilters) {
+                        loadFootprintPlaces()
+                    }
+                }
+        }
+    }
+
+    /** 발자국 도장 프롬프트 닫기 (이동 후 다시 나타날 수 있음) */
+    fun dismissStampPrompt() {
+        _state.update { it.copy(nearbyStampablePlace = null) }
+    }
+
     /** 지정 좌표 기반 주변 장소 로드 */
     fun loadPlacesByPosition(latitude: Double, longitude: Double) {
         viewModelScope.launch {
@@ -814,6 +881,11 @@ class WalkViewModel @Inject constructor(
                 warningRiskZoneQueue = emptyList(),
             )
         }
+
+        // 발자국 도장 프롬프트 및 후보 장소 초기화
+        stampCandidates = emptyList()
+        stampCandidatesCenter = null
+        _state.update { it.copy(nearbyStampablePlace = null, stampedPlaceIds = emptySet()) }
 
         val summarySeconds = _state.value.elapsedSeconds
         val summaryDistance = _state.value.distanceMeters

@@ -54,6 +54,16 @@ class PlaceRepository constructor(
         ).data ?: emptyList()
     }
 
+    /** 발자국 도장 찍기 */
+    suspend fun sendStamp(walkId: Long, dogId: Long, placeId: Long): Result<Unit> = runCatching {
+        val token = tokenDataStore.getAccessToken().first() ?: error("인증 토큰 없음")
+        placeApi.sendStamp(
+            authorization = "Bearer $token",
+            request = StampRequest(walkId = walkId, dogId = dogId, placeId = placeId)
+        )
+        Unit
+    }
+
     /** 발자국 도장 찍은 장소 목록 조회 */
     suspend fun getFootprintPlaces(dogId: Long): Result<List<Place>> = runCatching {
         val token = tokenDataStore.getAccessToken().first() ?: error("인증 토큰 없음")

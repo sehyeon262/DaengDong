@@ -46,10 +46,13 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.Composable
@@ -626,6 +629,19 @@ fun WalkScreen(
                 )
             }
 
+            // 발자국 도장 프롬프트 (산책 중 50m 이내 장소 감지 시)
+            val stampablePlace = state.nearbyStampablePlace
+            if (state.isWalking && stampablePlace != null) {
+                FootprintStampBanner(
+                    placeName = stampablePlace.name,
+                    onStamp = { viewModel.stampPlace() },
+                    onDismiss = { viewModel.dismissStampPrompt() },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 4.dp)
+                )
+            }
+
             Spacer(modifier = Modifier.weight(1f))
 
             // 위험 구역 선택 모드: 하단 "선택하기" 패널
@@ -1134,6 +1150,66 @@ private fun DangerZoneSelectionBanner(modifier: Modifier = Modifier) {
     }
 }
 
+// ── 발자국 도장 프롬프트 배너 ──────────────────────────────────────────────────
+@Composable
+private fun FootprintStampBanner(
+    placeName: String,
+    onStamp: () -> Unit,
+    onDismiss: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Card(
+        modifier = modifier,
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(containerColor = PointGreen),
+        elevation = CardDefaults.cardElevation(defaultElevation = 6.dp)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = Modifier.weight(1f)
+            ) {
+                Image(
+                    painter = painterResource(id = R.drawable.dog_footprint),
+                    contentDescription = null,
+                    modifier = Modifier.size(28.dp)
+                )
+                Text(
+                    text = placeName,
+                    color = Color.White,
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                TextButton(
+                    onClick = onStamp,
+                    colors = ButtonDefaults.textButtonColors(contentColor = Color.White)
+                ) {
+                    Text(text = "발자국 찍기", fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                }
+                IconButton(onClick = onDismiss, modifier = Modifier.size(24.dp)) {
+                    Icon(
+                        imageVector = Icons.Filled.Close,
+                        contentDescription = "닫기",
+                        tint = Color.White,
+                        modifier = Modifier.size(16.dp)
+                    )
+                }
+            }
+        }
+    }
+}
+
 // ── 산책 중 통계 패널 (시간 / 거리 / 칼로리 + 버튼) ─────────────────────────
 @Composable
 private fun WalkingStatsPanel(
@@ -1381,7 +1457,7 @@ private fun addPlaceMarker(
     return kakaoMap.labelManager?.layer?.addLabel(options)
 }
 
-// ── 발자국 마커 추가 (place_mark에 초록 틴트 적용) ──────────────────────────
+// ── 발자국 마커 추가 (발자국 찍은 장소는 dog_footprint 아이콘 사용) ──────────────
 private fun addFootprintMarker(
     context: android.content.Context,
     kakaoMap: KakaoMap,
@@ -1390,24 +1466,14 @@ private fun addFootprintMarker(
     val position = LatLng.from(place.latitude, place.longitude)
 
     val source = android.graphics.BitmapFactory.decodeResource(
-        context.resources, R.drawable.place_mark
+        context.resources, R.drawable.dog_footprint
     )
     val targetSize = 80
     val aspectRatio = source.width.toFloat() / source.height.toFloat()
     val targetWidth = (targetSize * aspectRatio).toInt()
     val scaled = android.graphics.Bitmap.createScaledBitmap(source, targetWidth, targetSize, true)
 
-    // 초록 틴트를 적용해 일반 장소 마커(파랑)와 구분
-    val tinted = scaled.copy(android.graphics.Bitmap.Config.ARGB_8888, true)
-    val canvas = android.graphics.Canvas(tinted)
-    val paint = android.graphics.Paint()
-    paint.colorFilter = android.graphics.PorterDuffColorFilter(
-        android.graphics.Color.argb(180, 76, 175, 80),  // 반투명 녹색 #4CAF50
-        android.graphics.PorterDuff.Mode.SRC_ATOP
-    )
-    canvas.drawBitmap(scaled, 0f, 0f, paint)
-
-    val style = LabelStyle.from(tinted).setAnchorPoint(0.5f, 1.0f)
+    val style = LabelStyle.from(scaled).setAnchorPoint(0.5f, 1.0f)
     val styles = LabelStyles.from(style)
     val options = LabelOptions.from(position).setStyles(styles).setTag(place.id)
     return kakaoMap.labelManager?.layer?.addLabel(options)
