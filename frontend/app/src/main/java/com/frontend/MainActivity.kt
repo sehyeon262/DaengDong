@@ -13,10 +13,16 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.tooling.preview.Preview
 import com.frontend.ui.theme.FrontendTheme
 import com.frontend.navigation.NavGraph
+import com.frontend.wearable.WearableManager
 import dagger.hilt.android.AndroidEntryPoint
+import javax.inject.Inject
 
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
+
+    @Inject
+    lateinit var wearableManager: WearableManager
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
@@ -25,6 +31,16 @@ class MainActivity : ComponentActivity() {
                 NavGraph()
             }
         }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        wearableManager.registerForegroundListener()
+    }
+
+    override fun onPause() {
+        super.onPause()
+        wearableManager.unregisterForegroundListener()
     }
 }
 
