@@ -17,11 +17,13 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.frontend.ui.screen.badge.BadgeScreen
+import com.frontend.ui.screen.chat.ChatScreen
 import com.frontend.ui.screen.dog.DogEditScreen
 import com.frontend.ui.screen.dog.DogProfileScreen
 import com.frontend.ui.screen.dog.MetDogsScreen
 import com.frontend.ui.screen.home.HomeScreen
 import com.frontend.ui.screen.login.LoginScreen
+import com.frontend.ui.screen.place.AddPlaceScreen
 import com.frontend.ui.screen.record.RecordScreen
 import com.frontend.ui.screen.splash.SplashScreen
 import com.frontend.ui.screen.walk.WalkDetailScreen
@@ -46,8 +48,8 @@ fun NavGraph() {
     ) { innerPadding ->
         NavHost(
             navController = navController,
-            // TODO: (로그인 우회 : Routes.SPLASH) (원래: Routes.SPLASH)
-            startDestination = Routes.LOGIN,
+            // TODO: (로그인 우회 : Routes.HOME) (원래: Routes.SPLASH)
+            startDestination = Routes.SPLASH,
             modifier = Modifier.padding(innerPadding)
         ) {
             composable(Routes.SPLASH) {
@@ -77,7 +79,18 @@ fun NavGraph() {
                             launchSingleTop = true
                             restoreState = true
                         }
+                    },
+                    onNavigateToAddPlace = {
+                        navController.navigate(Routes.ADD_PLACE)
+                    },
+                    onNavigateToChat = { chatRoomId ->
+                        navController.navigate(Routes.chat(chatRoomId))
                     }
+                )
+            }
+            composable(Routes.ADD_PLACE) {
+                AddPlaceScreen(
+                    onNavigateBack = { navController.popBackStack() }
                 )
             }
             composable(Routes.RECORD) {
@@ -107,6 +120,12 @@ fun NavGraph() {
                 arguments = listOf(navArgument("walkId") { type = NavType.LongType })
             ) {
                 WalkDetailScreen(navController = navController)
+            }
+            composable(
+                route = Routes.CHAT,
+                arguments = listOf(navArgument("chatRoomId") { type = NavType.LongType })
+            ) {
+                ChatScreen(onBack = { navController.popBackStack() })
             }
         }
     }

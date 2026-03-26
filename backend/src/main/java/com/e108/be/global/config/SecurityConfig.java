@@ -43,6 +43,8 @@ public class SecurityConfig {
                         .requestMatchers("/records/**").permitAll() // 테스트용 임시 허용
                         .requestMatchers("/diaries/**").permitAll() // 테스트용 임시 허용
                         .requestMatchers("/error").permitAll()   // Spring 오류 포워딩 허용
+                        .requestMatchers("/ws/**").permitAll()   // WebSocket SockJS 엔드포인트 허용
+                        .requestMatchers("/ws-native").permitAll()  // WebSocket Native 엔드포인트 허용 (Android)
 
                         // TODO: 개발 테스트용 임시 허용 - 로그인 구현 완료 후 아래 줄 제거
                         // context-path(/api/v1) 이후 경로만 매칭됨

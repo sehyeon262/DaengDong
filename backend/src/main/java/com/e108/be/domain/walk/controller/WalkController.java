@@ -177,11 +177,14 @@ public class WalkController {
      * PATCH /api/v1/walks/proposals/{proposalId}
      */
     @PatchMapping("/proposals/{proposalId}")
-    public ResTemplate<Void> respondToProposal(
+    public ResTemplate<java.util.Map<String, Long>> respondToProposal(
             @PathVariable String proposalId,
             @RequestBody ProposalRespondRequest request) {
-        walkService.respondToProposal(proposalId, request);
-        return ResTemplate.success(HttpStatus.OK, "산책 제안 처리 완료", null);
+        Long chatRoomId = walkService.respondToProposal(proposalId, request);
+        java.util.Map<String, Long> data = chatRoomId != null
+                ? java.util.Map.of("chatRoomId", chatRoomId)
+                : java.util.Collections.emptyMap();
+        return ResTemplate.success(HttpStatus.OK, "산책 제안 처리 완료", data);
     }
 
     /**

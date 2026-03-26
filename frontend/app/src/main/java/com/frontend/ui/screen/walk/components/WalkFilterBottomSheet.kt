@@ -19,7 +19,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.DirectionsWalk
+import androidx.compose.material.icons.automirrored.filled.DirectionsWalk
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.Pets
 import androidx.compose.material3.Button
@@ -130,7 +130,7 @@ fun WalkFilterBottomSheet(
                     modifier = Modifier.weight(1f)
                 )
                 FilterOption(
-                    icon = Icons.Filled.DirectionsWalk,
+                    icon = Icons.AutoMirrored.Filled.DirectionsWalk,
                     label = "발자국",
                     isSelected = WalkFilterType.FOOTPRINT in activeFilters,
                     onClick = { onFilterToggle(WalkFilterType.FOOTPRINT) },

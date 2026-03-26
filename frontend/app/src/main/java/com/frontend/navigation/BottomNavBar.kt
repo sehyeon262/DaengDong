@@ -7,7 +7,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Home
-import androidx.compose.material.icons.filled.MenuBook
+import androidx.compose.material.icons.automirrored.filled.MenuBook
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Pets
 import androidx.compose.material3.Icon
@@ -40,7 +40,7 @@ fun BottomNavBar(navController: NavController) {
     val items = listOf(
         BottomNavItem(Routes.HOME, "홈", Icons.Filled.Home),
         BottomNavItem(Routes.WALK, "산책", Icons.Filled.Pets),
-        BottomNavItem(Routes.RECORD, "기록", Icons.Filled.MenuBook),
+        BottomNavItem(Routes.RECORD, "기록", Icons.AutoMirrored.Filled.MenuBook),
         BottomNavItem(Routes.MY_INFO, "프로필", Icons.Filled.Person)
     )
 
@@ -62,9 +62,9 @@ fun BottomNavBar(navController: NavController) {
             // 곡선 아래 흰색 채우기 (곡선 위는 투명 → 앱 배경 보임)
             val fillPath = Path().apply {
                 moveTo(0f, cornerRadius)
-                quadraticBezierTo(0f, lineY, cornerRadius, lineY)
+                quadraticTo(0f, lineY, cornerRadius, lineY)
                 lineTo(size.width - cornerRadius, lineY)
-                quadraticBezierTo(size.width, lineY, size.width, cornerRadius)
+                quadraticTo(size.width, lineY, size.width, cornerRadius)
                 lineTo(size.width, size.height)
                 lineTo(0f, size.height)
                 close()
@@ -74,9 +74,9 @@ fun BottomNavBar(navController: NavController) {
             // 연두색 곡선 선
             val strokePath = Path().apply {
                 moveTo(0f, cornerRadius)
-                quadraticBezierTo(0f, lineY, cornerRadius, lineY)
+                quadraticTo(0f, lineY, cornerRadius, lineY)
                 lineTo(size.width - cornerRadius, lineY)
-                quadraticBezierTo(size.width, lineY, size.width, cornerRadius)
+                quadraticTo(size.width, lineY, size.width, cornerRadius)
             }
             drawPath(
                 path = strokePath,

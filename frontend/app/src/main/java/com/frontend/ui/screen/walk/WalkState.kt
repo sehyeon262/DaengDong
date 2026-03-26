@@ -1,5 +1,6 @@
 package com.frontend.ui.screen.walk
 
+import com.frontend.domain.model.ChatBannerNotification
 import com.frontend.domain.model.DangerLocation
 import com.frontend.domain.model.DangerReason
 import com.frontend.domain.model.DangerZone
@@ -19,6 +20,15 @@ import com.frontend.domain.model.RecommendedRoute
 data class DogAlertState(
     val lastAlertTimeMs: Long = 0L,         // 마지막 알림 발송 시간
     val isInsideAlertRadius: Boolean = false, // 현재 알림 반경(50m) 안에 있는지
+)
+
+/**
+ * 장소 발자국 알림 상태 추적용 데이터 클래스
+ * - 20m 반경 진입/이탈 기반으로 알림 제어
+ */
+data class FootprintAlertState(
+    val isInsideRadius: Boolean = false,  // 현재 20m 반경 안에 있는지
+    val hasStamped: Boolean = false,      // 이번 산책에서 이미 도장 찍었는지 (영구 무시)
 )
 
 data class WalkState(
@@ -42,6 +52,16 @@ data class WalkState(
     val places: List<Place> = emptyList(),            // 지도에 표시할 장소 목록
     val isPlacesLoading: Boolean = false,             // 장소 로딩 중 여부
     val selectedPlace: Place? = null,                 // 클릭된 장소 (상세 바텀시트 표시용)
+
+    // ── 발자국 마커 ────────────────────────────────────────────────────────────
+    val footprintPlaces: List<Place> = emptyList(),   // 도장 찍은 장소 목록
+    val isFootprintPlacesLoading: Boolean = false,    // 발자국 장소 로딩 중 여부
+
+    // ── 발자국 찍기 오버레이 ────────────────────────────────────────────────
+    val footprintAlertPlace: Place? = null,                        // 현재 20m 이내의 장소 (null=오버레이 없음)
+    val footprintStamped: Boolean = false,                          // 도장 찍기 완료 여부
+    val footprintAlertStates: Map<Long, FootprintAlertState> = emptyMap(), // 장소별 진입/이탈/도장 상태
+    val walkPlaces: List<Place> = emptyList(),                      // 발자국 감지용 주변 장소 목록
 
     // ── 자유 산책 ──────────────────────────────────────────────────────────────
     val isWalking: Boolean = false,       // 산책 진행 중 여부
@@ -94,5 +114,13 @@ data class WalkState(
     val error: String? = null,                        // 에러 메시지 (없으면 null)
 
     // ── 배지 획득 알림 ──────────────────────────────────────────────────────
-    val newBadges: List<NewBadgeInfo> = emptyList()   // 새로 획득한 배지 목록
+    val newBadges: List<NewBadgeInfo> = emptyList(),   // 새로 획득한 배지 목록
+
+    // ── 채팅 관련 상태 ──────────────────────────────────────────────────────
+    /** dogId → chatRoomId: 수락된 제안의 채팅방 정보 보관 (프로필 팝업에서 채팅 버튼 표시용) */
+    val acceptedChatRooms: Map<Long, Long> = emptyMap(),
+    /** 수락자 확인 다이얼로그에서 바로 채팅방 이동할 수 있도록 최근 수락한 chatRoomId 보관 */
+    val acceptedByMeChatRoomId: Long? = null,
+    /** 화면 상단에 표시할 채팅 배너 알림 (null이면 숨김) */
+    val chatBanner: ChatBannerNotification? = null,
 )

@@ -11,4 +11,5 @@ public class AcceptedProposalResponse {
     private String name;
     private String breed;
     private String profileImageUrl;
+    private Long chatRoomId;
 }

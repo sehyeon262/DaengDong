@@ -2,6 +2,8 @@ package com.frontend.ui.screen.walk
 
 import android.content.Context
 import android.database.ContentObserver
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.hardware.Sensor
 import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
@@ -16,8 +18,10 @@ import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.MultipartBody
 import okhttp3.RequestBody.Companion.toRequestBody
 import com.frontend.data.local.TokenDataStore
+import com.frontend.data.remote.StompChatClient
 import com.frontend.data.repository.DogRepository
 import com.frontend.data.repository.WalkRepository
+import com.frontend.domain.model.ChatBannerNotification
 import com.frontend.domain.model.FeedbackRequest
 import com.frontend.domain.model.NearbyDogResponse
 import com.frontend.domain.model.PendingProposalInfo
@@ -27,15 +31,19 @@ import com.frontend.domain.model.DangerReason
 import com.frontend.domain.model.LocationBatchRequest
 import com.frontend.domain.model.Place
 import com.frontend.domain.model.RecommendedRoute
+import com.frontend.domain.model.StartWalkRequest
 import com.frontend.domain.model.WalkRoute
 import com.frontend.domain.usecase.EndWalkUseCase
 import com.frontend.domain.usecase.GetDangerZonesUseCase
+import com.frontend.domain.usecase.GetFootprintPlacesUseCase
 import com.frontend.domain.usecase.GetPlaceDetailUseCase
 import com.frontend.domain.usecase.GetPlacesUseCase
 import com.frontend.domain.usecase.GetRecommendedRoutesUseCase
 import com.frontend.domain.usecase.ReportDangerZoneUseCase
 import com.frontend.domain.usecase.SaveLocationsUseCase
+import com.frontend.domain.usecase.StampPlaceUseCase
 import com.frontend.domain.usecase.StartFreeWalkUseCase
+import com.frontend.notification.FootprintAlertManager
 import com.frontend.notification.NearbyDogAlertManager
 import com.google.android.gms.location.LocationCallback
 import com.google.android.gms.location.LocationRequest
@@ -53,6 +61,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 import javax.inject.Inject
 import kotlin.math.abs
 import kotlin.math.atan2
@@ -66,6 +75,7 @@ class WalkViewModel @Inject constructor(
     private val reportDangerZoneUseCase: ReportDangerZoneUseCase,
     private val getDangerZonesUseCase: GetDangerZonesUseCase,
     private val getPlacesUseCase: GetPlacesUseCase,
+    private val getFootprintPlacesUseCase: GetFootprintPlacesUseCase,
     private val walkRepository: WalkRepository,
     private val tokenDataStore: TokenDataStore,
     private val dogRepository: DogRepository,
@@ -75,6 +85,9 @@ class WalkViewModel @Inject constructor(
     private val saveLocationsUseCase: SaveLocationsUseCase,
     private val endWalkUseCase: EndWalkUseCase,
     private val nearbyDogAlertManager: NearbyDogAlertManager,
+    private val footprintAlertManager: FootprintAlertManager,
+    private val stampPlaceUseCase: StampPlaceUseCase,
+    private val stompChatClient: StompChatClient,
 ) : ViewModel() {
 
     // ── 비선호 강아지 알림 상수 ─────────────────────────────────────────────────
@@ -82,6 +95,7 @@ class WalkViewModel @Inject constructor(
         private const val ALERT_ENTER_RADIUS_M = 50.0   // 알림 발생 반경
         private const val ALERT_EXIT_RADIUS_M = 70.0    // 반경 이탈 판정 거리
         private const val ALERT_COOLDOWN_MS = 2 * 60 * 1000L  // 2분 쿨다운
+        private const val FOOTPRINT_ALERT_RADIUS_M = 20.0     // 발자국 알림 반경
     }
 
     private val _state = MutableStateFlow(WalkState())
@@ -97,6 +111,9 @@ class WalkViewModel @Inject constructor(
 
     // ── 위험구역 최초 로드 여부 (위치 수신 후 1회만 로드) ───────────────────────
     private var dangerZonesLoaded = false
+
+    // ── 발자국 체크용 주변 장소 최초 로드 여부 (산책 시작 후 1회만 로드) ───────
+    private var walkPlacesLoaded = false
 
     // ── 산책 경로 포인트 (지도 경로 표시용) ────────────────────────────────────
     private val _routePoints = MutableStateFlow<List<LatLng>>(emptyList())
@@ -164,6 +181,7 @@ class WalkViewModel @Inject constructor(
     private val locationCallback = object : LocationCallback() {
         override fun onLocationResult(result: LocationResult) {
             result.lastLocation?.let { loc ->
+                if (loc.accuracy > 20f) return@let
                 val newLatLng = LatLng.from(loc.latitude, loc.longitude)
                 _currentPosition.value = newLatLng
 
@@ -188,6 +206,14 @@ class WalkViewModel @Inject constructor(
                             timestamp = System.currentTimeMillis()
                         )
                     )
+
+                    // 발자국 체크용 장소 최초 로드
+                    if (!walkPlacesLoaded) {
+                        walkPlacesLoaded = true
+                        loadWalkPlaces(loc.latitude, loc.longitude)
+                    }
+                    // 20m 이내 장소 진입 감지
+                    checkNearbyPlacesForFootprint(newLatLng)
                 }
             }
         }
@@ -211,22 +237,25 @@ class WalkViewModel @Inject constructor(
     // ── 카메라 사진 자동 감지 ───────────────────────────────────────────────────
 
     private fun startPhotoObserver() {
-        // 미디어 읽기 권한 확인
-        val mediaPermission = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
-            android.Manifest.permission.READ_MEDIA_IMAGES
+        // 미디어 전체 접근 권한 확인
+        // 자동 감지는 MediaStore 쿼리로 새 사진을 찾으므로 전체 접근 필수
+        // (Android 14+ "사진 선택" 부분 접근으로는 새 카메라 사진 감지 불가)
+        val hasFullAccess = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+            androidx.core.content.ContextCompat.checkSelfPermission(
+                context, android.Manifest.permission.READ_MEDIA_IMAGES
+            ) == android.content.pm.PackageManager.PERMISSION_GRANTED
         } else {
-            android.Manifest.permission.READ_EXTERNAL_STORAGE
+            androidx.core.content.ContextCompat.checkSelfPermission(
+                context, android.Manifest.permission.READ_EXTERNAL_STORAGE
+            ) == android.content.pm.PackageManager.PERMISSION_GRANTED
         }
-        val hasPermission = androidx.core.content.ContextCompat.checkSelfPermission(
-            context, mediaPermission
-        ) == android.content.pm.PackageManager.PERMISSION_GRANTED
 
-        if (!hasPermission) {
-            android.util.Log.w("WalkVM", "미디어 읽기 권한 없음 — 사진 자동 감지 비활성화")
+        if (!hasFullAccess) {
+            android.util.Log.w("WalkVM", "미디어 전체 접근 권한 없음 — 사진 자동 감지 비활성화 (산책 후 수동 업로드 가능)")
             return
         }
 
-        walkStartTimestamp = System.currentTimeMillis() / 1000
+        walkStartTimestamp = System.currentTimeMillis()
         uploadedPhotoIds.clear()
 
         photoObserver = object : ContentObserver(Handler(Looper.getMainLooper())) {
@@ -234,6 +263,8 @@ class WalkViewModel @Inject constructor(
                 super.onChange(selfChange, uri)
                 val walkId = currentWalkId ?: return
                 viewModelScope.launch {
+                    // walkId가 아직 없으면 서버 응답을 기다림
+                    val walkId = currentWalkId ?: walkIdDeferred?.await() ?: return@launch
                     checkAndUploadNewPhotos(walkId)
                 }
             }
@@ -259,16 +290,24 @@ class WalkViewModel @Inject constructor(
         uploadedPhotoIds.clear()
     }
 
+    private val uploadMutex = kotlinx.coroutines.sync.Mutex()
+
     private fun checkAndUploadNewPhotos(walkId: Long) {
         viewModelScope.launch {
+            // 동시 실행 방지 — ContentObserver가 같은 사진에 여러 번 호출될 수 있음
+            if (!uploadMutex.tryLock()) return@launch
             try {
                 val projection = arrayOf(
                     MediaStore.Images.Media._ID,
+                    MediaStore.Images.Media.DATE_TAKEN,
                     MediaStore.Images.Media.DATE_ADDED,
                     MediaStore.Images.Media.MIME_TYPE,
                 )
+                // DATE_ADDED(초 단위)를 primary로 사용 — 항상 시스템이 설정하므로 안정적
+                // DATE_TAKEN은 EXIF 의존이라 에뮬레이터/일부 카메라 앱에서 누락됨
+                val walkStartSeconds = walkStartTimestamp / 1000
                 val selection = "${MediaStore.Images.Media.DATE_ADDED} >= ?"
-                val selectionArgs = arrayOf(walkStartTimestamp.toString())
+                val selectionArgs = arrayOf(walkStartSeconds.toString())
                 val sortOrder = "${MediaStore.Images.Media.DATE_ADDED} DESC"
 
                 context.contentResolver.query(
@@ -281,26 +320,60 @@ class WalkViewModel @Inject constructor(
                     while (cursor.moveToNext()) {
                         val photoId = cursor.getLong(idCol)
                         if (photoId in uploadedPhotoIds) continue
-                        uploadedPhotoIds.add(photoId)
 
                         val mime = cursor.getString(mimeCol) ?: "image/jpeg"
+                        val ext = when {
+                            mime.contains("png") -> "png"
+                            mime.contains("webp") -> "webp"
+                            mime.contains("heic") || mime.contains("heif") -> "heic"
+                            else -> "jpg"
+                        }
                         val contentUri = android.content.ContentUris.withAppendedId(
                             MediaStore.Images.Media.EXTERNAL_CONTENT_URI, photoId
                         )
 
-                        val stream = context.contentResolver.openInputStream(contentUri) ?: continue
-                        val bytes = stream.readBytes()
-                        stream.close()
-                        val requestBody = bytes.toRequestBody(mime.toMediaTypeOrNull())
+                        val bytes = compressImage(contentUri) ?: continue
+                        val requestBody = bytes.toRequestBody("image/jpeg".toMediaTypeOrNull())
                         val part = MultipartBody.Part.createFormData(
-                            "files", "walk_photo_${photoId}.jpg", requestBody
+                            "files", "walk_photo_${photoId}.${ext}", requestBody
                         )
-                        walkRepository.uploadPhotos(walkId, listOf(part))
+                        val result = walkRepository.uploadPhotos(walkId, listOf(part))
+                        if (result.isSuccess) {
+                            uploadedPhotoIds.add(photoId)
+                        } else {
+                            android.util.Log.w("WalkVM", "사진 업로드 실패 (photoId=$photoId): ${result.exceptionOrNull()?.message}")
+                        }
                     }
                 }
             } catch (e: Exception) {
                 android.util.Log.w("WalkVM", "사진 자동 업로드 실패: ${e.message}")
+            } finally {
+                uploadMutex.unlock()
             }
+        }
+    }
+
+    /** 사진을 최대 1920px, JPEG 80% 품질로 압축 (413 방지) */
+    private fun compressImage(uri: Uri, maxDimension: Int = 1920, quality: Int = 80): ByteArray? {
+        return try {
+            val inputStream = context.contentResolver.openInputStream(uri) ?: return null
+            val original = BitmapFactory.decodeStream(inputStream)
+            inputStream.close()
+            if (original == null) return null
+
+            val ratio = minOf(maxDimension.toFloat() / original.width, maxDimension.toFloat() / original.height, 1f)
+            val scaled = if (ratio < 1f) {
+                Bitmap.createScaledBitmap(original, (original.width * ratio).toInt(), (original.height * ratio).toInt(), true)
+            } else original
+
+            val output = java.io.ByteArrayOutputStream()
+            scaled.compress(Bitmap.CompressFormat.JPEG, quality, output)
+            if (scaled !== original) scaled.recycle()
+            original.recycle()
+            output.toByteArray()
+        } catch (e: Exception) {
+            android.util.Log.w("WalkVM", "사진 압축 실패: ${e.message}")
+            null
         }
     }
 
@@ -391,9 +464,10 @@ class WalkViewModel @Inject constructor(
 
     /**
      * 추천 경로 강제 새로고침
+     * 경로 목록을 비우면서 selectedRouteIndex도 0(자유 산책)으로 초기화
      */
     fun refreshRecommendedRoutes(latitude: Double, longitude: Double) {
-        _state.update { it.copy(recommendedRoutes = emptyList()) }
+        _state.update { it.copy(recommendedRoutes = emptyList(), selectedRouteIndex = 0) }
         loadRecommendedRoutes(latitude, longitude)
     }
 
@@ -426,6 +500,8 @@ class WalkViewModel @Inject constructor(
         val pending = _state.value.pendingFilters
         val wasPlaceActive = WalkFilterType.PLACE in _state.value.activeFilters
         val isPlaceActive = WalkFilterType.PLACE in pending
+        val wasFootprintActive = WalkFilterType.FOOTPRINT in _state.value.activeFilters
+        val isFootprintActive = WalkFilterType.FOOTPRINT in pending
 
         _state.update { it.copy(activeFilters = pending, showFilterSheet = false) }
 
@@ -435,8 +511,30 @@ class WalkViewModel @Inject constructor(
         }
         // 장소 필터 ON 시 로드는 WalkScreen의 LaunchedEffect(activeFilters)에서 지도 중심으로 처리
 
+        // 발자국 필터 ON → 도장 찍은 장소 로드 / OFF → 초기화
+        if (isFootprintActive && !wasFootprintActive) {
+            loadFootprintPlaces()
+        } else if (!isFootprintActive && wasFootprintActive) {
+            _state.update { it.copy(footprintPlaces = emptyList()) }
+        }
+
         // 주변 강아지 필터는 마커 표시만 제어 (폴링은 산책 중 항상 실행 - 알림용)
         // 마커 표시/숨김은 WalkScreen에서 처리
+    }
+
+    /** 발자국 도장 찍은 장소 목록 로드 */
+    fun loadFootprintPlaces() {
+        viewModelScope.launch {
+            val dogId = tokenDataStore.getDogId().first() ?: return@launch
+            _state.update { it.copy(isFootprintPlacesLoading = true) }
+            getFootprintPlacesUseCase(dogId)
+                .onSuccess { places ->
+                    _state.update { it.copy(footprintPlaces = places, isFootprintPlacesLoading = false) }
+                }
+                .onFailure {
+                    _state.update { it.copy(isFootprintPlacesLoading = false) }
+                }
+        }
     }
 
     /** 지정 좌표 기반 주변 장소 로드 */
@@ -478,13 +576,41 @@ class WalkViewModel @Inject constructor(
     // ── 산책 ID 관리 ───────────────────────────────────────────────────────────
 
     /**
-     * R1-03: 자유 산책 시작
-     * - 버튼 클릭 즉시 isWalking = true (낙관적 UI 전환 → 즉각 화면 전환)
-     * - 타이머 즉시 시작
-     * - 백그라운드에서 서버 요청 → walkId 수신 후 GPS 배치 전송 시작
+     * 산책 시작 실패 시 상태를 완전히 원복
+     */
+    private fun resetWalkStateOnFailure(errorMessage: String) {
+        timerJob?.cancel()
+        timerJob = null
+        stopPhotoObserver()
+        walkIdDeferred?.complete(null)
+        walkIdDeferred = null
+        currentWalkId = null
+        _routePoints.value = emptyList()
+        pendingPoints.clear()
+        _state.update {
+            it.copy(
+                isWalking = false,
+                isPaused = false,
+                elapsedSeconds = 0,
+                distanceMeters = 0.0,
+                currentWalkId = null,
+                walkError = errorMessage,
+            )
+        }
+    }
+
+    /**
+     * 산책 시작 (자유 산책 / 추천 경로 산책 통합)
+     *
+     * - selectedRouteIndex == 0: 자유 산책 (selectedType = null)
+     * - selectedRouteIndex > 0: 추천 경로 산책 (selectedType, placeIds, recommendedPath 포함)
+     *
+     * 버튼 클릭 즉시 UI 전환 후 백그라운드에서 서버 요청
+     * 실패 시 상태를 완전히 원복하여 산책 중 상태가 남지 않도록 보장
      */
     fun startFreeWalk() {
         // 즉시 UI 전환
+        walkPlacesLoaded = false
         _state.update {
             it.copy(
                 isWalking = true,
@@ -492,6 +618,10 @@ class WalkViewModel @Inject constructor(
                 elapsedSeconds = 0,
                 distanceMeters = 0.0,
                 walkError = null,
+                walkPlaces = emptyList(),
+                footprintAlertStates = emptyMap(),
+                footprintAlertPlace = null,
+                footprintStamped = false,
             )
         }
         _routePoints.value = emptyList()
@@ -503,9 +633,23 @@ class WalkViewModel @Inject constructor(
         val deferred = CompletableDeferred<Long?>()
         walkIdDeferred = deferred
         viewModelScope.launch {
-            startFreeWalkUseCase()
-                .onSuccess { walkId ->
+            // dogId 조회
+            val dogId = tokenDataStore.getDogId().first()
+            if (dogId == null) {
+                resetWalkStateOnFailure("강아지 정보가 없습니다")
+                return@launch
+            }
 
+            // 선택된 경로에 따라 요청 바디 구성
+            val request = buildStartWalkRequest(dogId)
+            if (request == null) {
+                // 추천 경로 선택했으나 경로 데이터가 없는 경우
+                resetWalkStateOnFailure("선택한 추천 경로를 찾을 수 없습니다. 경로를 다시 선택해주세요.")
+                return@launch
+            }
+
+            startFreeWalkUseCase(request)
+                .onSuccess { walkId ->
                     currentWalkId = walkId
                     _state.update { it.copy(currentWalkId = walkId) }
                     deferred.complete(walkId)
@@ -514,11 +658,44 @@ class WalkViewModel @Inject constructor(
                     startNearbyDogsPolling()
                 }
                 .onFailure { e ->
-
-                    deferred.complete(null)
-                    _state.update { it.copy(walkError = "산책 시작 실패: ${e.message}") }
+                    resetWalkStateOnFailure("산책 시작 실패: ${e.message}")
                 }
         }
+    }
+
+    /**
+     * 선택된 경로에 따라 StartWalkRequest 생성
+     *
+     * @return StartWalkRequest 또는 null (추천 경로 선택했으나 경로 데이터가 없는 경우)
+     */
+    private fun buildStartWalkRequest(dogId: Long): StartWalkRequest? {
+        val selectedIndex = _state.value.selectedRouteIndex
+
+        // 자유 산책 (index == 0)
+        if (selectedIndex == 0) {
+            return StartWalkRequest(dogId = dogId)
+        }
+
+        // 추천 경로 산책: 경로가 없으면 null 반환 (자유 산책 fallback 금지)
+        val recommendedRoute = getSelectedRecommendedRoute()
+            ?: return null
+
+        // recommendedPath: actualPathPoints 우선, 없으면 polyline 사용
+        // 각 좌표를 [latitude, longitude] 형태로 변환
+        val pathPoints = recommendedRoute.getPathPoints()
+        val recommendedPath = pathPoints.map { point ->
+            listOf(point.latitude, point.longitude)
+        }
+
+        return StartWalkRequest(
+            dogId = dogId,
+            selectedType = recommendedRoute.type,
+            selectedDistanceM = recommendedRoute.totalDistanceM,
+            placeIds = recommendedRoute.places.map { it.id },
+            weatherCondition = null,  // 현재 구조상 날씨 정보 미제공 (optional)
+            temperature = null,       // 현재 구조상 기온 정보 미제공 (optional)
+            recommendedPath = recommendedPath.ifEmpty { null }
+        )
     }
 
     /**
@@ -532,11 +709,26 @@ class WalkViewModel @Inject constructor(
         timerJob?.cancel()
         timerJob = null
         stopNearbyDogsPolling()
+
+        // 산책 종료 직전 마지막으로 새 사진 스캔 (ContentObserver 누락 대비)
+        currentWalkId?.let { walkId ->
+            viewModelScope.launch { checkAndUploadNewPhotos(walkId) }
+        }
         stopPhotoObserver()
 
         // 비선호 강아지 알림 정리
         nearbyDogAlertManager.cancelAllAlerts()
-        _state.update { it.copy(dogAlertStates = emptyMap(), warningDog = null) }
+        footprintAlertManager.cancelAlert()
+        _state.update {
+            it.copy(
+                dogAlertStates = emptyMap(),
+                warningDog = null,
+                footprintAlertPlace = null,
+                footprintStamped = false,
+                walkPlaces = emptyList(),
+                footprintAlertStates = emptyMap(),
+            )
+        }
 
         val summarySeconds = _state.value.elapsedSeconds
         val summaryDistance = _state.value.distanceMeters
@@ -890,6 +1082,16 @@ class WalkViewModel @Inject constructor(
         ) }
         viewModelScope.launch {
             walkRepository.respondToProposal(proposal.proposalId, "ACCEPT", myWalkRecordId)
+                .onSuccess { chatRoomId ->
+                    if (chatRoomId != null) {
+                        // 수락자 측: chatRoomId 저장 + WebSocket 구독
+                        _state.update { it.copy(
+                            acceptedChatRooms = it.acceptedChatRooms + (proposal.dogId to chatRoomId),
+                            acceptedByMeChatRoomId = chatRoomId,
+                        ) }
+                        subscribeToChatRoom(chatRoomId, proposal.name, proposal.profileImageUrl)
+                    }
+                }
         }
     }
 
@@ -908,9 +1110,17 @@ class WalkViewModel @Inject constructor(
 
     /** 제안자 — 수락 알림 확인 */
     fun dismissAcceptedProposal(proposalId: String) {
+        val accepted = _state.value.acceptedProposals.find { it.proposalId == proposalId }
         _state.update { it.copy(
             acceptedProposals = it.acceptedProposals.filter { a -> a.proposalId != proposalId }
         ) }
+        // 제안자 측: chatRoomId 저장 + WebSocket 구독
+        accepted?.chatRoomId?.let { chatRoomId ->
+            _state.update { it.copy(
+                acceptedChatRooms = it.acceptedChatRooms + (accepted.dogId to chatRoomId)
+            ) }
+            subscribeToChatRoom(chatRoomId, accepted.name, accepted.profileImageUrl)
+        }
     }
 
     /** 제안자 — 거절 알림 확인 */
@@ -1044,5 +1254,153 @@ class WalkViewModel @Inject constructor(
                 _state.update { it.copy(isLoading = false, error = e.message) }
             }
         }
+    }
+
+    // ── 발자국 찍기 ────────────────────────────────────────────────────────────
+
+    /** 발자국 감지용 주변 장소 로드 (산책 시작 시 1회) */
+    private fun loadWalkPlaces(latitude: Double, longitude: Double) {
+        viewModelScope.launch {
+            getPlacesUseCase(latitude, longitude, radius = 500.0).onSuccess { places ->
+                _state.update { it.copy(walkPlaces = places) }
+            }
+        }
+    }
+
+    /**
+     * 20m 진입/이탈 기반 발자국 알림 처리
+     * - 20m 진입 시: 알림 + 오버레이 표시
+     * - 20m 이탈 시: 알림 취소 + 오버레이 닫기
+     * - 20m 재진입 시: 알림 + 오버레이 다시 표시
+     * - 도장 찍은 장소: hasStamped=true로 영구 무시
+     */
+    private fun checkNearbyPlacesForFootprint(currentPos: LatLng) {
+        val places = _state.value.walkPlaces
+        if (places.isEmpty()) return
+
+        val prevStates = _state.value.footprintAlertStates
+        val newStates = prevStates.toMutableMap()
+        val currentAlertPlace = _state.value.footprintAlertPlace
+
+        // 1단계: 모든 장소의 반경 내/외 상태 갱신
+        for (place in places) {
+            val prev = prevStates[place.id] ?: FootprintAlertState()
+            if (prev.hasStamped) continue
+            val dist = haversineMeters(
+                currentPos.latitude, currentPos.longitude,
+                place.latitude, place.longitude
+            )
+            newStates[place.id] = prev.copy(isInsideRadius = dist <= FOOTPRINT_ALERT_RADIUS_M)
+        }
+
+        // 2단계: 현재 오버레이 중인 장소가 반경을 이탈했으면 닫기
+        var newAlertPlace = currentAlertPlace
+        if (currentAlertPlace != null && newStates[currentAlertPlace.id]?.isInsideRadius != true) {
+            newAlertPlace = null
+            footprintAlertManager.cancelAlert()
+        }
+
+        // 3단계: 오버레이 없는 상태에서 새로 20m 진입한 장소 탐색
+        if (newAlertPlace == null) {
+            for (place in places) {
+                val prev = prevStates[place.id] ?: FootprintAlertState()
+                val next = newStates[place.id] ?: FootprintAlertState()
+                if (next.hasStamped || !next.isInsideRadius) continue
+                // 이번에 새로 진입한 경우에만 알림 발송
+                if (!prev.isInsideRadius) {
+                    footprintAlertManager.showFootprintAlert(place.name)
+                }
+                newAlertPlace = place
+                break
+            }
+        }
+
+        _state.update {
+            it.copy(
+                footprintAlertStates = newStates,
+                footprintAlertPlace = newAlertPlace,
+                // 오버레이가 사라지면 stamped 상태도 초기화
+                footprintStamped = if (newAlertPlace == null) false else it.footprintStamped,
+            )
+        }
+    }
+
+    /** 발자국 도장 찍기 — 해당 장소를 이번 산책 내내 무시(hasStamped=true) */
+    fun stampFootprint() {
+        val place = _state.value.footprintAlertPlace ?: return
+        val walkId = currentWalkId ?: return
+        val dogId = _state.value.myDogId ?: return
+
+        _state.update { state ->
+            val newStates = state.footprintAlertStates.toMutableMap()
+            newStates[place.id] = FootprintAlertState(isInsideRadius = true, hasStamped = true)
+            state.copy(
+                footprintStamped = true,
+                footprintAlertStates = newStates,
+            )
+        }
+        viewModelScope.launch {
+            stampPlaceUseCase(walkId, dogId, place.id)
+                .onFailure { e ->
+                    android.util.Log.w("WalkVM", "발자국 도장 찍기 실패: ${e.message}")
+                }
+        }
+    }
+
+    /** 발자국 오버레이 닫기 (2초 자동 닫힘 후 호출) */
+    fun dismissFootprintOverlay() {
+        _state.update { it.copy(footprintAlertPlace = null, footprintStamped = false) }
+    }
+
+    // ── 채팅 관련 ─────────────────────────────────────────────────────────────
+
+    /** WebSocket 연결 후 특정 채팅방 구독 + 메시지 수신 시 배너 표시 */
+    private fun subscribeToChatRoom(
+        chatRoomId: Long,
+        partnerName: String,
+        partnerImageUrl: String?,
+    ) {
+        viewModelScope.launch {
+            val token = tokenDataStore.getAccessToken().first() ?: return@launch
+            val wsUrl = buildWsUrl()
+            if (!stompChatClient.isConnected) {
+                stompChatClient.connect(wsUrl, token)
+                // CONNECTED 신호 대기 (최대 15초) — 연결 실패 시 무한 대기 방지
+                val connected = withTimeoutOrNull(15_000L) {
+                    stompChatClient.connected.first { it }
+                }
+                if (connected == null) return@launch
+            }
+            stompChatClient.subscribe(chatRoomId)
+
+            // 수신 메시지 → 배너 알림 (ChatScreen에서 이미 보고 있으면 억제)
+            stompChatClient.messages.collect { (roomId, message) ->
+                if (roomId == chatRoomId && stompChatClient.activeChatRoomId != chatRoomId) {
+                    _state.update { it.copy(
+                        chatBanner = ChatBannerNotification(
+                            chatRoomId = roomId,
+                            senderName = partnerName,
+                            senderImageUrl = partnerImageUrl,
+                            messagePreview = message.content.take(40),
+                        )
+                    ) }
+                }
+            }
+        }
+    }
+
+    /** 채팅 배너 닫기 */
+    fun dismissChatBanner() {
+        _state.update { it.copy(chatBanner = null) }
+    }
+
+    private fun buildWsUrl(): String {
+        // BASE_URL 예: "http://192.168.30.183:8080/api/v1/"
+        // WS URL 결과: "ws://192.168.30.183:8080/api/v1/ws-native"
+        val scheme = if (com.frontend.util.Constants.BASE_URL.startsWith("https")) "wss" else "ws"
+        val base = com.frontend.util.Constants.BASE_URL
+            .removePrefix("https://").removePrefix("http://")
+            .trimEnd('/')
+        return "$scheme://$base/ws-native"
     }
 }

@@ -22,3 +22,4 @@ dependencyResolutionManagement {
 
 rootProject.name = "Frontend"
 include(":app")
+include(":wear")

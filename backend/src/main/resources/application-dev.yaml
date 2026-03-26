@@ -2,13 +2,13 @@ spring:
   # Redis 설정
   data:
     redis:
-      host: localhost
-      port: 6379
+      host: ${SPRING_DATA_REDIS_HOST:redis-dev}
+      port: ${SPRING_DATA_REDIS_PORT:6379}
 
   # 개발용 DB 설정
   datasource:
     url: ${DB_URL:jdbc:postgresql://localhost:5432/e108_db}
-    username: postgres
+    username: ${DB_USERNAME:postgres}
     password: ${DB_PASSWORD}
     driver-class-name: org.postgresql.Driver
 
@@ -17,8 +17,12 @@ spring:
     init:
       encoding: UTF-8
       data-locations:
+        - classpath:sql/users.sql
+        - classpath:sql/init_places.sql
+        - classpath:sql/walk_records.sql
         - classpath:sql/badges.sql
       continue-on-error: true
+      mode: never
 
   # 개발용 JPA 설정
   jpa:
