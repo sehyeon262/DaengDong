@@ -208,7 +208,7 @@ class WalkViewModel @Inject constructor(
         // 내 위험장소 영구 목록 로드 (앱/화면 진입 시)
         loadPersistedDangerZones()
 
-        // 워치→폰 액션 수신 (산책 시작/종료/일시정지/재개)
+        // 워치→폰 액션 수신
         viewModelScope.launch {
             WearableActionBus.actions.collect { action ->
                 when (action) {
@@ -216,6 +216,27 @@ class WalkViewModel @Inject constructor(
                     is WearableAction.EndWalk -> endWalk()
                     is WearableAction.PauseWalk -> pauseWalk()
                     is WearableAction.ResumeWalk -> resumeWalk()
+                    is WearableAction.ProposalAccept -> {
+                        walkRepository.respondToProposal(action.proposalId, "ACCEPT", action.myWalkRecordId)
+                            .onSuccess { chatRoomId ->
+                                android.util.Log.d("WalkVM", "워치 제안 수락 처리 완료: chatRoomId=$chatRoomId")
+                            }
+                            .onFailure { e ->
+                                android.util.Log.e("WalkVM", "워치 제안 수락 실패: ${e.message}")
+                            }
+                    }
+                    is WearableAction.ProposalReject -> {
+                        walkRepository.respondToProposal(action.proposalId, "REJECT", action.myWalkRecordId)
+                            .onFailure { e ->
+                                android.util.Log.e("WalkVM", "워치 제안 거절 실패: ${e.message}")
+                            }
+                    }
+                    is WearableAction.Stamp -> {
+                        stampPlaceUseCase(action.walkId, action.dogId, action.placeId)
+                            .onFailure { e ->
+                                android.util.Log.e("WalkVM", "워치 발자국 도장 실패: ${e.message}")
+                            }
+                    }
                 }
             }
         }

@@ -91,7 +91,7 @@ class WearListenerService : WearableListenerService() {
             }
 
             // 발자국 알림 (일방향 — 도장 완료 확인)
-            path.endsWith("footprint") -> json?.let { showFootprintNotification(it) }
+            path == "/notification/footprint" -> json?.let { showFootprintNotification(it) }
         }
     }
 

@@ -52,19 +52,34 @@ class WearableManager @Inject constructor(
             "/action/resume_walk"-> scope.launch { WearableActionBus.emit(WearableAction.ResumeWalk) }
             "/response/proposal_accept" -> json?.let {
                 scope.launch {
-                    val proposalId = it.optString("proposalId", "")
-                    val myWalkRecordId = it.optLong("myWalkRecordId", 0L)
-                    Log.d("PhoneWearable", "제안 수락: proposalId=$proposalId")
+                    WearableActionBus.emit(
+                        WearableAction.ProposalAccept(
+                            proposalId = it.optString("proposalId", ""),
+                            myWalkRecordId = it.optLong("myWalkRecordId", 0L),
+                        )
+                    )
                 }
             }
             "/response/proposal_reject" -> json?.let {
                 scope.launch {
-                    val proposalId = it.optString("proposalId", "")
-                    Log.d("PhoneWearable", "제안 거절: proposalId=$proposalId")
+                    WearableActionBus.emit(
+                        WearableAction.ProposalReject(
+                            proposalId = it.optString("proposalId", ""),
+                            myWalkRecordId = it.optLong("myWalkRecordId", 0L),
+                        )
+                    )
                 }
             }
             "/response/stamp" -> json?.let {
-                Log.d("PhoneWearable", "발자국 스탬프: $it")
+                scope.launch {
+                    WearableActionBus.emit(
+                        WearableAction.Stamp(
+                            walkId = it.optLong("walkId", 0L),
+                            dogId = it.optLong("dogId", 0L),
+                            placeId = it.optLong("placeId", 0L),
+                        )
+                    )
+                }
             }
         }
     }
