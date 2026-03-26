@@ -10,16 +10,23 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.sp
+import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import androidx.navigation.navArgument
+import com.frontend.ui.screen.badge.BadgeScreen
+import com.frontend.ui.screen.chat.ChatScreen
 import com.frontend.ui.screen.dog.DogEditScreen
 import com.frontend.ui.screen.dog.DogProfileScreen
+import com.frontend.ui.screen.dog.MetDogsScreen
 import com.frontend.ui.screen.home.HomeScreen
 import com.frontend.ui.screen.login.LoginScreen
+import com.frontend.ui.screen.place.AddPlaceScreen
 import com.frontend.ui.screen.record.RecordScreen
 import com.frontend.ui.screen.splash.SplashScreen
+import com.frontend.ui.screen.walk.WalkDetailScreen
 import com.frontend.ui.screen.walk.WalkScreen
 
 @Composable
@@ -54,16 +61,70 @@ fun NavGraph() {
                 HomeScreen()
             }
             composable(Routes.WALK) {
-                WalkScreen()
+                WalkScreen(
+                    onNavigateToRecord = {
+                        navController.navigate(Routes.RECORD) {
+                            popUpTo(Routes.HOME) { saveState = true }
+                            launchSingleTop = true
+                            restoreState = true
+                        }
+                    },
+                    onNavigateToWalkDetail = { walkId ->
+                        navController.navigate(Routes.walkDetail(walkId))
+                    },
+                    onNavigateToHome = {
+                        navController.navigate(Routes.HOME) {
+                            popUpTo(Routes.HOME) { saveState = true }
+                            launchSingleTop = true
+                            restoreState = true
+                        }
+                    },
+                    onNavigateToAddPlace = {
+                        navController.navigate(Routes.ADD_PLACE)
+                    },
+                    onNavigateToChat = { chatRoomId ->
+                        navController.navigate(Routes.chat(chatRoomId))
+                    }
+                )
+            }
+            composable(Routes.ADD_PLACE) {
+                AddPlaceScreen(
+                    onNavigateBack = { navController.popBackStack() }
+                )
             }
             composable(Routes.RECORD) {
-                RecordScreen()
+                RecordScreen(
+                    onWalkClick = { walkId ->
+                        navController.navigate(Routes.walkDetail(walkId))
+                    }
+                )
             }
             composable(Routes.MY_INFO) {
                 DogProfileScreen(navController = navController)
             }
+            composable(Routes.BADGES) {
+                BadgeScreen(navController = navController)
+            }
             composable(Routes.DOG_EDIT) {
                 DogEditScreen(navController = navController)
+            }
+            composable(
+                route = Routes.MET_DOGS,
+                arguments = listOf(navArgument("dogId") { type = NavType.LongType })
+            ) {
+                MetDogsScreen(navController = navController)
+            }
+            composable(
+                route = Routes.WALK_DETAIL,
+                arguments = listOf(navArgument("walkId") { type = NavType.LongType })
+            ) {
+                WalkDetailScreen(navController = navController)
+            }
+            composable(
+                route = Routes.CHAT,
+                arguments = listOf(navArgument("chatRoomId") { type = NavType.LongType })
+            ) {
+                ChatScreen(onBack = { navController.popBackStack() })
             }
         }
     }

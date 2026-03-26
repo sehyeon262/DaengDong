@@ -1,7 +1,12 @@
 package com.e108.be.domain.safety.service;
 
+import com.e108.be.domain.badge.service.BadgeService;
 import com.e108.be.domain.safety.dto.request.CreateRiskReportRequest;
+import com.e108.be.domain.safety.dto.response.NearbyRiskReportResponse;
 import com.e108.be.domain.safety.dto.response.RiskReportResponse;
+import com.e108.be.domain.safety.repository.RiskReportRepository.NearbyRiskReportProjection;
+import java.util.List;
+import java.util.stream.Collectors;
 import com.e108.be.domain.safety.entity.RiskReport;
 import com.e108.be.domain.safety.exception.InvalidCoordinateException;
 import com.e108.be.domain.safety.exception.InvalidDescriptionException;
@@ -30,6 +35,7 @@ public class RiskReportService {
 
     private final RiskReportRepository riskReportRepository;
     private final WalkRecordRepository walkRecordRepository;
+    private final BadgeService badgeService;
 
     /**
      * 위험 구역 신고 생성
@@ -66,7 +72,67 @@ public class RiskReportService {
                 .build();
 
         RiskReport saved = riskReportRepository.save(riskReport);
-        return RiskReportResponse.from(saved);
+
+        // 배지 체크
+        var newBadges = badgeService.checkRiskReportBadges(userId);
+
+        return RiskReportResponse.from(saved, newBadges);
+    }
+
+    /**
+     * 현재 위치 기준 반경 내 위험 구역 목록 조회 (전체 사용자)
+     * GET /api/v1/safety/risk-zones
+     */
+    public List<RiskReportResponse> getRiskZones(double latitude, double longitude, double radiusMeters) {
+        validateCoordinates(latitude, longitude);
+        return riskReportRepository.findWithinRadius(latitude, longitude, radiusMeters)
+                .stream()
+                .map(RiskReportResponse::from)
+                .collect(Collectors.toList());
+    }
+
+    /**
+     * 현재 로그인 사용자의 위험 구역 전체 목록 조회
+     * GET /api/v1/safety/risk-zones/mine
+     *
+     * 앱 재실행 후 개인 위험장소 복원 용도
+     */
+    public List<RiskReportResponse> getMyRiskZones() {
+        Long userId = getCurrentUserId();
+        return riskReportRepository.findByUserIdOrderByCreatedAtDesc(userId)
+                .stream()
+                .map(RiskReportResponse::from)
+                .collect(Collectors.toList());
+    }
+
+    /**
+     * 현재 로그인 사용자의 위험 구역 중 반경 내 목록 조회 (거리 포함)
+     * GET /api/v1/safety/risk-zones/nearby
+     *
+     * 산책 중 근접 알림 입력 용도
+     */
+    public List<NearbyRiskReportResponse> getNearbyMyRiskZones(double latitude, double longitude, double radiusMeters) {
+        validateCoordinates(latitude, longitude);
+        Long userId = getCurrentUserId();
+        return riskReportRepository.findByUserIdWithinRadius(userId, latitude, longitude, radiusMeters)
+                .stream()
+                .map(this::toNearbyRiskReportResponse)
+                .collect(Collectors.toList());
+    }
+
+    /**
+     * Projection을 NearbyRiskReportResponse로 변환
+     */
+    private NearbyRiskReportResponse toNearbyRiskReportResponse(NearbyRiskReportProjection projection) {
+        return NearbyRiskReportResponse.builder()
+                .riskReportId(projection.getRiskReportId())
+                .walkSessionId(projection.getWalkSessionId())
+                .latitude(projection.getLatitude())
+                .longitude(projection.getLongitude())
+                .description(projection.getDescription())
+                .createdAt(projection.getCreatedAt())
+                .distanceM(projection.getDistanceM())
+                .build();
     }
 
     /**

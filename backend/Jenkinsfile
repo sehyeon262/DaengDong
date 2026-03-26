@@ -13,6 +13,22 @@ checkHealth = { containerName, port ->
     } catch (e) { return "FAILURE" }
 }
 
+def isManualBuild() {
+    return currentBuild.getBuildCauses('hudson.model.Cause$UserIdCause').size() > 0
+}
+
+def isDevelopBranch() {
+    return env.BRANCH_NAME == 'develop' || 
+           env.GIT_BRANCH == 'origin/develop' || 
+           sh(script: 'git rev-parse --abbrev-ref HEAD', returnStdout: true).trim() == 'develop'
+}
+
+def isMainBranch() {
+    return env.BRANCH_NAME == 'main' || 
+           env.GIT_BRANCH == 'origin/main' || 
+           sh(script: 'git rev-parse --abbrev-ref HEAD', returnStdout: true).trim() == 'main'
+}
+
 pipeline {
     agent any 
     tools { jdk 'jdk17' }
@@ -28,7 +44,12 @@ pipeline {
 
         stage('Spring Boot Build') {
             when {
-                changeset "backend/**"
+                anyOf {
+                    changeset "backend/**"
+                    changeset "docker-compose-dev.yaml"
+                    changeset "docker-compose-prod.yaml"
+                    expression { return isManualBuild() }
+                }
             }
             steps {
                 dir('backend') {
@@ -47,13 +68,13 @@ pipeline {
                     changeset "backend/**"
                     changeset "docker-compose-dev.yaml"
                     changeset "docker-compose-prod.yaml"
+                    expression { return isManualBuild() }
                 }
             }
             steps {
                 dir('backend') {
                     script {
-                        def isMain = (env.BRANCH_NAME == 'main' || env.GIT_BRANCH == 'origin/main')
-                        sh "docker build -t backend-app-${isMain ? 'prod' : 'dev'} ."
+                        sh "docker build -t backend-app-${isMainBranch() ? 'prod' : 'dev'} ."
                     }
                 }
             }
@@ -65,17 +86,16 @@ pipeline {
                     anyOf {
                         changeset "backend/**"
                         changeset "docker-compose-dev.yaml"
+                        expression { return isManualBuild() }
                     }
-                    anyOf {
-                        branch 'develop'
-                        expression { return sh(script: 'git rev-parse --abbrev-ref HEAD', returnStdout: true).trim() == 'develop' }
-                    }
+                    expression { return isDevelopBranch() }
                 }
             } 
             steps {
                 withCredentials([file(credentialsId: 'be-dev-env', variable: 'TEMP_ENV')]) {
-                    sh "docker compose -f ./docker-compose-dev.yaml down || true"
-                    sh "docker compose -f ./docker-compose-dev.yaml --env-file ${TEMP_ENV} up -d --build app"
+                    sh "docker rm -f be-app-dev || true"
+                    sh "docker compose -p dev -f ./docker-compose-dev.yaml --env-file ${TEMP_ENV} up -d --build --no-deps app"
+                    sh "docker network connect ssafy-network be-app-dev || true"
                     script { env.SERVER_STATUS = checkHealth("be-app-dev", "8080") } 
                 }
             }
@@ -87,17 +107,16 @@ pipeline {
                     anyOf {
                         changeset "backend/**"
                         changeset "docker-compose-prod.yaml"
+                        expression { return isManualBuild() }
                     }
-                    anyOf {
-                        branch 'main'
-                        expression { return sh(script: 'git rev-parse --abbrev-ref HEAD', returnStdout: true).trim() == 'main' }
-                    }
+                    expression { return isMainBranch() }
                 }
             }
             steps {
                 withCredentials([file(credentialsId: 'be-prod-env', variable: 'TEMP_ENV')]) {
-                    sh "docker compose -f ./docker-compose-prod.yaml down || true"
-                    sh "docker compose -f ./docker-compose-prod.yaml --env-file ${TEMP_ENV} up -d --build app"
+                    sh "docker rm -f be-app-prod || true"
+                    sh "docker compose -p prod -f ./docker-compose-prod.yaml --env-file ${TEMP_ENV} up -d --build --no-deps app"
+                    sh "docker network connect ssafy-network be-app-prod || true"
                     script { env.SERVER_STATUS = checkHealth("be-app-prod", "8080") }
                 }
             }

@@ -19,7 +19,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.DirectionsWalk
+import androidx.compose.material.icons.automirrored.filled.DirectionsWalk
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.Pets
 import androidx.compose.material3.Button
@@ -46,8 +46,8 @@ private val ScrimColor = Color.Black.copy(alpha = 0.4f)
 
 @Composable
 fun WalkFilterBottomSheet(
-    selectedFilter: WalkFilterType,
-    onFilterSelect: (WalkFilterType) -> Unit,
+    activeFilters: Set<WalkFilterType>,
+    onFilterToggle: (WalkFilterType) -> Unit,
     onApply: () -> Unit,
     onDismiss: () -> Unit
 ) {
@@ -110,7 +110,7 @@ fun WalkFilterBottomSheet(
 
             Spacer(modifier = Modifier.height(Dimens.SpacingXLarge))
 
-            // 필터 옵션 3개
+            // 필터 옵션 3개 (각 항목 독립 토글)
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(Dimens.SpacingSmall)
@@ -118,22 +118,22 @@ fun WalkFilterBottomSheet(
                 FilterOption(
                     icon = Icons.Filled.LocationOn,
                     label = "장소",
-                    isSelected = selectedFilter == WalkFilterType.PLACE,
-                    onClick = { onFilterSelect(WalkFilterType.PLACE) },
+                    isSelected = WalkFilterType.PLACE in activeFilters,
+                    onClick = { onFilterToggle(WalkFilterType.PLACE) },
                     modifier = Modifier.weight(1f)
                 )
                 FilterOption(
                     icon = Icons.Filled.Pets,
                     label = "주변 강아지",
-                    isSelected = selectedFilter == WalkFilterType.NEARBY_DOG,
-                    onClick = { onFilterSelect(WalkFilterType.NEARBY_DOG) },
+                    isSelected = WalkFilterType.NEARBY_DOG in activeFilters,
+                    onClick = { onFilterToggle(WalkFilterType.NEARBY_DOG) },
                     modifier = Modifier.weight(1f)
                 )
                 FilterOption(
-                    icon = Icons.Filled.DirectionsWalk,
+                    icon = Icons.AutoMirrored.Filled.DirectionsWalk,
                     label = "발자국",
-                    isSelected = selectedFilter == WalkFilterType.FOOTPRINT,
-                    onClick = { onFilterSelect(WalkFilterType.FOOTPRINT) },
+                    isSelected = WalkFilterType.FOOTPRINT in activeFilters,
+                    onClick = { onFilterToggle(WalkFilterType.FOOTPRINT) },
                     modifier = Modifier.weight(1f)
                 )
             }

@@ -15,6 +15,12 @@ spring:
     init:
       mode: always
 
+  # 파일 업로드 크기 설정
+  servlet:
+    multipart:
+      max-file-size: 30MB
+      max-request-size: 100MB
+
   # 공통 JPA 설정
   jpa:
     properties:
@@ -32,3 +38,32 @@ api:
     service-key: ${WEATHER_SERVICE_KEY}
   air-quality:
     service-key: ${AIR_QUALITY_SERVICE_KEY}
+  gms:
+    api-key: ${GMS_KEY}
+    model: gpt-5-mini
+    base-url: https://gms.ssafy.io/gmsapi/api.openai.com/v1
+  tmap:
+    app-key: ${TMAP_APP_KEY:}
+    base-url: https://apis.openapi.sk.com/tmap/routes/pedestrian
+    connect-timeout: 5
+    read-timeout: 30
+    enabled: ${TMAP_ENABLED:true}
+
+# 강아지 감정 분석 모델 설정
+emotion:
+  model-path: ${EMOTION_MODEL_PATH:models/dog.onnx}
+  confidence-threshold: 0.5  # Vision API가 강아지 탐지를 담당하므로 감정 분류 threshold는 낮게 유지
+
+# Google Cloud Vision API 설정 (API 키 방식)
+google:
+  vision:
+    api-key: ${GOOGLE_VISION_API_KEY}
+
+# S3 설정
+aws:
+  s3:
+    bucket: ssafy-e108-uploads-216203894753-ap-northeast-2-an
+    region: ap-northeast-2
+  credentials:
+    access-key: ${AWS_ACCESS_KEY}
+    secret-key: ${AWS_SECRET_KEY}

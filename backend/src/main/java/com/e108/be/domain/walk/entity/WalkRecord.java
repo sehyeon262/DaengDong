@@ -1,14 +1,15 @@
 package com.e108.be.domain.walk.entity;
 
+import com.e108.be.domain.route.dto.response.RouteType;
 import com.e108.be.global.common.entity.BaseEntity;
 import jakarta.persistence.*;
 import lombok.AccessLevel;
 import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 import org.locationtech.jts.geom.LineString;
-
-import com.e108.be.global.common.converter.StringListConverter;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -52,6 +53,15 @@ public class WalkRecord extends BaseEntity {
     @Column(name = "end_time")
     private LocalDateTime endTime;
 
+    /**
+     * 선택한 경로 유형 (경로 추천 기반 산책인 경우)
+     * null이면 자유 산책
+     * 성능 평가 지표: 경로 유형별 완주율/이탈율 분석에 활용
+     */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "route_type", length = 20)
+    private RouteType routeType;
+
     // 총 이동 거리 (단위: m)
     @Column(name = "total_distance", precision = 10, scale = 2)
     private BigDecimal totalDistance;
@@ -64,20 +74,29 @@ public class WalkRecord extends BaseEntity {
     @Column(name = "route_line", columnDefinition = "geography(LINESTRING, 4326)")
     private LineString routeLine;
 
+    // 추천 경로 (TMap 실도로 좌표) - 이탈률 계산용
+    @Column(name = "recommended_route", columnDefinition = "geography(LINESTRING, 4326)")
+    private LineString recommendedRoute;
+
+    // 경로 이탈률 (0.0 ~ 100.0, 단위: %)
+    @Column(name = "deviation_rate", precision = 5, scale = 2)
+    private BigDecimal deviationRate;
+
     // 소모 칼로리 (단위: kcal)
     @Column(name = "calories", precision = 10, scale = 2)
     private BigDecimal calories;
 
-    // 산책 사진 URL 목록 (JSON)
-    @Convert(converter = StringListConverter.class)
+    // 산책 사진 URL 목록 (JSON) - Hibernate 6 방식
+    @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "photo_urls", columnDefinition = "json")
     private List<String> photoUrls;
 
     @Builder
-    public WalkRecord(Long dogId, WalkStatus walkStatus, LocalDateTime startTime) {
+    public WalkRecord(Long dogId, WalkStatus walkStatus, LocalDateTime startTime, RouteType routeType) {
         this.dogId = dogId;
         this.walkStatus = walkStatus;
         this.startTime = startTime;
+        this.routeType = routeType;
     }
 
     /**
@@ -114,5 +133,17 @@ public class WalkRecord extends BaseEntity {
 
     public void updateCalories(BigDecimal calories) {
         this.calories = calories;
+    }
+
+    public void updatePhotoUrls(List<String> photoUrls) {
+        this.photoUrls = photoUrls;
+    }
+
+    public void updateRecommendedRoute(LineString recommendedRoute) {
+        this.recommendedRoute = recommendedRoute;
+    }
+
+    public void updateDeviationRate(BigDecimal deviationRate) {
+        this.deviationRate = deviationRate;
     }
 }

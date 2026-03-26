@@ -1,5 +1,6 @@
 package com.e108.be.domain.dog.service;
 
+import com.e108.be.domain.badge.service.BadgeService;
 import com.e108.be.domain.auth.entity.User;
 import com.e108.be.domain.auth.repository.UserRepository;
 import com.e108.be.domain.dog.dto.request.RegisterDogRequest;
@@ -32,6 +33,7 @@ public class DogService {
     private final DogRepository dogRepository;
     private final PersonalityTagRepository personalityTagRepository;
     private final UserRepository userRepository;
+    private final BadgeService badgeService;
 
     // P1-01: 반려견 프로필 등록
     @Transactional
@@ -53,7 +55,15 @@ public class DogService {
                 .build();
 
         Dog saved = dogRepository.save(dog);
-        return new RegisterDogResponse(saved.getId(), saved.getName());
+
+        // 배지 체크 (우리집 스타)
+        var newBadges = badgeService.checkProfileBadges(memberId);
+
+        return RegisterDogResponse.builder()
+                .dogId(saved.getId())
+                .name(saved.getName())
+                .newBadges(newBadges)
+                .build();
     }
 
     // P1-02: 반려견 프로필 조회
@@ -83,6 +93,14 @@ public class DogService {
                 .orElseThrow(() -> new DogNotFoundException());
         dog.updateWeight(request.getWeight());
         return new UpdateWeightResponse(dog.getId(), dog.getWeight());
+    }
+
+    // S14P21E108-169: 반려견 공개 프로필 조회 (소유권 체크 없음)
+    @Transactional(readOnly = true)
+    public DogProfileResponse getPublicDog(Long dogId) {
+        Dog dog = dogRepository.findById(dogId)
+                .orElseThrow(() -> new DogNotFoundException());
+        return new DogProfileResponse(dog);
     }
 
     // P1-05: 반려견 성향 태그 등록/수정

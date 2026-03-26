@@ -43,3 +43,6 @@ out/
 .clone
 data.sql
 local.properties
+
+### ML Models ###
+models/*.onnx

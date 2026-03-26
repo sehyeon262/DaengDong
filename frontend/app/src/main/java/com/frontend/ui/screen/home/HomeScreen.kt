@@ -146,7 +146,9 @@ fun HomeScreen(
                     CharacterSection(
                         characterType = data.walk.characterType,
                         walkStatus = data.walk.walkStatus,
-                        walkMessage = data.walk.walkMessage
+                        walkMessage = data.walk.walkMessage,
+                        temperature = data.weather?.temperature ?: 20,
+                        fineDustGrade = data.weather?.fineDustGrade ?: ""
                     )
                 }
 
@@ -198,6 +200,7 @@ private fun getAddressFromLatLng(
 ): String {
     return try {
         val geocoder = Geocoder(context, Locale.KOREAN)
+        @Suppress("DEPRECATION")
         val addresses = geocoder.getFromLocation(lat, lng, 1)
         if (!addresses.isNullOrEmpty()) {
             val addr = addresses[0]

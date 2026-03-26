@@ -1,4 +1,4 @@
-# 1. 보안 파일 (절대 커밋 금지!)
+# Secrets and env files
 .env
 .env.*
 !.env.example
@@ -6,7 +6,7 @@
 *.pem
 *.key
 
-# 2. OS 및 IDE 설정 파일 (팀원끼리 설정 꼬임 방지)
+# OS and IDE files
 .DS_Store
 Thumbs.db
 .idea/
@@ -14,28 +14,40 @@ Thumbs.db
 *.swp
 *.log
 
-# 3. 데이터 폴더 (Docker Volume 등)
+# Docker and local data
 infra/postgres_data/
 postgres_data/
 redis_data/
 jenkins_home/
 chroma_data/
 
-# 7. 원시 데이터 CSV (용량 크고 변경 잦아 git 제외 - 팀 공유 채널에서 다운로드)
+# Raw data files
 data/raw/
 *.csv
 
-# 4. claude 폴더
+# Claude / local tooling
 thoughts/
 .claude
-
-# 5. TLDR tool files
 .tldr/
 .tldrignore
 
-# 6. python venv
+# Python
 venv/
 __pycache__/
 
-# 7. markdown 파일
+# Local Gradle caches
+/.gradle-cache-backend/
+/.gradle-cache-frontend/
+
+# Android local files
+/.android-user-home/debug.keystore
+/.android-user-home/*.lock
+# Android build outputs
+frontend/app/build/
+frontend/wear/build/
+frontend/build/
+frontend/.gradle/
+
+
+# Markdown
 *.md
