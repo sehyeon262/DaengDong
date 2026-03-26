@@ -60,8 +60,14 @@ class StompChatClient @Inject constructor(
     private var reconnectAttempts = 0
     private var reconnectJob: Job? = null
 
-    // 구독 중인 채팅방 ID → subscription ID 매핑
-    private val subscriptions = mutableMapOf<Long, String>()
+    /**
+     * chatRoomId별 구독 정보.
+     * - subId: STOMP 구독 ID (브로커와 통신할 때 사용)
+     * - count: 현재 이 채팅방을 구독 중인 내부 구독자 수 (WalkViewModel, ChatViewModel 등)
+     * 브로커 UNSUBSCRIBE는 count가 0이 될 때만 전송한다.
+     */
+    private data class SubscriptionEntry(val subId: String, val count: Int)
+    private val subscriptions = mutableMapOf<Long, SubscriptionEntry>()
 
     // 수신된 메시지 (chatRoomId → ChatMessageData)
     private val _messages = MutableSharedFlow<Pair<Long, ChatMessageData>>(extraBufferCapacity = 64)
@@ -72,6 +78,13 @@ class StompChatClient @Inject constructor(
     val connected: StateFlow<Boolean> = _connected.asStateFlow()
 
     val isConnected: Boolean get() = webSocket != null && _connected.value
+
+    /**
+     * 현재 사용자가 열람 중인 채팅방 ID.
+     * ChatScreen 진입 시 set, 퇴장 시 null로 초기화.
+     * WalkViewModel 배너 알림이 이미 열람 중인 채팅방에 대해 뜨지 않도록 사용.
+     */
+    var activeChatRoomId: Long? = null
 
     /**
      * WebSocket 연결 및 STOMP CONNECT 전송.
@@ -154,11 +167,19 @@ class StompChatClient @Inject constructor(
         }
     }
 
-    /** 특정 채팅방 구독 (/topic/chat/{chatRoomId}) */
+    /**
+     * 채팅방 구독 (/topic/chat/{chatRoomId}).
+     * 이미 브로커 구독이 있으면 내부 카운트만 증가시키고 중복 SUBSCRIBE 전송을 방지한다.
+     */
     fun subscribe(chatRoomId: Long) {
-        if (subscriptions.containsKey(chatRoomId)) return
+        val existing = subscriptions[chatRoomId]
+        if (existing != null) {
+            subscriptions[chatRoomId] = existing.copy(count = existing.count + 1)
+            Log.d(TAG, "채팅방 $chatRoomId 구독자 수 증가: ${existing.count + 1}")
+            return
+        }
         val subId = "sub-${subscriptionCounter++}"
-        subscriptions[chatRoomId] = subId
+        subscriptions[chatRoomId] = SubscriptionEntry(subId = subId, count = 1)
         val frame = buildStompFrame(
             command = "SUBSCRIBE",
             headers = mapOf(
@@ -170,14 +191,24 @@ class StompChatClient @Inject constructor(
         Log.d(TAG, "채팅방 $chatRoomId 구독: $subId")
     }
 
-    /** 채팅방 구독 해제 */
+    /**
+     * 채팅방 구독 해제.
+     * 내부 구독자 카운트를 감소시키고, 0이 될 때만 브로커에 UNSUBSCRIBE를 전송한다.
+     */
     fun unsubscribe(chatRoomId: Long) {
-        val subId = subscriptions.remove(chatRoomId) ?: return
+        val existing = subscriptions[chatRoomId] ?: return
+        if (existing.count > 1) {
+            subscriptions[chatRoomId] = existing.copy(count = existing.count - 1)
+            Log.d(TAG, "채팅방 $chatRoomId 구독자 수 감소: ${existing.count - 1}")
+            return
+        }
+        subscriptions.remove(chatRoomId)
         val frame = buildStompFrame(
             command = "UNSUBSCRIBE",
-            headers = mapOf("id" to subId)
+            headers = mapOf("id" to existing.subId)
         )
         webSocket?.send(frame)
+        Log.d(TAG, "채팅방 $chatRoomId 브로커 구독 해제: ${existing.subId}")
     }
 
     /** 메시지 전송 (/app/chat/{chatRoomId}) */
@@ -221,10 +252,22 @@ class StompChatClient @Inject constructor(
                 Log.d(TAG, "STOMP CONNECTED")
                 reconnectAttempts = 0   // 연결 성공 시 재시도 카운터 초기화
                 _connected.value = true
-                // 재연결 시 기존 구독 채팅방들을 자동 재구독
-                val pending = subscriptions.keys.toList()
+                // 재연결 시 기존 구독 채팅방들을 자동 재구독 (구독자 수 유지)
+                val snapshot = subscriptions.toMap()
                 subscriptions.clear()
-                pending.forEach { subscribe(it) }
+                snapshot.forEach { (chatRoomId, entry) ->
+                    val newSubId = "sub-${subscriptionCounter++}"
+                    subscriptions[chatRoomId] = entry.copy(subId = newSubId)
+                    val frame = buildStompFrame(
+                        command = "SUBSCRIBE",
+                        headers = mapOf(
+                            "id" to newSubId,
+                            "destination" to "/topic/chat/$chatRoomId",
+                        )
+                    )
+                    webSocket?.send(frame)
+                    Log.d(TAG, "채팅방 $chatRoomId 재구독: $newSubId (구독자 수: ${entry.count})")
+                }
             }
             "MESSAGE" -> {
                 val destination = frame.headers["destination"] ?: return

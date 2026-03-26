@@ -39,7 +39,11 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import coil.compose.AsyncImage
+import androidx.compose.foundation.Image
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.ui.platform.LocalContext
+import coil.compose.SubcomposeAsyncImage
+import coil.request.ImageRequest
 import com.frontend.R
 import com.frontend.domain.model.Place
 import com.frontend.ui.theme.Dimens
@@ -95,21 +99,64 @@ fun PlaceDetailBottomSheet(
                         .fillMaxWidth()
                         .height(200.dp)
                 ) {
-                    AsyncImage(
-                        model = place.imageUrl,
-                        contentDescription = place.name,
-                        contentScale = ContentScale.Crop,
-                        placeholder = painterResource(R.drawable.place_mark),
-                        error = painterResource(R.drawable.place_mark),
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .clip(
-                                RoundedCornerShape(
-                                    topStart = Dimens.RadiusLarge,
-                                    topEnd = Dimens.RadiusLarge
+                    val validImageUrl = place.imageUrl
+                        ?.takeIf { it.startsWith("http://") || it.startsWith("https://") }
+
+                    if (validImageUrl != null) {
+                        val context = LocalContext.current
+                        SubcomposeAsyncImage(
+                            model = ImageRequest.Builder(context)
+                                .data(validImageUrl)
+                                .crossfade(true)
+                                .build(),
+                            contentDescription = place.name,
+                            contentScale = ContentScale.Crop,
+                            loading = {
+                                Box(
+                                    modifier = Modifier.fillMaxSize(),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    CircularProgressIndicator(
+                                        color = PointGreen,
+                                        modifier = Modifier.size(32.dp)
+                                    )
+                                }
+                            },
+                            error = {
+                                Image(
+                                    painter = painterResource(R.drawable.place_mark),
+                                    contentDescription = place.name,
+                                    contentScale = ContentScale.Fit,
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .padding(32.dp)
                                 )
-                            )
-                    )
+                            },
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .clip(
+                                    RoundedCornerShape(
+                                        topStart = Dimens.RadiusLarge,
+                                        topEnd = Dimens.RadiusLarge
+                                    )
+                                )
+                        )
+                    } else {
+                        Image(
+                            painter = painterResource(R.drawable.place_mark),
+                            contentDescription = place.name,
+                            contentScale = ContentScale.Fit,
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .clip(
+                                    RoundedCornerShape(
+                                        topStart = Dimens.RadiusLarge,
+                                        topEnd = Dimens.RadiusLarge
+                                    )
+                                )
+                                .padding(32.dp)
+                        )
+                    }
                     // 이미지 위 그라디언트 (가독성을 위해 하단을 살짝 어둡게)
                     Box(
                         modifier = Modifier
