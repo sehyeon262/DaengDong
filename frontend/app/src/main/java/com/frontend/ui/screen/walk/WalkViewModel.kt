@@ -390,7 +390,9 @@ class WalkViewModel @Inject constructor(
     private fun stopPhotoObserver() {
         photoObserver?.let { context.contentResolver.unregisterContentObserver(it) }
         photoObserver = null
-        uploadedPhotoIds.clear()
+        // uploadedPhotoIds는 여기서 지우지 않음
+        // endWalk()에서 마지막 스캔이 완료되기 전에 지워지면 이미 업로드된 사진이 재업로드됨
+        // 다음 산책 시작 시 startPhotoObserver()에서 clear됨
     }
 
     private val uploadMutex = kotlinx.coroutines.sync.Mutex()
@@ -962,6 +964,7 @@ class WalkViewModel @Inject constructor(
         stopRiskZonePolling()
 
         // 산책 종료 직전 마지막으로 새 사진 스캔 (ContentObserver 누락 대비)
+        // stopPhotoObserver() 전에 호출해야 uploadedPhotoIds가 살아있어 중복 업로드 방지
         currentWalkId?.let { walkId ->
             viewModelScope.launch { checkAndUploadNewPhotos(walkId) }
         }
