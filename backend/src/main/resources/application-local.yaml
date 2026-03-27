@@ -40,6 +40,15 @@ spring:
       hibernate:
         format_sql: true
 
+# 데모 모드: 산책 종료 시 아래 사진을 자동으로 주입 + 감정 하드코딩
+demo:
+  enabled: true
+  photo-urls: []
+    # DemoPhotoInitializer가 서버 시작 시 S3 업로드 후 자동 세팅
+  emotion-overrides:
+    dog1.png: happy
+    dog2.jpg: relaxed
+
 aws:
   s3:
     prefix: local

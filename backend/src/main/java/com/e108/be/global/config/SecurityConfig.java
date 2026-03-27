@@ -45,6 +45,7 @@ public class SecurityConfig {
                         .requestMatchers("/walks/**").permitAll() // 테스트용 임시 허용
                         .requestMatchers("/records/**").permitAll() // 테스트용 임시 허용
                         .requestMatchers("/diaries/**").permitAll() // 테스트용 임시 허용
+                        .requestMatchers("/demo/**").permitAll()   // 데모 사진 업로드용
                         .requestMatchers("/error").permitAll()   // Spring 오류 포워딩 허용
                         .requestMatchers("/ws/**").permitAll()   // WebSocket SockJS 엔드포인트 허용
                         .requestMatchers("/ws-native").permitAll()  // WebSocket Native 엔드포인트 허용 (Android)

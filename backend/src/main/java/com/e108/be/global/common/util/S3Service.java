@@ -119,6 +119,24 @@ public class S3Service {
     }
 
     /**
+     * 고정 키로 S3 shared 경로에 업로드 (덮어쓰기, 중복 방지)
+     * key: shared/{folder}/{filename}  (예: shared/demo/dog1.jpg)
+     */
+    public String uploadSharedWithFixedKey(byte[] data, String contentType, String folder, String filename) {
+        String key = String.format("shared/%s/%s", folder, filename);
+
+        PutObjectRequest putRequest = PutObjectRequest.builder()
+                .bucket(bucket)
+                .key(key)
+                .contentType(contentType)
+                .build();
+
+        s3Client.putObject(putRequest, RequestBody.fromBytes(data));
+
+        return String.format("https://%s.s3.%s.amazonaws.com/%s", bucket, region, key);
+    }
+
+    /**
      * S3 key 생성: {prefix}/{folder}/{uuid}.{ext}
      */
     private String buildKey(String folder, String originalFilename) {
