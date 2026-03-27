@@ -12,8 +12,9 @@ class GetRecommendedRoutesUseCase @Inject constructor(
      */
     suspend operator fun invoke(
         latitude: Double,
-        longitude: Double
+        longitude: Double,
+        weather: String? = null
     ): Result<RouteRecommendResponse> {
-        return routeRepository.getRecommendedRoutes(latitude, longitude)
+        return routeRepository.getRecommendedRoutes(latitude, longitude, weather)
     }
 }
