@@ -52,6 +52,10 @@ import com.frontend.domain.usecase.StartFreeWalkUseCase
 import com.frontend.notification.FootprintAlertManager
 import com.frontend.notification.NearbyDogAlertManager
 import com.frontend.notification.RiskZoneAlertManager
+import com.frontend.wearable.WearableAction
+import com.frontend.wearable.WearableActionBus
+import com.frontend.wearable.WearableManager
+import org.json.JSONObject
 import com.google.android.gms.location.LocationCallback
 import com.google.android.gms.location.LocationRequest
 import com.google.android.gms.location.LocationResult
@@ -99,6 +103,7 @@ class WalkViewModel @Inject constructor(
     private val riskZoneAlertManager: RiskZoneAlertManager,
     private val stampPlaceUseCase: StampPlaceUseCase,
     private val stompChatClient: StompChatClient,
+    private val wearableManager: WearableManager,
 ) : ViewModel() {
 
     // ── 비선호 강아지 알림 상수 ─────────────────────────────────────────────────
@@ -109,11 +114,13 @@ class WalkViewModel @Inject constructor(
         private const val FOOTPRINT_ALERT_RADIUS_M = 20.0     // 발자국 알림 반경
 
         // 위험장소 알림 상수
-        private const val RISK_ZONE_ENTER_RADIUS_M = 100.0    // 알림 발생 반경 (테스트: 100m)
+        private const val RISK_ZONE_ENTER_RADIUS_M = 100.0    // 알림 발생 반경
         private const val RISK_ZONE_EXIT_RADIUS_M = 150.0     // 반경 이탈 판정 거리
         private const val RISK_ZONE_COOLDOWN_MS = 3 * 60 * 1000L  // 3분 쿨다운
         private const val RISK_ZONE_POLLING_INTERVAL_MS = 15_000L // 15초 폴링
-        private const val RISK_ZONE_QUERY_RADIUS_M = 500.0    // nearby 조회 반경 (테스트: 500m)
+        private const val RISK_ZONE_QUERY_RADIUS_M = 500.0    // nearby 조회 반경
+        private const val DANGER_ZONE_ALERT_RADIUS_M = 100.0  // 워치 위험구역 알림 반경
+        private const val DANGER_ZONE_COOLDOWN_MS = 5 * 60 * 1000L // 워치 알림 5분 쿨다운
     }
 
     private val _state = MutableStateFlow(WalkState())
@@ -132,6 +139,9 @@ class WalkViewModel @Inject constructor(
 
     // ── 위험구역 최초 로드 여부 (위치 수신 후 1회만 로드) ───────────────────────
     private var dangerZonesLoaded = false
+
+    // ── 위험구역 워치 알림 쿨다운 (zoneId → 마지막 알림 시각) ─────────────────
+    private val dangerZoneAlertTimes = mutableMapOf<Long, Long>()
 
     // ── 발자국 체크용 주변 장소 최초 로드 여부 (산책 시작 후 1회만 로드) ───────
     private var walkPlacesLoaded = false
@@ -197,6 +207,39 @@ class WalkViewModel @Inject constructor(
         }
         // 내 위험장소 영구 목록 로드 (앱/화면 진입 시)
         loadPersistedDangerZones()
+
+        // 워치→폰 액션 수신
+        viewModelScope.launch {
+            WearableActionBus.actions.collect { action ->
+                when (action) {
+                    is WearableAction.StartWalk -> startFreeWalk()
+                    is WearableAction.EndWalk -> endWalk()
+                    is WearableAction.PauseWalk -> pauseWalk()
+                    is WearableAction.ResumeWalk -> resumeWalk()
+                    is WearableAction.ProposalAccept -> {
+                        walkRepository.respondToProposal(action.proposalId, "ACCEPT", action.myWalkRecordId)
+                            .onSuccess { chatRoomId ->
+                                android.util.Log.d("WalkVM", "워치 제안 수락 처리 완료: chatRoomId=$chatRoomId")
+                            }
+                            .onFailure { e ->
+                                android.util.Log.e("WalkVM", "워치 제안 수락 실패: ${e.message}")
+                            }
+                    }
+                    is WearableAction.ProposalReject -> {
+                        walkRepository.respondToProposal(action.proposalId, "REJECT", action.myWalkRecordId)
+                            .onFailure { e ->
+                                android.util.Log.e("WalkVM", "워치 제안 거절 실패: ${e.message}")
+                            }
+                    }
+                    is WearableAction.Stamp -> {
+                        stampPlaceUseCase(action.walkId, action.dogId, action.placeId)
+                            .onFailure { e ->
+                                android.util.Log.e("WalkVM", "워치 발자국 도장 실패: ${e.message}")
+                            }
+                    }
+                }
+            }
+        }
     }
 
     /**
@@ -233,6 +276,11 @@ class WalkViewModel @Inject constructor(
                 if (!dangerZonesLoaded) {
                     dangerZonesLoaded = true
                     loadDangerZones(loc.latitude, loc.longitude)
+                }
+
+                // 위험구역 근접 시 워치 알림
+                if (_state.value.isWalking && !_state.value.isPaused) {
+                    checkDangerZoneProximity(loc.latitude, loc.longitude)
                 }
 
                 // 산책 중이고 일시정지가 아닐 때만 GPS 포인트 기록 + 근접 장소 감지
@@ -771,6 +819,10 @@ class WalkViewModel @Inject constructor(
         pendingPoints.clear()
         startWalkTimer()
         startPhotoObserver()
+        // 워치에 산책 시작 전송
+        viewModelScope.launch {
+            wearableManager.sendWalkStats(0, 0.0, 0, isWalking = true, isPaused = false)
+        }
 
         // 백그라운드 서버 요청 — CompletableDeferred로 endWalk에서 대기 가능
         val deferred = CompletableDeferred<Long?>()
@@ -862,6 +914,12 @@ class WalkViewModel @Inject constructor(
         }
         stopPhotoObserver()
 
+        // 워치에 산책 종료 전송
+        viewModelScope.launch {
+            wearableManager.sendWalkStats(0, 0.0, 0, isWalking = false, isPaused = false)
+            wearableManager.clearWalkStats()
+        }
+
         // 비선호 강아지 알림 정리
         nearbyDogAlertManager.cancelAllAlerts()
         footprintAlertManager.cancelAlert()
@@ -931,6 +989,13 @@ class WalkViewModel @Inject constructor(
             currentWalkId = null
             walkIdDeferred = null
             val newBadges = result.getOrDefault(emptyList())
+            // 워치에 배지 획득 알림 전송
+            newBadges.forEach { badge ->
+                wearableManager.sendNotification("badge", JSONObject().apply {
+                    put("badgeId", badge.badgeId)
+                    put("badgeName", badge.badgeName)
+                })
+            }
 
             _state.update {
                 it.copy(
@@ -981,11 +1046,19 @@ class WalkViewModel @Inject constructor(
     /** 일시정지 */
     fun pauseWalk() {
         _state.update { it.copy(isPaused = true) }
+        viewModelScope.launch {
+            val s = _state.value
+            wearableManager.sendWalkStats(s.elapsedSeconds, s.distanceMeters, (s.distanceMeters * 0.06).toInt(), true, true)
+        }
     }
 
     /** 산책 재개 */
     fun resumeWalk() {
         _state.update { it.copy(isPaused = false) }
+        viewModelScope.launch {
+            val s = _state.value
+            wearableManager.sendWalkStats(s.elapsedSeconds, s.distanceMeters, (s.distanceMeters * 0.06).toInt(), true, false)
+        }
     }
 
     /** 1초마다 elapsedSeconds 증가 (일시정지 중에는 멈춤) */
@@ -994,8 +1067,18 @@ class WalkViewModel @Inject constructor(
         timerJob = viewModelScope.launch {
             while (true) {
                 delay(1000L)
-                if (_state.value.isWalking && !_state.value.isPaused) {
-                    _state.update { it.copy(elapsedSeconds = it.elapsedSeconds + 1) }
+                val s = _state.value
+                if (s.isWalking && !s.isPaused) {
+                    val newSeconds = s.elapsedSeconds + 1
+                    _state.update { it.copy(elapsedSeconds = newSeconds) }
+                    // 워치에 산책 통계 전송
+                    wearableManager.sendWalkStats(
+                        elapsedSeconds = newSeconds,
+                        distanceMeters = s.distanceMeters,
+                        calories = (s.distanceMeters * 0.06).toInt(),
+                        isWalking = true,
+                        isPaused = false,
+                    )
                 }
             }
         }
@@ -1030,6 +1113,8 @@ class WalkViewModel @Inject constructor(
         return R * c
     }
 
+    // ── 발자국 장소 근접 감지 ─────────────────────────────────────────────────
+
     // ── 소셜 산책 — 주변 강아지 ───────────────────────────────────────────────
 
     /** 주변 강아지 + 제안 폴링 */
@@ -1043,6 +1128,20 @@ class WalkViewModel @Inject constructor(
                 myWalkRecordId = walkId,
             ).onSuccess { response ->
                 android.util.Log.d("WalkVM", "nearbyDogs 조회 성공: ${response.nearbyDogs.size}마리")
+
+                // 워치에 새 산책 제안 전송 (state 업데이트 전에 old 비교)
+                val oldProposalIds = _state.value.pendingProposals.map { it.proposalId }.toSet()
+                response.pendingProposals
+                    .filter { it.proposalId !in oldProposalIds }
+                    .forEach { proposal ->
+                        wearableManager.sendInteractiveMessage("proposal", JSONObject().apply {
+                            put("proposalId", proposal.proposalId)
+                            put("dogName", proposal.name)
+                            put("breed", proposal.breed)
+                            put("myWalkRecordId", walkId)
+                        })
+                    }
+
                 _state.update {
                     it.copy(
                         nearbyDogs = response.nearbyDogs,
@@ -1110,6 +1209,13 @@ class WalkViewModel @Inject constructor(
 
                     // 시스템 알림 발송
                     nearbyDogAlertManager.showNearbyDogAlert(dogId, dog.name, dog.distanceM)
+                    // 워치에 비선호 강아지 알림 전송
+                    viewModelScope.launch {
+                        wearableManager.sendNotification("dog_warning", JSONObject().apply {
+                            put("dogName", dog.name)
+                            put("distance", dog.distanceM)
+                        })
+                    }
 
                     // 인앱 다이얼로그 표시 (첫 번째만)
                     if (newWarningDog == null) {
@@ -1455,6 +1561,28 @@ class WalkViewModel @Inject constructor(
         }
     }
 
+    /** GPS 위치 업데이트 시 위험구역 근접 여부 체크 → 워치 알림 전송 */
+    private fun checkDangerZoneProximity(lat: Double, lon: Double) {
+        val now = System.currentTimeMillis()
+        val zones = _state.value.dangerZones
+        for (zone in zones) {
+            val distM = haversineMeters(lat, lon, zone.location.latitude, zone.location.longitude)
+            if (distM <= DANGER_ZONE_ALERT_RADIUS_M) {
+                val lastAlert = dangerZoneAlertTimes[zone.id] ?: 0L
+                if (now - lastAlert >= DANGER_ZONE_COOLDOWN_MS) {
+                    dangerZoneAlertTimes[zone.id] = now
+                    val reason = zone.customReason ?: zone.reason.label
+                    viewModelScope.launch {
+                        wearableManager.sendNotification("danger_zone", JSONObject().apply {
+                            put("reason", reason)
+                        })
+                    }
+                    android.util.Log.d("WalkVM", "위험구역 근접 알림 전송: id=${zone.id}, reason=$reason, dist=${distM.toInt()}m")
+                }
+            }
+        }
+    }
+
     /** 위치 선택 모드 진입 */
     fun startDangerZoneSelection() {
         _state.update {
@@ -1613,6 +1741,19 @@ class WalkViewModel @Inject constructor(
                 // 이번에 새로 진입한 경우에만 알림 발송
                 if (!prev.isInsideRadius) {
                     footprintAlertManager.showFootprintAlert(place.name)
+                    // 워치에 발자국 알림 전송
+                    val wId = currentWalkId
+                    val dId = _state.value.myDogId
+                    if (wId != null && dId != null) {
+                        viewModelScope.launch {
+                            wearableManager.sendInteractiveMessage("footprint", JSONObject().apply {
+                                put("placeId", place.id)
+                                put("placeName", place.name)
+                                put("walkId", wId)
+                                put("dogId", dId)
+                            })
+                        }
+                    }
                 }
                 newAlertPlace = place
                 break

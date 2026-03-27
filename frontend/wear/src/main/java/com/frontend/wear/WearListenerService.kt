@@ -51,37 +51,51 @@ class WearListenerService : WearableListenerService() {
 
     // ── 이벤트 알림 Message 수신 ─────────────────────────────────────────
     override fun onMessageReceived(messageEvent: MessageEvent) {
-        val json = runCatching { JSONObject(String(messageEvent.data)) }.getOrNull() ?: return
+        val json = runCatching { JSONObject(String(messageEvent.data)) }.getOrNull()
+        val path = messageEvent.path
+
         when {
-            messageEvent.path.endsWith("dog_warning") -> showDogWarningNotification(json)
-            messageEvent.path.endsWith("danger_zone") -> showDangerZoneNotification(json)
-            messageEvent.path.endsWith("footprint")   -> showFootprintNotification(json)
-            messageEvent.path.endsWith("badge")        -> showBadgeNotification(json)
+            // 오버레이 알림
+            path.endsWith("dog_warning") -> json?.let {
+                DogWarningHolder.show(
+                    dogName = it.optString("dogName", "강아지"),
+                    distance = it.optDouble("distance", 0.0).toInt(),
+                )
+            }
+            path.endsWith("danger_zone") -> json?.let {
+                DangerZoneHolder.show(reason = it.optString("reason", "위험 요소"))
+            }
+            path.endsWith("badge") -> json?.let {
+                BadgeHolder.show(
+                    badgeId = it.optLong("badgeId", 1L),
+                    badgeName = it.optString("badgeName", "배지"),
+                )
+            }
+
+            // 양방향 인터랙티브 — UI에 오버레이 표시
+            path == "/interactive/proposal" -> json?.let {
+                ProposalHolder.show(
+                    proposalId = it.optString("proposalId", ""),
+                    dogName = it.optString("dogName", ""),
+                    breed = it.optString("breed", ""),
+                    myWalkRecordId = it.optLong("myWalkRecordId", 0L),
+                )
+            }
+            path == "/interactive/footprint" -> json?.let {
+                FootprintHolder.show(
+                    placeId = it.optLong("placeId", 0L),
+                    placeName = it.optString("placeName", ""),
+                    walkId = it.optLong("walkId", 0L),
+                    dogId = it.optLong("dogId", 0L),
+                )
+            }
+
+            // 발자국 알림 (일방향 — 도장 완료 확인)
+            path == "/notification/footprint" -> json?.let { showFootprintNotification(it) }
         }
     }
 
     // ── 알림 생성 ────────────────────────────────────────────────────────
-
-    private fun showDogWarningNotification(json: JSONObject) {
-        val dogName = json.optString("dogName", "강아지")
-        val distance = json.optDouble("distance", 0.0).toInt()
-        notify(
-            channelId = CH_DOG_WARNING,
-            notifId = 1001,
-            title = "⚠️ 주의",
-            text = "$dogName 이(가) ${distance}m 근처에 있어요",
-        )
-    }
-
-    private fun showDangerZoneNotification(json: JSONObject) {
-        val reason = json.optString("reason", "위험 요소")
-        notify(
-            channelId = CH_DANGER,
-            notifId = 1002,
-            title = "🚨 위험 구역",
-            text = "근처에 '$reason' 신고가 있어요",
-        )
-    }
 
     private fun showFootprintNotification(json: JSONObject) {
         val placeName = json.optString("placeName", "이곳")
@@ -90,16 +104,6 @@ class WearListenerService : WearableListenerService() {
             notifId = 1003,
             title = "🐾 발자국",
             text = "'$placeName'에 발자국을 남겼어요!",
-        )
-    }
-
-    private fun showBadgeNotification(json: JSONObject) {
-        val badgeName = json.optString("badgeName", "배지")
-        notify(
-            channelId = CH_BADGE,
-            notifId = 1004,
-            title = "🏅 배지 획득!",
-            text = "'$badgeName' 배지를 획득했어요",
         )
     }
 
