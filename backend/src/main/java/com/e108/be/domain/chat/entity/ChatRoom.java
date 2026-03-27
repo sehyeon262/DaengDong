@@ -6,6 +6,11 @@ import lombok.AccessLevel;
 import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
+
+import java.util.ArrayList;
+import java.util.List;
 
 @Entity
 @Table(name = "chat_rooms")
@@ -33,6 +38,10 @@ public class ChatRoom extends BaseEntity {
     @Column(nullable = false)
     private ChatRoomStatus status;
 
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(columnDefinition = "jsonb")
+    private List<ChatMessageEntry> messages = new ArrayList<>();
+
     @Builder
     public ChatRoom(Long memberId1, Long memberId2, Long walkRecordId1, Long walkRecordId2) {
         this.memberId1 = memberId1;
@@ -40,9 +49,19 @@ public class ChatRoom extends BaseEntity {
         this.walkRecordId1 = walkRecordId1;
         this.walkRecordId2 = walkRecordId2;
         this.status = ChatRoomStatus.ACTIVE;
+        this.messages = new ArrayList<>();
     }
 
     public void close() {
         this.status = ChatRoomStatus.CLOSED;
+    }
+
+    public ChatMessageEntry addMessage(Long senderId, String content) {
+        ChatMessageEntry entry = ChatMessageEntry.builder()
+                .senderId(senderId)
+                .content(content)
+                .build();
+        this.messages.add(entry);
+        return entry;
     }
 }
