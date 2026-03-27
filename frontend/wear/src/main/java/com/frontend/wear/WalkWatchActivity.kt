@@ -80,26 +80,19 @@ fun WalkWatchScreen() {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
 
-    var phoneNodeId by remember { mutableStateOf<String?>(null) }
-    LaunchedEffect(Unit) {
-        try {
-            val nodes = Wearable.getNodeClient(context).connectedNodes.await()
-            phoneNodeId = nodes.firstOrNull()?.id
-            android.util.Log.d("WalkWatch", "연결된 노드: ${nodes.map { it.id }}, phoneNodeId=$phoneNodeId")
-        } catch (e: Exception) {
-            android.util.Log.e("WalkWatch", "노드 조회 실패: ${e.message}")
-        }
-    }
-
     val sendAction: (String, JSONObject?) -> Unit = { path, json ->
         scope.launch {
-            if (phoneNodeId == null) {
-                android.util.Log.e("WalkWatch", "sendAction 실패: phoneNodeId=null, path=$path")
-                return@launch
-            }
             try {
+                val nodes = Wearable.getNodeClient(context).connectedNodes.await()
+                android.util.Log.d("WalkWatch", "연결된 노드: ${nodes.map { "${it.id}(${it.displayName})" }}")
+                val nodeId = nodes.firstOrNull()?.id
+                if (nodeId == null) {
+                    android.util.Log.e("WalkWatch", "sendAction 실패: 연결된 폰 없음, path=$path")
+                    return@launch
+                }
                 val data = json?.toString()?.toByteArray() ?: ByteArray(0)
-                Wearable.getMessageClient(context).sendMessage(phoneNodeId!!, path, data).await()
+                Wearable.getMessageClient(context).sendMessage(nodeId, path, data).await()
+                android.util.Log.d("WalkWatch", "sendAction 성공: path=$path → nodeId=$nodeId")
             } catch (e: Exception) {
                 android.util.Log.e("WalkWatch", "sendMessage 실패: path=$path, error=${e.message}", e)
             }

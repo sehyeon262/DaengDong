@@ -11,7 +11,7 @@ android {
     compileSdk = 36
 
     defaultConfig {
-        applicationId = "com.frontend.wear"
+        applicationId = "com.frontend"
         minSdk = 30   // Wear OS 3.0 (API 30) — Galaxy Watch 4+
         targetSdk = 36
         versionCode = 1

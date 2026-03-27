@@ -33,16 +33,21 @@ class WearListenerService : WearableListenerService() {
 
     // ── 산책 통계 DataItem 수신 (1초마다) ────────────────────────────────
     override fun onDataChanged(dataEvents: DataEventBuffer) {
+        android.util.Log.d("WearListener", "onDataChanged 호출됨: ${dataEvents.count}개 이벤트")
         dataEvents.forEach { event ->
+            android.util.Log.d("WearListener", "이벤트: type=${event.type}, path=${event.dataItem.uri.path}")
             if (event.type == DataEvent.TYPE_CHANGED &&
                 event.dataItem.uri.path == "/walk/stats"
             ) {
                 val dataMap = DataMapItem.fromDataItem(event.dataItem).dataMap
+                val isWalking = dataMap.getBoolean("isWalking")
+                val elapsed = dataMap.getInt("elapsedSeconds")
+                android.util.Log.d("WearListener", "walk/stats 수신: elapsed=$elapsed, isWalking=$isWalking")
                 WalkStatsHolder.update(
-                    elapsedSeconds = dataMap.getInt("elapsedSeconds"),
+                    elapsedSeconds = elapsed,
                     distanceMeters = dataMap.getDouble("distanceMeters"),
                     calories = dataMap.getInt("calories"),
-                    isWalking = dataMap.getBoolean("isWalking"),
+                    isWalking = isWalking,
                     isPaused = dataMap.getBoolean("isPaused"),
                 )
             }
@@ -53,8 +58,22 @@ class WearListenerService : WearableListenerService() {
     override fun onMessageReceived(messageEvent: MessageEvent) {
         val json = runCatching { JSONObject(String(messageEvent.data)) }.getOrNull()
         val path = messageEvent.path
+        android.util.Log.d("WearListener", "onMessageReceived: path=$path")
 
         when {
+            // 산책 통계 수신 (DataClient 대신 MessageClient 사용)
+            path == "/walk/stats" -> json?.let {
+                val isWalking = it.optBoolean("isWalking", false)
+                val elapsed = it.optInt("elapsedSeconds", 0)
+                android.util.Log.d("WearListener", "walk/stats 수신: elapsed=$elapsed, isWalking=$isWalking")
+                WalkStatsHolder.update(
+                    elapsedSeconds = elapsed,
+                    distanceMeters = it.optDouble("distanceMeters", 0.0),
+                    calories = it.optInt("calories", 0),
+                    isWalking = isWalking,
+                    isPaused = it.optBoolean("isPaused", false),
+                )
+            }
             // 오버레이 알림
             path.endsWith("dog_warning") -> json?.let {
                 DogWarningHolder.show(
