@@ -638,7 +638,6 @@ fun WalkScreen(
             if (state.isWalking && stampablePlace != null) {
                 FootprintStampBanner(
                     placeName = stampablePlace.name,
-                    onStamp = { viewModel.stampPlace() },
                     onDismiss = { viewModel.dismissStampPrompt() },
                     modifier = Modifier
                         .fillMaxWidth()
@@ -1158,7 +1157,6 @@ private fun DangerZoneSelectionBanner(modifier: Modifier = Modifier) {
 @Composable
 private fun FootprintStampBanner(
     placeName: String,
-    onStamp: () -> Unit,
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -1194,21 +1192,13 @@ private fun FootprintStampBanner(
                     overflow = TextOverflow.Ellipsis
                 )
             }
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                TextButton(
-                    onClick = onStamp,
-                    colors = ButtonDefaults.textButtonColors(contentColor = Color.White)
-                ) {
-                    Text(text = "발자국 찍기", fontWeight = FontWeight.Bold, fontSize = 13.sp)
-                }
-                IconButton(onClick = onDismiss, modifier = Modifier.size(24.dp)) {
-                    Icon(
-                        imageVector = Icons.Filled.Close,
-                        contentDescription = "닫기",
-                        tint = Color.White,
-                        modifier = Modifier.size(16.dp)
-                    )
-                }
+            IconButton(onClick = onDismiss, modifier = Modifier.size(24.dp)) {
+                Icon(
+                    imageVector = Icons.Filled.Close,
+                    contentDescription = "닫기",
+                    tint = Color.White,
+                    modifier = Modifier.size(16.dp)
+                )
             }
         }
     }

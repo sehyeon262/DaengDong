@@ -91,7 +91,6 @@ class WalkViewModel @Inject constructor(
     private val getNearbyMyRiskZonesUseCase: GetNearbyMyRiskZonesUseCase,
     private val getPlacesUseCase: GetPlacesUseCase,
     private val getFootprintPlacesUseCase: GetFootprintPlacesUseCase,
-    private val sendStampUseCase: SendStampUseCase,
     private val walkRepository: WalkRepository,
     private val homeRepository: HomeRepository,
     private val tokenDataStore: TokenDataStore,
@@ -744,28 +743,6 @@ class WalkViewModel @Inject constructor(
                 .onSuccess { places ->
                     stampCandidates = places
                     checkAndUpdateStampPrompt(lat, lon)
-                }
-        }
-    }
-
-    /** 발자국 도장 찍기 */
-    fun stampPlace() {
-        val place = _state.value.nearbyStampablePlace ?: return
-        val walkId = _state.value.currentWalkId ?: return
-        val dogId = _state.value.myDogId ?: return
-        viewModelScope.launch {
-            sendStampUseCase(walkId, dogId, place.id)
-                .onSuccess {
-                    _state.update { state ->
-                        state.copy(
-                            nearbyStampablePlace = null,
-                            stampedPlaceIds = state.stampedPlaceIds + place.id
-                        )
-                    }
-                    // FOOTPRINT 필터 활성화 중이면 목록 즉시 새로고침
-                    if (WalkFilterType.FOOTPRINT in _state.value.activeFilters) {
-                        loadFootprintPlaces()
-                    }
                 }
         }
     }
@@ -1746,11 +1723,16 @@ class WalkViewModel @Inject constructor(
 
     // ── 발자국 찍기 ────────────────────────────────────────────────────────────
 
-    /** 발자국 감지용 주변 장소 로드 (산책 시작 시 1회) */
-    private fun loadWalkPlaces(latitude: Double, longitude: Double) {
+    /** 발자국 감지용 주변 장소 로드 (산책 시작 시 1회) — 이미 도장 찍은 장소 제외 */
+    private fun loadWalkPlaces(latitude: Double, longitude:Double) {
+        val dogId = _state.value.myDogId ?: return
         viewModelScope.launch {
+            val stampedIds = getFootprintPlacesUseCase(dogId)
+                .getOrDefault(emptyList())
+                .map { it.id }
+                .toSet()
             getPlacesUseCase(latitude, longitude, radius = 500.0).onSuccess { places ->
-                _state.update { it.copy(walkPlaces = places) }
+                _state.update { it.copy(walkPlaces = places.filter { it.id !in stampedIds }) }
             }
         }
     }
@@ -1822,6 +1804,8 @@ class WalkViewModel @Inject constructor(
                 footprintAlertPlace = newAlertPlace,
                 // 오버레이가 사라지면 stamped 상태도 초기화
                 footprintStamped = if (newAlertPlace == null) false else it.footprintStamped,
+                // 20m 오버레이가 뜨면 50m 배너 숨기기
+                nearbyStampablePlace = if (newAlertPlace != null) null else it.nearbyStampablePlace,
             )
         }
     }
@@ -1838,6 +1822,7 @@ class WalkViewModel @Inject constructor(
             state.copy(
                 footprintStamped = true,
                 footprintAlertStates = newStates,
+                stampedPlaceIds = state.stampedPlaceIds + place.id,
             )
         }
         viewModelScope.launch {
