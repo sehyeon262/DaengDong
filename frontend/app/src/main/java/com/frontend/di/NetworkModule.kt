@@ -107,8 +107,9 @@ object NetworkModule {
                 chain.request()
             }
             val response = chain.proceed(request)
-            // 403 응답 시 로그인 화면으로 이동 (백엔드가 401 대신 403을 반환하는 경우 방어)
-            if (response.code == 403) {
+            // 401: 인증 실패 (토큰 만료/무효) — 주된 처리 대상
+            // 403: 백엔드 authenticationEntryPoint 미적용 시 방어용
+            if (response.code == 401 || response.code == 403) {
                 unauthorizedEventBus.emit()
             }
             response
