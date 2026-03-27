@@ -2,11 +2,10 @@ package com.e108.be.domain.chat.service;
 
 import com.e108.be.domain.chat.dto.response.ChatMessageResponse;
 import com.e108.be.domain.chat.dto.response.ChatRoomResponse;
-import com.e108.be.domain.chat.entity.ChatMessage;
+import com.e108.be.domain.chat.entity.ChatMessageEntry;
 import com.e108.be.domain.chat.entity.ChatRoom;
 import com.e108.be.domain.chat.entity.ChatRoomStatus;
 import com.e108.be.domain.chat.exception.ChatRoomNotFoundException;
-import com.e108.be.domain.chat.repository.ChatMessageRepository;
 import com.e108.be.domain.chat.repository.ChatRoomRepository;
 import com.e108.be.domain.chat.exception.ChatAccessDeniedException;
 import com.e108.be.domain.chat.exception.ChatRoomClosedException;
@@ -24,7 +23,6 @@ import java.util.List;
 public class ChatService {
 
     private final ChatRoomRepository chatRoomRepository;
-    private final ChatMessageRepository chatMessageRepository;
 
     @Transactional
     public Long createChatRoom(Long fromMemberId, Long toMemberId, Long fromWalkRecordId, Long toWalkRecordId) {
@@ -48,8 +46,7 @@ public class ChatService {
         ChatRoom room = chatRoomRepository.findById(chatRoomId)
                 .orElseThrow(ChatRoomNotFoundException::new);
         validateMember(room, memberId);
-        List<ChatMessage> messages = chatMessageRepository.findByChatRoomIdOrderBySentAtAsc(chatRoomId);
-        return ChatRoomResponse.from(room, messages);
+        return ChatRoomResponse.from(room);
     }
 
     @Transactional
@@ -60,12 +57,8 @@ public class ChatService {
             throw new ChatRoomClosedException();
         }
         validateMember(room, senderId);
-        ChatMessage message = ChatMessage.builder()
-                .chatRoom(room)
-                .senderId(senderId)
-                .content(content)
-                .build();
-        return ChatMessageResponse.from(chatMessageRepository.save(message));
+        ChatMessageEntry entry = room.addMessage(senderId, content);
+        return ChatMessageResponse.from(entry);
     }
 
     private void validateMember(ChatRoom room, Long memberId) {
