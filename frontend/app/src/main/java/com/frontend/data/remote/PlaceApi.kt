@@ -37,10 +37,17 @@ interface PlaceApi {
         @Header("Authorization") authorization: String,
         @Query("lat") lat: Double,
         @Query("lon") lon: Double,
-        @Query("radius") radius: Double? = null,   // 검색 반경(m), 기본값 1000, 범위 100~5000
-        @Query("limit") limit: Int? = null,         // 최대 결과 수, 기본값 20
-        @Query("category") category: String? = null // 카테고리 필터 (예: "카페", "동물병원")
+        @Query("radius") radius: Double? = null,
+        @Query("limit") limit: Int? = null,
+        @Query("category") category: String? = null
     ): ApiResponse<List<Place>>
+
+    /** 발자국 도장 찍기 — POST /api/v1/maps/stamps */
+    @POST("maps/stamps")
+    suspend fun sendStamp(
+        @Header("Authorization") authorization: String,
+        @Body request: StampRequest
+    ): ApiResponse<Unit>
 
     /** 발자국 도장 찍은 장소 목록 조회 — GET /api/v1/maps/stamps */
     @GET("maps/stamps")
@@ -56,8 +63,7 @@ interface PlaceApi {
         @Body request: StampRequest
     ): ApiResponse<Void>
 
-    /** 신규 장소 등록 — POST /api/v1/places (multipart/form-data)
-     *  name, categoryName, latitude, longitude, address, memo, image(선택) */
+    /** 신규 장소 등록 — POST /api/v1/places (multipart/form-data) */
     @Multipart
     @POST("places")
     suspend fun registerPlace(

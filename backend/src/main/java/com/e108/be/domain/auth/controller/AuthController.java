@@ -11,8 +11,10 @@ package com.e108.be.domain.auth.controller;
  */
 
 import com.e108.be.domain.auth.dto.request.LoginRequest;
+import com.e108.be.domain.auth.dto.request.RefreshTokenRequest;
 import com.e108.be.domain.auth.dto.request.RegisterRequest;
 import com.e108.be.domain.auth.dto.response.LoginResponse;
+import com.e108.be.domain.auth.dto.response.RefreshTokenResponse;
 import com.e108.be.domain.auth.dto.response.RegisterResponse;
 import com.e108.be.domain.auth.dto.response.ValidateTokenResponse;
 import com.e108.be.domain.auth.service.AuthService;
@@ -63,6 +65,16 @@ public class AuthController {
     public ResTemplate<LoginResponse> login(@RequestBody LoginRequest request) {
         LoginResponse response = authService.login(request);
         return ResTemplate.success(HttpStatus.OK, "로그인 성공", response);
+    }
+
+    /**
+     * Refresh Token으로 Access Token 재발급 API
+     * POST /auth/refresh-token
+     */
+    @PostMapping("/refresh-token")
+    public ResTemplate<RefreshTokenResponse> refreshToken(@RequestBody RefreshTokenRequest request) {
+        RefreshTokenResponse response = authService.refreshToken(request);
+        return ResTemplate.success(HttpStatus.OK, "토큰 재발급 성공", response);
     }
 
     /**

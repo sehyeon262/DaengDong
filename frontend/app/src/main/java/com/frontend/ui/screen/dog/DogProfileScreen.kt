@@ -110,6 +110,13 @@ fun DogProfileScreen(
             },
             onBadgesClick = {
                 navController.navigate(Routes.BADGES)
+            },
+            onLogoutClick = {
+                viewModel.logout {
+                    navController.navigate(Routes.LOGIN) {
+                        popUpTo(0) { inclusive = true }
+                    }
+                }
             }
         )
     }
@@ -122,7 +129,8 @@ private fun DogProfileContent(
     earnedBadges: List<com.frontend.domain.model.BadgeProgressResponse>,
     onEditClick: () -> Unit,
     onMetDogsClick: () -> Unit,
-    onBadgesClick: () -> Unit = {}
+    onBadgesClick: () -> Unit = {},
+    onLogoutClick: () -> Unit = {}
 ) {
     LazyColumn(
         modifier = Modifier.fillMaxSize().background(Background),
@@ -138,6 +146,21 @@ private fun DogProfileContent(
                 WalkStatsSection()
                 RecentFriendSection(recentMetDog, onMetDogsClick)
                 BadgeSection(earnedBadges, onBadgesClick)
+            }
+        }
+        item {
+            Spacer(modifier = Modifier.height(32.dp))
+            OutlinedButton(
+                onClick = onLogoutClick,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 20.dp),
+                colors = ButtonDefaults.outlinedButtonColors(
+                    contentColor = Color(0xFFE53935)
+                ),
+                border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFE53935))
+            ) {
+                Text("로그아웃", fontSize = 15.sp)
             }
         }
     }

@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">WalkMate Watch</string>
+    <string name="app_name">댕동여지도</string>
     <string name="notification_channel_dog_warning">비선호 강아지 알림</string>
     <string name="notification_channel_danger">위험 구역 알림</string>
     <string name="notification_channel_footprint">발자국 알림</string>

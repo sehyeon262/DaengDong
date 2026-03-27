@@ -8,6 +8,7 @@ import com.frontend.domain.model.Place
 import com.frontend.domain.model.PlaceCategory
 import com.frontend.domain.model.RegisterPlaceResponse
 import com.frontend.domain.model.StampRequest
+import com.frontend.domain.model.UnauthorizedException
 import kotlinx.coroutines.flow.first
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.MultipartBody
@@ -52,6 +53,19 @@ class PlaceRepository constructor(
         placeApi.getPlaceCategories(
             authorization = "Bearer $token"
         ).data ?: emptyList()
+    }
+
+    /** 발자국 도장 찍기 */
+    suspend fun sendStamp(walkId: Long, dogId: Long, placeId: Long): Result<Unit> {
+        val token = tokenDataStore.getAccessToken().first()
+            ?: return Result.failure(UnauthorizedException("인증 토큰 없음"))
+        return runCatching {
+            placeApi.sendStamp(
+                authorization = "Bearer $token",
+                request = StampRequest(walkId = walkId, dogId = dogId, placeId = placeId)
+            )
+            Unit
+        }
     }
 
     /** 발자국 도장 찍은 장소 목록 조회 */

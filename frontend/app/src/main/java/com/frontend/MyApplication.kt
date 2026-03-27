@@ -5,6 +5,7 @@ import android.content.pm.PackageManager
 import android.util.Base64
 import android.util.Log
 import com.frontend.notification.NearbyDogAlertManager
+import com.frontend.notification.RiskZoneAlertManager
 import com.kakao.vectormap.KakaoMapSdk
 import dagger.hilt.android.HiltAndroidApp
 import java.security.MessageDigest
@@ -15,6 +16,9 @@ class MyApplication : Application() {
 
     @Inject
     lateinit var nearbyDogAlertManager: NearbyDogAlertManager
+
+    @Inject
+    lateinit var riskZoneAlertManager: RiskZoneAlertManager
 
     override fun onCreate() {
         super.onCreate()
@@ -43,11 +47,15 @@ class MyApplication : Application() {
             // Hilt 주입이 완료된 후 채널 생성
             if (::nearbyDogAlertManager.isInitialized) {
                 nearbyDogAlertManager.createNotificationChannel()
-                Log.d("MyApplication", "NotificationChannel 생성 완료")
             } else {
-                // 주입 전이면 직접 생성 (fallback)
                 createNearbyDogAlertChannel()
             }
+            if (::riskZoneAlertManager.isInitialized) {
+                riskZoneAlertManager.createNotificationChannel()
+            } else {
+                createRiskZoneAlertChannel()
+            }
+            Log.d("MyApplication", "NotificationChannel 생성 완료")
         } catch (e: Exception) {
             Log.w("MyApplication", "NotificationChannel 생성 실패: ${e.message}")
         }
@@ -63,6 +71,23 @@ class MyApplication : Application() {
             val importance = android.app.NotificationManager.IMPORTANCE_HIGH
             val channel = android.app.NotificationChannel(channelId, channelName, importance).apply {
                 description = "산책 중 비선호 강아지가 근처에 있을 때 알림을 받습니다"
+                enableVibration(true)
+            }
+            val notificationManager = getSystemService(android.app.NotificationManager::class.java)
+            notificationManager?.createNotificationChannel(channel)
+        }
+    }
+
+    /**
+     * 위험장소 알림 채널 직접 생성 (fallback)
+     */
+    private fun createRiskZoneAlertChannel() {
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+            val channelId = "risk_zone_alert"
+            val channelName = "위험장소 알림"
+            val importance = android.app.NotificationManager.IMPORTANCE_HIGH
+            val channel = android.app.NotificationChannel(channelId, channelName, importance).apply {
+                description = "산책 중 내가 등록한 위험장소에 접근할 때 알림을 받습니다"
                 enableVibration(true)
             }
             val notificationManager = getSystemService(android.app.NotificationManager::class.java)
