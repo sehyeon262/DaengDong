@@ -34,6 +34,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import kotlinx.coroutines.delay
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -99,9 +100,30 @@ fun WalkWatchScreen() {
         }
     }
 
-    val hours = stats.elapsedSeconds / 3600
-    val minutes = (stats.elapsedSeconds % 3600) / 60
-    val seconds = stats.elapsedSeconds % 60
+    // 산책 종료 결과 저장 (종료 버튼 누를 때 캡처)
+    var walkResult by remember { mutableStateOf<Triple<Int, Double, Int>?>(null) }
+
+    // 로컬 타이머: 폰 메시지가 늦게 오는 경우에도 워치에서 자체적으로 1초씩 카운트
+    var localElapsed by remember { mutableStateOf(stats.elapsedSeconds) }
+
+    // 폰에서 값 수신 시 동기화 (서버 값이 우선)
+    LaunchedEffect(stats.elapsedSeconds) {
+        localElapsed = stats.elapsedSeconds
+    }
+
+    // 산책 중이고 일시정지 아닐 때 로컬에서 1초마다 증가
+    LaunchedEffect(stats.isWalking, stats.isPaused) {
+        if (stats.isWalking && !stats.isPaused) {
+            while (true) {
+                delay(1000L)
+                localElapsed++
+            }
+        }
+    }
+
+    val hours = localElapsed / 3600
+    val minutes = (localElapsed % 3600) / 60
+    val seconds = localElapsed % 60
     val timeText = "%02d:%02d:%02d".format(hours, minutes, seconds)
     val distKm = stats.distanceMeters / 1000.0
 
@@ -112,7 +134,57 @@ fun WalkWatchScreen() {
                 .background(Color.Black),
         ) {
             // ── 메인 화면 ───────────────────────────────────────────
-            if (!stats.isWalking) {
+            if (walkResult != null && !stats.isWalking) {
+                // 산책 결과 화면
+                val (resultSeconds, resultDistance, resultCalories) = walkResult!!
+                val rHours = resultSeconds / 3600
+                val rMinutes = (resultSeconds % 3600) / 60
+                val rSeconds = resultSeconds % 60
+                val resultTimeText = "%02d:%02d:%02d".format(rHours, rMinutes, rSeconds)
+                val resultDistKm = resultDistance / 1000.0
+
+                Box(
+                    modifier = Modifier.fillMaxSize(),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center,
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        ) {
+                            Text("소요 시간", fontSize = 13.sp, color = Color(0xFFFFD700), fontWeight = FontWeight.Medium)
+                            Text(resultTimeText, fontSize = 22.sp, color = Color.White, fontWeight = FontWeight.Bold)
+                        }
+                        Spacer(Modifier.height(8.dp))
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        ) {
+                            Text("거리", fontSize = 13.sp, color = Color(0xFFFFD700), fontWeight = FontWeight.Medium)
+                            Text("%.2f km".format(resultDistKm), fontSize = 22.sp, color = Color.White, fontWeight = FontWeight.Bold)
+                        }
+                        Spacer(Modifier.height(8.dp))
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        ) {
+                            Text("칼로리", fontSize = 13.sp, color = Color(0xFFFFD700), fontWeight = FontWeight.Medium)
+                            Text("$resultCalories kcal", fontSize = 22.sp, color = Color.White, fontWeight = FontWeight.Bold)
+                        }
+                        Spacer(Modifier.height(16.dp))
+                        Button(
+                            onClick = { walkResult = null },
+                            colors = ButtonDefaults.buttonColors(backgroundColor = Color(0xFF5B9E5F)),
+                            modifier = Modifier.size(width = 100.dp, height = 36.dp),
+                        ) {
+                            Text("확인", fontSize = 14.sp, color = Color.White, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+            } else if (!stats.isWalking) {
                 // 산책 전 대기 화면
                 Box(
                     modifier = Modifier.fillMaxSize(),
@@ -256,7 +328,10 @@ fun WalkWatchScreen() {
                                 }
                                 Spacer(Modifier.height(12.dp))
                                 Button(
-                                    onClick = { sendAction("/action/end_walk", null) },
+                                    onClick = {
+                                    walkResult = Triple(localElapsed, stats.distanceMeters, stats.calories)
+                                    sendAction("/action/end_walk", null)
+                                },
                                     colors = ButtonDefaults.buttonColors(backgroundColor = Color(0xFFE53935)),
                                     modifier = Modifier.size(width = 130.dp, height = 48.dp),
                                 ) {
