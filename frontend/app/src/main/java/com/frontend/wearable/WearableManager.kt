@@ -102,18 +102,25 @@ class WearableManager @Inject constructor(
     }
 
     private suspend fun isAvailable(): Boolean {
-        available?.let { return it }
+        available?.let {
+            Log.d("WearableManager", "isAvailable (캐시) = $it")
+            return it
+        }
         return try {
-            nodeClient.connectedNodes.await()
+            val nodes = nodeClient.connectedNodes.await()
+            Log.d("WearableManager", "connectedNodes = ${nodes.map { "${it.id}(${it.displayName})" }}")
             available = true
             true
         } catch (e: ApiException) {
             if (e.statusCode == 17) { // API_NOT_AVAILABLE
                 available = false
                 Log.d("WearableManager", "Wearable API 미지원 기기 — 워치 기능 비활성화")
+            } else {
+                Log.e("WearableManager", "ApiException statusCode=${e.statusCode}: ${e.message}")
             }
             false
-        } catch (_: Exception) {
+        } catch (e: Exception) {
+            Log.e("WearableManager", "isAvailable 예외: ${e.message}")
             false
         }
     }
@@ -128,21 +135,19 @@ class WearableManager @Inject constructor(
         isWalking: Boolean,
         isPaused: Boolean,
     ) {
-        if (!isAvailable()) return
-        try {
-            val request = PutDataMapRequest.create("/walk/stats").apply {
-                dataMap.putInt("elapsedSeconds", elapsedSeconds)
-                dataMap.putDouble("distanceMeters", distanceMeters)
-                dataMap.putInt("calories", calories)
-                dataMap.putBoolean("isWalking", isWalking)
-                dataMap.putBoolean("isPaused", isPaused)
-                dataMap.putLong("timestamp", System.currentTimeMillis())
-            }.asPutDataRequest().setUrgent()
-
-            dataClient.putDataItem(request).await()
-        } catch (e: Exception) {
-            Log.e("WearableManager", "sendWalkStats 실패: ${e.message}")
+        if (!isAvailable()) {
+            Log.w("WearableManager", "sendWalkStats 스킵: Wearable 사용 불가")
+            return
         }
+        val json = JSONObject().apply {
+            put("elapsedSeconds", elapsedSeconds)
+            put("distanceMeters", distanceMeters)
+            put("calories", calories)
+            put("isWalking", isWalking)
+            put("isPaused", isPaused)
+        }
+        sendMessageToAllNodes("/walk/stats", json)
+        Log.d("WearableManager", "sendWalkStats 전송 완료: elapsed=$elapsedSeconds, isWalking=$isWalking")
     }
 
     /**
@@ -179,9 +184,14 @@ class WearableManager @Inject constructor(
     private suspend fun sendMessageToAllNodes(path: String, json: JSONObject) {
         try {
             val nodes = nodeClient.connectedNodes.await()
+            if (nodes.isEmpty()) {
+                Log.w("WearableManager", "sendMessage($path) 스킵: 연결된 노드 없음")
+                return
+            }
             val data = json.toString().toByteArray()
             nodes.forEach { node ->
                 messageClient.sendMessage(node.id, path, data).await()
+                Log.d("WearableManager", "sendMessage 완료: path=$path → ${node.id}(${node.displayName})")
             }
         } catch (e: Exception) {
             Log.e("WearableManager", "sendMessage($path) 실패: ${e.message}")
