@@ -22,9 +22,11 @@ import okhttp3.RequestBody.Companion.toRequestBody
 import com.frontend.data.local.TokenDataStore
 import com.frontend.data.remote.StompChatClient
 import com.frontend.data.repository.DogRepository
+import com.frontend.data.repository.HomeRepository
 import com.frontend.data.repository.WalkRepository
 import com.frontend.domain.model.ChatBannerNotification
 import com.frontend.domain.model.FeedbackRequest
+import com.frontend.domain.model.HomeWeatherInfo
 import com.frontend.domain.model.NearbyDogResponse
 import com.frontend.domain.model.PendingProposalInfo
 import com.frontend.domain.model.RejectedProposalInfo
@@ -91,6 +93,7 @@ class WalkViewModel @Inject constructor(
     private val getFootprintPlacesUseCase: GetFootprintPlacesUseCase,
     private val sendStampUseCase: SendStampUseCase,
     private val walkRepository: WalkRepository,
+    private val homeRepository: HomeRepository,
     private val tokenDataStore: TokenDataStore,
     private val dogRepository: DogRepository,
     private val getPlaceDetailUseCase: GetPlaceDetailUseCase,
@@ -105,6 +108,11 @@ class WalkViewModel @Inject constructor(
     private val stompChatClient: StompChatClient,
     private val wearableManager: WearableManager,
 ) : ViewModel() {
+
+    private data class RouteWeatherPayload(
+        val weatherCondition: String?,
+        val temperature: Double?,
+    )
 
     // ── 비선호 강아지 알림 상수 ─────────────────────────────────────────────────
     companion object {
@@ -125,6 +133,7 @@ class WalkViewModel @Inject constructor(
 
     private val _state = MutableStateFlow(WalkState())
     val state = _state.asStateFlow()
+    private var cachedWeatherPayload: RouteWeatherPayload? = null
 
     // ── 주변 강아지 폴링 Job ───────────────────────────────────────────────────
     private var nearbyDogsJob: Job? = null
@@ -540,6 +549,37 @@ class WalkViewModel @Inject constructor(
         return listOf(freeWalkRoute) + recommended
     }
 
+    private suspend fun getCurrentWeatherPayload(): RouteWeatherPayload? {
+        cachedWeatherPayload?.let { return it }
+        val pos = _currentPosition.value ?: return null
+        return fetchWeatherPayload(pos.latitude, pos.longitude)
+    }
+
+    private suspend fun fetchWeatherPayload(latitude: Double, longitude: Double): RouteWeatherPayload? {
+        return homeRepository.getHomeData(latitude, longitude)
+            .getOrNull()
+            ?.weather
+            ?.toRouteWeatherPayload()
+            ?.also { cachedWeatherPayload = it }
+    }
+
+    private fun HomeWeatherInfo.toRouteWeatherPayload(): RouteWeatherPayload {
+        val condition = when {
+            weatherCode == "SNOWY" -> "SNOW"
+            weatherCode == "RAINY" -> "RAIN"
+            temperature >= 30 -> "HOT"
+            temperature <= 0 -> "COLD"
+            weatherCode == "CLOUDY" -> "CLOUDY"
+            weatherCode == "SUNNY" -> "CLEAR"
+            else -> null
+        }
+
+        return RouteWeatherPayload(
+            weatherCondition = condition,
+            temperature = temperature.toDouble()
+        )
+    }
+
     /**
      * 현재 선택된 추천 경로 반환 (자유 산책이면 null)
      */
@@ -570,8 +610,13 @@ class WalkViewModel @Inject constructor(
 
         viewModelScope.launch {
             _state.update { it.copy(isRoutesLoading = true, routesError = null) }
+            val weatherPayload = fetchWeatherPayload(latitude, longitude)
 
-            getRecommendedRoutesUseCase(latitude, longitude)
+            getRecommendedRoutesUseCase(
+                latitude = latitude,
+                longitude = longitude,
+                weather = weatherPayload?.weatherCondition
+            )
                 .onSuccess { response ->
                     _state.update {
                         it.copy(
@@ -865,12 +910,17 @@ class WalkViewModel @Inject constructor(
      *
      * @return StartWalkRequest 또는 null (추천 경로 선택했으나 경로 데이터가 없는 경우)
      */
-    private fun buildStartWalkRequest(dogId: Long): StartWalkRequest? {
+    private suspend fun buildStartWalkRequest(dogId: Long): StartWalkRequest? {
         val selectedIndex = _state.value.selectedRouteIndex
+        val weatherPayload = getCurrentWeatherPayload()
 
         // 자유 산책 (index == 0)
         if (selectedIndex == 0) {
-            return StartWalkRequest(dogId = dogId)
+            return StartWalkRequest(
+                dogId = dogId,
+                weatherCondition = weatherPayload?.weatherCondition,
+                temperature = weatherPayload?.temperature
+            )
         }
 
         // 추천 경로 산책: 경로가 없으면 null 반환 (자유 산책 fallback 금지)
@@ -892,6 +942,9 @@ class WalkViewModel @Inject constructor(
             weatherCondition = null,  // 현재 구조상 날씨 정보 미제공 (optional)
             temperature = null,       // 현재 구조상 기온 정보 미제공 (optional)
             recommendedPath = recommendedPath.ifEmpty { null }
+        ).copy(
+            weatherCondition = weatherPayload?.weatherCondition,
+            temperature = weatherPayload?.temperature
         )
     }
 

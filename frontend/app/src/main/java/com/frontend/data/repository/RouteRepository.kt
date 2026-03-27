@@ -15,13 +15,15 @@ class RouteRepository(
      */
     suspend fun getRecommendedRoutes(
         latitude: Double,
-        longitude: Double
+        longitude: Double,
+        weather: String? = null
     ): Result<RouteRecommendResponse> = runCatching {
         val token = tokenDataStore.getAccessToken().first() ?: error("인증 토큰 없음")
         routeApi.getRecommendedRoutes(
             authorization = "Bearer $token",
             lat = latitude,
-            lon = longitude
+            lon = longitude,
+            weather = weather
         ).data ?: error("경로 데이터 없음")
     }
 }

@@ -16,6 +16,7 @@ interface RouteApi {
     suspend fun getRecommendedRoutes(
         @Header("Authorization") authorization: String,
         @Query("lat") lat: Double,
-        @Query("lon") lon: Double
+        @Query("lon") lon: Double,
+        @Query("weather") weather: String? = null
     ): ApiResponse<RouteRecommendResponse>
 }
