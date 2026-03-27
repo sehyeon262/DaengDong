@@ -46,11 +46,7 @@ class DogProfileViewModel @Inject constructor(
 
     fun logout(onLoggedOut: () -> Unit) {
         viewModelScope.launch {
-            try {
-                authRepository.logout()
-            } catch (_: Exception) {
-                // 실패해도 로그아웃 처리
-            }
+            authRepository.logout() // 내부에서 예외 처리 완료 — 항상 정상 반환
             onLoggedOut()
         }
     }
