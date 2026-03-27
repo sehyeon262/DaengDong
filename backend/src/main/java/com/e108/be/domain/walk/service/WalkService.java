@@ -32,6 +32,7 @@ import com.e108.be.domain.walk.exception.WalkAlreadyInProgressException;
 import com.e108.be.domain.walk.exception.WalkNotFoundException;
 import com.e108.be.domain.walk.repository.MetDogRepository;
 import com.e108.be.domain.walk.repository.WalkRecordRepository;
+import com.e108.be.global.config.DemoPhotoConfig;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
@@ -71,6 +72,7 @@ public class WalkService {
     private final BadgeService badgeService;
     private final RouteSelectionService routeSelectionService;
     private final ChatService chatService;
+    private final DemoPhotoConfig demoPhotoConfig;
 
     /**
      * W1-01 산책 시작
@@ -187,6 +189,16 @@ public class WalkService {
 
         // 이탈률 계산 (추천 경로가 있는 경우만)
         calculateAndSaveDeviationRate(walkRecord);
+
+        // 데모 모드: 시연용 사진 자동 주입
+        if (demoPhotoConfig.isEnabled() && !demoPhotoConfig.getPhotoUrls().isEmpty()) {
+            List<String> existing = walkRecord.getPhotoUrls() != null
+                    ? new ArrayList<>(walkRecord.getPhotoUrls())
+                    : new ArrayList<>();
+            existing.addAll(demoPhotoConfig.getPhotoUrls());
+            walkRecord.updatePhotoUrls(existing);
+            log.info("[데모모드] 시연용 사진 {}장 자동 주입: walkId={}", demoPhotoConfig.getPhotoUrls().size(), walkId);
+        }
 
         // 일기 생성 트리거 — 트랜잭션 커밋 후 비동기 실행
         final Long dogIdForDiary = walkRecord.getDogId();

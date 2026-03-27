@@ -9,6 +9,7 @@ import com.e108.be.domain.place.repository.NearbyPlaceProjection;
 import com.e108.be.domain.place.repository.PlaceRepository;
 import com.e108.be.domain.walk.entity.WalkRecord;
 import com.e108.be.domain.walk.repository.WalkRecordRepository;
+import com.e108.be.global.config.DemoPhotoConfig;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.redis.core.RedisTemplate;
@@ -32,6 +33,13 @@ public class DiaryGenerationWorker {
 
     private static final String GPS_KEY_PREFIX = "walk:gps:";
 
+    private static final Map<String, String> EMOTION_TAG_MAP = Map.of(
+            "happy", "행복",
+            "relaxed", "편안",
+            "sad", "슬픔",
+            "angry", "화남"
+    );
+
     private final DiaryRepository diaryRepository;
     private final WalkRecordRepository walkRecordRepository;
     private final DogRepository dogRepository;
@@ -42,6 +50,7 @@ public class DiaryGenerationWorker {
     private final RedisTemplate<String, String> redisTemplate;
     private final DogEmotionAnalyzer emotionAnalyzer;
     private final VisionService visionService;
+    private final DemoPhotoConfig demoPhotoConfig;
 
     @Async("diaryExecutor")
     @Transactional
@@ -158,7 +167,25 @@ public class DiaryGenerationWorker {
     private Map<String, EmotionResult> analyzeAllPhotos(List<String> photoUrls) {
         Map<String, EmotionResult> results = new LinkedHashMap<>();
 
-        if (photoUrls == null || photoUrls.isEmpty() || !emotionAnalyzer.isAvailable()) {
+        if (photoUrls == null || photoUrls.isEmpty()) {
+            return results;
+        }
+
+        // 데모 모드: 하드코딩된 감정 반환 (ONNX 모델 스킵)
+        if (demoPhotoConfig.isEnabled() && !demoPhotoConfig.getEmotionOverrides().isEmpty()) {
+            for (String url : photoUrls) {
+                String filename = url.substring(url.lastIndexOf('/') + 1).toLowerCase();
+                String emotionKey = demoPhotoConfig.getEmotionOverrides().get(filename);
+                if (emotionKey != null) {
+                    String tag = EMOTION_TAG_MAP.getOrDefault(emotionKey, emotionKey);
+                    results.put(url, new EmotionResult(emotionKey, 0.95f, tag));
+                    log.info("[데모모드] 감정 하드코딩: {} → {} ({})", filename, emotionKey, tag);
+                }
+            }
+            return results;
+        }
+
+        if (!emotionAnalyzer.isAvailable()) {
             return results;
         }
 
