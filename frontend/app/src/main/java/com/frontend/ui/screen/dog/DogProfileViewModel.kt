@@ -3,6 +3,7 @@ package com.frontend.ui.screen.dog
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.frontend.data.local.TokenDataStore
+import com.frontend.data.repository.AuthRepository
 import com.frontend.data.repository.BadgeRepository
 import com.frontend.data.repository.DogRepository
 import com.frontend.data.repository.WalkRepository
@@ -32,7 +33,8 @@ class DogProfileViewModel @Inject constructor(
     private val dogRepository: DogRepository,
     private val walkRepository: WalkRepository,
     private val badgeRepository: BadgeRepository,
-    private val tokenDataStore: TokenDataStore
+    private val tokenDataStore: TokenDataStore,
+    private val authRepository: AuthRepository
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(DogProfileState())
@@ -40,6 +42,17 @@ class DogProfileViewModel @Inject constructor(
 
     init {
         loadDogProfile()
+    }
+
+    fun logout(onLoggedOut: () -> Unit) {
+        viewModelScope.launch {
+            try {
+                authRepository.logout()
+            } catch (_: Exception) {
+                // 실패해도 로그아웃 처리
+            }
+            onLoggedOut()
+        }
     }
 
     fun loadDogProfile() {

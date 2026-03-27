@@ -30,7 +30,7 @@ spring:
 # JWT 설정
 jwt:
   secret: ${JWT_SECRET}
-  expiration: 3600000
+  expiration: 604800000  # 1주일 (7 * 24 * 60 * 60 * 1000)
 
 # 외부 API 설정
 api:
