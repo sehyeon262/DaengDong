@@ -59,6 +59,11 @@ google:
   vision:
     api-key: ${GOOGLE_VISION_API_KEY}
 
+# 데모 모드 설정 (시연용 사진 자동 주입)
+demo:
+  enabled: false
+  photo-urls: []
+
 # S3 설정
 aws:
   s3:
