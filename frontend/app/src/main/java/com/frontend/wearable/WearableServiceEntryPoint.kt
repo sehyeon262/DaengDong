@@ -1,8 +1,5 @@
 package com.frontend.wearable
 
-import com.frontend.data.local.TokenDataStore
-import com.frontend.data.repository.PlaceRepository
-import com.frontend.data.repository.WalkRepository
 import dagger.hilt.EntryPoint
 import dagger.hilt.InstallIn
 import dagger.hilt.components.SingletonComponent
@@ -13,8 +10,4 @@ import dagger.hilt.components.SingletonComponent
  */
 @EntryPoint
 @InstallIn(SingletonComponent::class)
-interface WearableServiceEntryPoint {
-    fun walkRepository(): WalkRepository
-    fun placeRepository(): PlaceRepository
-    fun tokenDataStore(): TokenDataStore
-}
+interface WearableServiceEntryPoint
