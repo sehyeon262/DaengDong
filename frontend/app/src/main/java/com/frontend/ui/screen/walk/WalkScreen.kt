@@ -515,14 +515,18 @@ fun WalkScreen(
     }
 
     // 장소 목록 변경 시: 마커 전체 교체 (PLACE 필터 ON → API 응답 도착)
-    LaunchedEffect(state.places, kakaoMap) {
+    // 발자국 찍은 장소는 dog_footprint 마커로 대체되므로 place_mark 마커 제외
+    LaunchedEffect(state.places, state.footprintPlaces, kakaoMap) {
         val map = kakaoMap ?: return@LaunchedEffect
         placeLabels.forEach { map.labelManager?.layer?.remove(it) }
         placeLabels.clear()
         if (state.places.isEmpty()) return@LaunchedEffect
+        val footprintPlaceIds = state.footprintPlaces.map { it.id }.toSet()
         state.places.forEach { place ->
-            val label = addPlaceMarker(context, map, place)
-            if (label != null) placeLabels.add(label)
+            if (place.id !in footprintPlaceIds) {
+                val label = addPlaceMarker(context, map, place)
+                if (label != null) placeLabels.add(label)
+            }
         }
     }
 
@@ -1468,7 +1472,7 @@ private fun addFootprintMarker(
     val source = android.graphics.BitmapFactory.decodeResource(
         context.resources, R.drawable.dog_footprint
     )
-    val targetSize = 80
+    val targetSize = 96  // place_mark(80) 대비 1.2배
     val aspectRatio = source.width.toFloat() / source.height.toFloat()
     val targetWidth = (targetSize * aspectRatio).toInt()
     val scaled = android.graphics.Bitmap.createScaledBitmap(source, targetWidth, targetSize, true)
