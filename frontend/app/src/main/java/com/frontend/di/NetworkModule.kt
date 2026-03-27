@@ -2,6 +2,7 @@ package com.frontend.di
 
 import com.frontend.BuildConfig
 import com.frontend.data.local.TokenDataStore
+import com.frontend.data.local.UnauthorizedEventBus
 import com.frontend.data.remote.AuthApi
 import com.frontend.data.remote.BadgeApi
 import com.frontend.data.remote.ChatApi
@@ -92,7 +93,10 @@ object NetworkModule {
 
     @Provides
     @Singleton
-    fun provideAuthInterceptor(tokenDataStore: TokenDataStore): Interceptor {
+    fun provideAuthInterceptor(
+        tokenDataStore: TokenDataStore,
+        unauthorizedEventBus: UnauthorizedEventBus
+    ): Interceptor {
         return Interceptor { chain ->
             val token = runBlocking { tokenDataStore.getAccessToken().first() }
             val request = if (token != null) {
@@ -102,7 +106,12 @@ object NetworkModule {
             } else {
                 chain.request()
             }
-            chain.proceed(request)
+            val response = chain.proceed(request)
+            // 403 응답 시 로그인 화면으로 이동 (백엔드가 401 대신 403을 반환하는 경우 방어)
+            if (response.code == 403) {
+                unauthorizedEventBus.emit()
+            }
+            response
         }
     }
 
