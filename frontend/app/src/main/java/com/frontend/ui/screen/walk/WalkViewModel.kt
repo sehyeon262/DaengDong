@@ -1050,6 +1050,11 @@ class WalkViewModel @Inject constructor(
         }
 
         viewModelScope.launch {
+            // 새 산책이 이미 시작됐으면 stale endWalk 코루틴 무시
+            if (sessionId != walkSessionId) {
+                android.util.Log.d("WalkVM", "Stale endWalk call ignored for session $sessionId, current session is $walkSessionId")
+                return@launch
+            }
             // currentWalkId가 아직 null이면 산책 시작 API 응답을 대기
             var walkId = currentWalkId
             if (walkId == null) {
