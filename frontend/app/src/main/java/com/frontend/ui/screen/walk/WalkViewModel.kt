@@ -249,6 +249,7 @@ class WalkViewModel @Inject constructor(
                     is WearableAction.EndWalk -> endWalk()
                     is WearableAction.PauseWalk -> pauseWalk()
                     is WearableAction.ResumeWalk -> resumeWalk()
+                    is WearableAction.DismissWalkSummary -> dismissWalkSummary()
                     is WearableAction.ProposalAccept -> {
                         walkRepository.respondToProposal(action.proposalId, "ACCEPT", action.myWalkRecordId)
                             .onSuccess { chatRoomId ->
@@ -640,8 +641,12 @@ class WalkViewModel @Inject constructor(
      * - 한 번 로드 후 캐시하여 재사용
      */
     fun loadRecommendedRoutes(latitude: Double, longitude: Double) {
-        // 이미 로드했거나 로딩 중이면 skip
-        if (_state.value.recommendedRoutes.isNotEmpty() || _state.value.isRoutesLoading) return
+        if (_state.value.isRoutesLoading) return
+        // 이미 로드된 경우 API 재호출 없이 워치에만 재전송 (워치 재시작 대응)
+        if (_state.value.recommendedRoutes.isNotEmpty()) {
+            viewModelScope.launch { syncCoursesToWatch(_state.value.recommendedRoutes) }
+            return
+        }
 
         viewModelScope.launch {
             _state.update { it.copy(isRoutesLoading = true, routesError = null) }
@@ -662,22 +667,7 @@ class WalkViewModel @Inject constructor(
                             routesError = null
                         )
                     }
-                    // 워치로 코스 목록 전송
-                    val courses = mutableListOf(
-                        WearableManager.CourseInfo(0, "FREE", "자유 산책", 0.0, 0)
-                    )
-                    response.routes.forEachIndexed { idx, route ->
-                        courses.add(
-                            WearableManager.CourseInfo(
-                                index = idx + 1,
-                                type = route.type,
-                                name = route.name,
-                                distanceKm = route.totalDistanceM / 1000.0,
-                                durationMin = route.estimatedMinutes,
-                            )
-                        )
-                    }
-                    wearableManager.sendCourseData(courses)
+                    syncCoursesToWatch(response.routes)
                 }
                 .onFailure { e ->
                     _state.update {
@@ -688,6 +678,22 @@ class WalkViewModel @Inject constructor(
                     }
                 }
         }
+    }
+
+    private suspend fun syncCoursesToWatch(routes: List<RecommendedRoute>) {
+        val courses = mutableListOf(WearableManager.CourseInfo(0, "FREE", "자유 산책", 0.0, 0))
+        routes.forEachIndexed { idx, route ->
+            courses.add(
+                WearableManager.CourseInfo(
+                    index = idx + 1,
+                    type = route.type,
+                    name = route.name,
+                    distanceKm = route.totalDistanceM / 1000.0,
+                    durationMin = route.estimatedMinutes,
+                )
+            )
+        }
+        wearableManager.sendCourseData(courses)
     }
 
     /**
