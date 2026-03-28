@@ -74,6 +74,7 @@ class WearableManager @Inject constructor(
                     )
                 }
             }
+            "/action/dismiss_summary" -> scope.launch { WearableActionBus.emit(WearableAction.DismissWalkSummary) }
             "/response/stamp" -> json?.let {
                 scope.launch {
                     WearableActionBus.emit(

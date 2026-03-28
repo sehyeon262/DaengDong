@@ -249,6 +249,7 @@ class WalkViewModel @Inject constructor(
                     is WearableAction.EndWalk -> endWalk()
                     is WearableAction.PauseWalk -> pauseWalk()
                     is WearableAction.ResumeWalk -> resumeWalk()
+                    is WearableAction.DismissWalkSummary -> dismissWalkSummary()
                     is WearableAction.ProposalAccept -> {
                         walkRepository.respondToProposal(action.proposalId, "ACCEPT", action.myWalkRecordId)
                             .onSuccess { chatRoomId ->
