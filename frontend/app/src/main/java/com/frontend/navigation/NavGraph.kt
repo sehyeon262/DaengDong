@@ -35,6 +35,8 @@ import com.frontend.ui.screen.splash.SplashScreen
 import com.frontend.ui.screen.walk.WalkDetailScreen
 import com.frontend.ui.screen.walk.WalkScreen
 import com.frontend.navigation.NavGraphViewModel
+import com.frontend.wearable.WearableAction
+import com.frontend.wearable.WearableActionBus
 
 @Composable
 fun NavGraph() {
@@ -49,6 +51,19 @@ fun NavGraph() {
         navGraphViewModel.unauthorizedEvent.collect {
             navController.navigate(Routes.LOGIN) {
                 popUpTo(0) { inclusive = true }
+            }
+        }
+    }
+
+    // 워치에서 산책 시작/코스 선택 시 Walk 탭으로 자동 이동
+    LaunchedEffect(Unit) {
+        // NavGraph 활성화 전에 이미 액션이 도착한 경우 (StateFlow로 보관된 pending 상태 확인)
+        if (WearableActionBus.pendingStartWalk.value || WearableActionBus.pendingCourseIndex.value != null) {
+            navController.navigate(Routes.WALK) { launchSingleTop = true }
+        }
+        WearableActionBus.actions.collect { action ->
+            if (action is WearableAction.StartWalk || action is WearableAction.SelectCourse) {
+                navController.navigate(Routes.WALK) { launchSingleTop = true }
             }
         }
     }

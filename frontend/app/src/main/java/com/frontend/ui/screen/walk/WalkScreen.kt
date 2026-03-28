@@ -252,6 +252,12 @@ fun WalkScreen(
         }
     }
 
+    // 산책 시작 실패 시 Toast로 오류 메시지 표시
+    LaunchedEffect(state.walkError) {
+        val error = state.walkError ?: return@LaunchedEffect
+        android.widget.Toast.makeText(context, error, android.widget.Toast.LENGTH_LONG).show()
+    }
+
     // 지도 준비 완료 시 위치 트래킹 시작
     LaunchedEffect(kakaoMap) {
         if (kakaoMap == null) return@LaunchedEffect
@@ -731,7 +737,7 @@ fun WalkScreen(
                     // 산책 시작 버튼
                     Button(
                         onClick = { viewModel.startFreeWalk() },
-                        enabled = !state.isWalking,
+                        enabled = !state.isWalking && !state.isRoutesLoading,
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(screenHeight * 0.067f)
@@ -1409,16 +1415,17 @@ private fun KakaoMapView(
                             override fun onMapReady(kakaoMap: KakaoMap) {
                                 android.util.Log.d("KakaoMap", "onMapReady 성공!")
                                 mapStarted = true
+                                // onMapReady가 ON_RESUME 이후에 도착한 경우(워치에서 산책 시작 등
+                                // 네비게이션으로 화면에 진입할 때)에도 지도가 정상 표시되도록 resume() 호출
+                                if (lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) {
+                                    runCatching { mapView.resume() }
+                                }
                                 onMapReady(kakaoMap)
                             }
                         }
                     )
                 }.onFailure { e ->
                     android.util.Log.e("KakaoMap", "MapView.start() 실패: ${e.message}", e)
-                }
-                // start() 이후 이미 RESUMED 상태이면 resume() 호출
-                if (mapStarted && lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) {
-                    runCatching { resume() }
                 }
             }
         },

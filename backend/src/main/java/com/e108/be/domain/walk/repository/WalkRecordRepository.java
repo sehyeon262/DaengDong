@@ -16,6 +16,8 @@ import java.util.Optional;
 public interface WalkRecordRepository extends JpaRepository<WalkRecord, Long> {
     Optional<WalkRecord> findByDogIdAndWalkStatus(Long dogId, WalkStatus walkStatus);
 
+    List<WalkRecord> findAllByDogIdAndWalkStatus(Long dogId, WalkStatus walkStatus);
+
     List<WalkRecord> findByDogIdAndWalkStatusAndStartTimeBetween(
             Long dogId, WalkStatus walkStatus,
             LocalDateTime start, LocalDateTime end
