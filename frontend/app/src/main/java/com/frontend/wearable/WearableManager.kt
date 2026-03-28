@@ -50,6 +50,10 @@ class WearableManager @Inject constructor(
             "/action/end_walk"   -> scope.launch { WearableActionBus.emit(WearableAction.EndWalk) }
             "/action/pause_walk" -> scope.launch { WearableActionBus.emit(WearableAction.PauseWalk) }
             "/action/resume_walk"-> scope.launch { WearableActionBus.emit(WearableAction.ResumeWalk) }
+            "/action/select_course" -> json?.let {
+                val courseIndex = it.optInt("courseIndex", 0)
+                scope.launch { WearableActionBus.emit(WearableAction.SelectCourse(courseIndex)) }
+            }
             "/response/proposal_accept" -> json?.let {
                 scope.launch {
                     WearableActionBus.emit(
@@ -167,6 +171,35 @@ class WearableManager @Inject constructor(
         if (!isAvailable()) return
         sendMessageToAllNodes("/interactive/$type", json)
     }
+
+    /**
+     * 코스 목록을 워치로 전송 (추천 경로 로드 완료 시 호출)
+     */
+    suspend fun sendCourseData(courses: List<CourseInfo>) {
+        if (!isAvailable()) return
+        val json = JSONObject()
+        val array = org.json.JSONArray()
+        courses.forEach { c ->
+            array.put(JSONObject().apply {
+                put("index", c.index)
+                put("type", c.type)
+                put("name", c.name)
+                put("distanceKm", c.distanceKm)
+                put("durationMin", c.durationMin)
+            })
+        }
+        json.put("courses", array)
+        sendMessageToAllNodes("/walk/courses", json)
+        Log.d("WearableManager", "sendCourseData: ${courses.size}개 코스 전송")
+    }
+
+    data class CourseInfo(
+        val index: Int,
+        val type: String,
+        val name: String,
+        val distanceKm: Double,
+        val durationMin: Int,
+    )
 
     /**
      * 산책 종료 시 DataItem 삭제

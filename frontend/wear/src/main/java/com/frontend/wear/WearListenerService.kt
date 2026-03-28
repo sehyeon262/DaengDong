@@ -61,6 +61,25 @@ class WearListenerService : WearableListenerService() {
         android.util.Log.d("WearListener", "onMessageReceived: path=$path")
 
         when {
+            // 코스 목록 수신
+            path == "/walk/courses" -> json?.let {
+                val array = it.optJSONArray("courses") ?: return@let
+                val courses = mutableListOf<WatchCourse>()
+                for (i in 0 until array.length()) {
+                    val c = array.getJSONObject(i)
+                    courses.add(
+                        WatchCourse(
+                            index = c.optInt("index", i),
+                            type = c.optString("type", "FREE"),
+                            name = c.optString("name", "코스"),
+                            distanceKm = c.optDouble("distanceKm", 0.0),
+                            durationMin = c.optInt("durationMin", 0),
+                        )
+                    )
+                }
+                CoursesHolder.update(courses)
+                android.util.Log.d("WearListener", "코스 수신: ${courses.size}개")
+            }
             // 산책 통계 수신 (DataClient 대신 MessageClient 사용)
             path == "/walk/stats" -> json?.let {
                 val isWalking = it.optBoolean("isWalking", false)

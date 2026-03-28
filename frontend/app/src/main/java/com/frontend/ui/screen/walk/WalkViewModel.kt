@@ -222,6 +222,10 @@ class WalkViewModel @Inject constructor(
             WearableActionBus.actions.collect { action ->
                 when (action) {
                     is WearableAction.StartWalk -> startFreeWalk()
+                    is WearableAction.SelectCourse -> {
+                        selectRoute(action.courseIndex)
+                        startFreeWalk()
+                    }
                     is WearableAction.EndWalk -> endWalk()
                     is WearableAction.PauseWalk -> pauseWalk()
                     is WearableAction.ResumeWalk -> resumeWalk()
@@ -629,6 +633,22 @@ class WalkViewModel @Inject constructor(
                             routesError = null
                         )
                     }
+                    // 워치로 코스 목록 전송
+                    val courses = mutableListOf(
+                        WearableManager.CourseInfo(0, "FREE", "자유 산책", 0.0, 0)
+                    )
+                    response.routes.forEachIndexed { idx, route ->
+                        courses.add(
+                            WearableManager.CourseInfo(
+                                index = idx + 1,
+                                type = route.type,
+                                name = route.name,
+                                distanceKm = route.totalDistanceM / 1000.0,
+                                durationMin = route.estimatedMinutes,
+                            )
+                        )
+                    }
+                    wearableManager.sendCourseData(courses)
                 }
                 .onFailure { e ->
                     _state.update {
