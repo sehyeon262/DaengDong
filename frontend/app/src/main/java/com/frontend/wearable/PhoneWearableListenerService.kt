@@ -38,6 +38,12 @@ class PhoneWearableListenerService : WearableListenerService() {
             "/action/resume_walk" -> serviceScope.launch {
                 WearableActionBus.emit(WearableAction.ResumeWalk)
             }
+            "/action/select_course" -> json?.let {
+                val courseIndex = it.optInt("courseIndex", 0)
+                serviceScope.launch {
+                    WearableActionBus.emit(WearableAction.SelectCourse(courseIndex))
+                }
+            }
             "/response/proposal_accept" -> json?.let {
                 val proposalId = it.optString("proposalId", "")
                 val myWalkRecordId = it.optLong("myWalkRecordId", 0L)

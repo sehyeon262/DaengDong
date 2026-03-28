@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -34,7 +35,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
-import kotlinx.coroutines.delay
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -54,6 +54,7 @@ import androidx.wear.compose.material.Scaffold
 import androidx.wear.compose.material.Text
 import androidx.wear.compose.material.TimeText
 import com.google.android.gms.wearable.Wearable
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
 import org.json.JSONObject
@@ -73,6 +74,24 @@ class WalkWatchActivity : ComponentActivity() {
 @Composable
 fun WalkWatchScreen() {
     val stats by WalkStatsHolder.stats.collectAsState()
+    val courses by CoursesHolder.courses.collectAsState()
+    var showCourseSelection by remember { mutableStateOf(false) }
+    var walkResult by remember { mutableStateOf<Triple<Int, Double, Int>?>(null) }
+
+    // 산책 시작 확인 시 코스 선택 화면 닫기 (Bluetooth 응답 후 전환)
+    LaunchedEffect(stats.isWalking) {
+        if (stats.isWalking) showCourseSelection = false
+    }
+
+    // 로컬 타이머: Bluetooth 공백에도 1초씩 카운트
+    var localElapsed by remember { mutableStateOf(stats.elapsedSeconds) }
+    LaunchedEffect(stats.elapsedSeconds) { localElapsed = stats.elapsedSeconds }
+    LaunchedEffect(stats.isWalking, stats.isPaused) {
+        if (stats.isWalking && !stats.isPaused) {
+            while (true) { delay(1000L); localElapsed++ }
+        }
+    }
+
     val proposal by ProposalHolder.proposal.collectAsState()
     val footprint by FootprintHolder.footprint.collectAsState()
     val badge by BadgeHolder.badge.collectAsState()
@@ -100,27 +119,6 @@ fun WalkWatchScreen() {
         }
     }
 
-    // 산책 종료 결과 저장 (종료 버튼 누를 때 캡처)
-    var walkResult by remember { mutableStateOf<Triple<Int, Double, Int>?>(null) }
-
-    // 로컬 타이머: 폰 메시지가 늦게 오는 경우에도 워치에서 자체적으로 1초씩 카운트
-    var localElapsed by remember { mutableStateOf(stats.elapsedSeconds) }
-
-    // 폰에서 값 수신 시 동기화 (서버 값이 우선)
-    LaunchedEffect(stats.elapsedSeconds) {
-        localElapsed = stats.elapsedSeconds
-    }
-
-    // 산책 중이고 일시정지 아닐 때 로컬에서 1초마다 증가
-    LaunchedEffect(stats.isWalking, stats.isPaused) {
-        if (stats.isWalking && !stats.isPaused) {
-            while (true) {
-                delay(1000L)
-                localElapsed++
-            }
-        }
-    }
-
     val hours = localElapsed / 3600
     val minutes = (localElapsed % 3600) / 60
     val seconds = localElapsed % 60
@@ -134,54 +132,90 @@ fun WalkWatchScreen() {
                 .background(Color.Black),
         ) {
             // ── 메인 화면 ───────────────────────────────────────────
-            if (walkResult != null && !stats.isWalking) {
-                // 산책 결과 화면
-                val (resultSeconds, resultDistance, resultCalories) = walkResult!!
-                val rHours = resultSeconds / 3600
-                val rMinutes = (resultSeconds % 3600) / 60
-                val rSeconds = resultSeconds % 60
-                val resultTimeText = "%02d:%02d:%02d".format(rHours, rMinutes, rSeconds)
-                val resultDistKm = resultDistance / 1000.0
-
-                Box(
+            if (showCourseSelection && !stats.isWalking) {
+                // 코스 선택 화면
+                val coursePagerState = rememberPagerState(pageCount = { courses.size })
+                val selectedCourse = courses.getOrNull(coursePagerState.currentPage)
+                Column(
                     modifier = Modifier.fillMaxSize(),
-                    contentAlignment = Alignment.Center,
+                    horizontalAlignment = Alignment.CenterHorizontally,
                 ) {
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.Center,
-                    ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(12.dp),
-                        ) {
+                    Spacer(Modifier.height(12.dp))
+                    Text("코스 선택", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = Color(0xFFFFD700))
+                    Spacer(Modifier.height(4.dp))
+                    HorizontalPager(
+                        state = coursePagerState,
+                        modifier = Modifier.fillMaxWidth().weight(1f),
+                    ) { page ->
+                        val course = courses[page]
+                        val icon = when (course.type) {
+                            "FREE" -> "🚶"; "SHORT" -> "⚡"; "RECOMMENDED" -> "💡"; "EXPLORE" -> "🗺️"; else -> "🐾"
+                        }
+                        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Box(
+                                    modifier = Modifier.size(90.dp).background(Color(0xFF1A1A1A), RoundedCornerShape(16.dp)),
+                                    contentAlignment = Alignment.Center,
+                                ) {
+                                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                        Text(icon, fontSize = 28.sp)
+                                        Spacer(Modifier.height(4.dp))
+                                        Text(course.name, fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                                    }
+                                }
+                                if (course.type != "FREE") {
+                                    Spacer(Modifier.height(6.dp))
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                            Text("%.2f".format(course.distanceKm), fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                                            Text("km", fontSize = 10.sp, color = Color(0xFF888888))
+                                        }
+                                        Box(Modifier.padding(horizontal = 10.dp).width(1.dp).height(20.dp).background(Color(0xFF444444)))
+                                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                            Text("${course.durationMin}", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                                            Text("min", fontSize = 10.sp, color = Color(0xFF888888))
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    Button(
+                        onClick = {
+                            selectedCourse?.let { c ->
+                                sendAction("/action/select_course", JSONObject().apply { put("courseIndex", c.index) })
+                            }
+                        },
+                        colors = ButtonDefaults.buttonColors(backgroundColor = Color(0xFF5B9E5F)),
+                        modifier = Modifier.padding(bottom = 8.dp).size(width = 100.dp, height = 32.dp),
+                    ) { Text("선택", fontSize = 13.sp, color = Color.White, fontWeight = FontWeight.Bold) }
+                }
+            } else if (walkResult != null && !stats.isWalking) {
+                // 산책 결과 화면
+                val (rSec, rDist, rCal) = walkResult!!
+                val rH = rSec / 3600; val rM = (rSec % 3600) / 60; val rS = rSec % 60
+                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                             Text("소요 시간", fontSize = 13.sp, color = Color(0xFFFFD700), fontWeight = FontWeight.Medium)
-                            Text(resultTimeText, fontSize = 22.sp, color = Color.White, fontWeight = FontWeight.Bold)
+                            Text("%02d:%02d:%02d".format(rH, rM, rS), fontSize = 20.sp, color = Color.White, fontWeight = FontWeight.Bold)
                         }
                         Spacer(Modifier.height(8.dp))
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(12.dp),
-                        ) {
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                             Text("거리", fontSize = 13.sp, color = Color(0xFFFFD700), fontWeight = FontWeight.Medium)
-                            Text("%.2f km".format(resultDistKm), fontSize = 22.sp, color = Color.White, fontWeight = FontWeight.Bold)
+                            Text("%.2f km".format(rDist / 1000.0), fontSize = 20.sp, color = Color.White, fontWeight = FontWeight.Bold)
                         }
                         Spacer(Modifier.height(8.dp))
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(12.dp),
-                        ) {
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                             Text("칼로리", fontSize = 13.sp, color = Color(0xFFFFD700), fontWeight = FontWeight.Medium)
-                            Text("$resultCalories kcal", fontSize = 22.sp, color = Color.White, fontWeight = FontWeight.Bold)
+                            Text("$rCal kcal", fontSize = 20.sp, color = Color.White, fontWeight = FontWeight.Bold)
                         }
                         Spacer(Modifier.height(16.dp))
                         Button(
                             onClick = { walkResult = null },
                             colors = ButtonDefaults.buttonColors(backgroundColor = Color(0xFF5B9E5F)),
                             modifier = Modifier.size(width = 100.dp, height = 36.dp),
-                        ) {
-                            Text("확인", fontSize = 14.sp, color = Color.White, fontWeight = FontWeight.Bold)
-                        }
+                        ) { Text("확인", fontSize = 14.sp, color = Color.White, fontWeight = FontWeight.Bold) }
                     }
                 }
             } else if (!stats.isWalking) {
@@ -205,7 +239,7 @@ fun WalkWatchScreen() {
                             ),
                     )
                     Button(
-                        onClick = { sendAction("/action/start_walk", null) },
+                        onClick = { showCourseSelection = true },
                         colors = ButtonDefaults.buttonColors(backgroundColor = Color(0xFF5B9E5F)),
                         modifier = Modifier.size(140.dp),
                         shape = CircleShape,
