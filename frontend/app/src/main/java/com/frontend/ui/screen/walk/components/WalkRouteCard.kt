@@ -120,7 +120,7 @@ fun WalkRouteCard(
                         )
                         Spacer(modifier = Modifier.width(1.dp))
                         Text(
-                            text = "${distance}km",
+                            text = String.format(java.util.Locale.US, "%.2fkm", distance),
                             fontSize = 12.sp,
                             color = TextGray,
                             maxLines = 1
