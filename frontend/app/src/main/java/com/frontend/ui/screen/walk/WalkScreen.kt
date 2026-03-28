@@ -126,6 +126,7 @@ import com.kakao.vectormap.label.Label
 import com.kakao.vectormap.label.LabelOptions
 import com.kakao.vectormap.label.LabelStyle
 import com.kakao.vectormap.label.LabelStyles
+import com.kakao.vectormap.label.TransformMethod
 import com.kakao.vectormap.shape.MapPoints
 import com.kakao.vectormap.shape.Polygon
 import com.kakao.vectormap.shape.PolygonOptions
@@ -164,6 +165,7 @@ fun WalkScreen(
 
     // 추천 경로 미리보기 폴리라인
     var recommendedRoutePolyline by remember { mutableStateOf<Polyline?>(null) }
+    val recommendedRouteDirectionLabels = remember { mutableStateListOf<Label>() }
 
     // 위험 구역 마커 목록 (강아지 마커와 분리 관리)
     val dangerZoneLabels = remember { mutableStateListOf<Label>() }
@@ -464,12 +466,18 @@ fun WalkScreen(
     LaunchedEffect(state.selectedRouteIndex, state.recommendedRoutes, state.showRecommendedRoute, kakaoMap) {
         val map = kakaoMap ?: return@LaunchedEffect
 
-        // 경로 표시 OFF이면 폴리라인 제거
-        if (!state.showRecommendedRoute) {
+        fun clearRecommendedRoutePreview() {
             recommendedRoutePolyline?.let {
                 map.shapeManager?.layer?.remove(it)
                 recommendedRoutePolyline = null
             }
+            recommendedRouteDirectionLabels.forEach { it.remove() }
+            recommendedRouteDirectionLabels.clear()
+        }
+
+        // 경로 표시 OFF이면 폴리라인 제거
+        if (!state.showRecommendedRoute) {
+            clearRecommendedRoutePreview()
             return@LaunchedEffect
         }
 
@@ -478,31 +486,24 @@ fun WalkScreen(
 
         // 추천 경로가 없으면 폴리라인 제거
         if (selectedRoute == null) {
-            recommendedRoutePolyline?.let {
-                map.shapeManager?.layer?.remove(it)
-                recommendedRoutePolyline = null
-            }
+            clearRecommendedRoutePreview()
             return@LaunchedEffect
         }
 
         // 경로 포인트 가져오기 (actualPathPoints 우선, 없으면 polyline)
         val pathPoints = selectedRoute.getPathPoints()
         if (pathPoints.size < 2) {
-            recommendedRoutePolyline?.let {
-                map.shapeManager?.layer?.remove(it)
-                recommendedRoutePolyline = null
-            }
+            clearRecommendedRoutePreview()
             return@LaunchedEffect
         }
 
         // LatLngPoint를 KakaoMap LatLng로 변환
         val latLngList = pathPoints.map { LatLng.from(it.latitude, it.longitude) }
         val mapPoints = MapPoints.fromLatLng(latLngList)
+        val directionMarkers = buildRecommendedRouteDirectionMarkers(latLngList)
 
         // 기존 폴리라인 제거 후 새로 생성 (경로 전환 시 깔끔하게)
-        recommendedRoutePolyline?.let {
-            map.shapeManager?.layer?.remove(it)
-        }
+        clearRecommendedRoutePreview()
 
         // 추천 경로 스타일: 파란색 점선 느낌
         val style = PolylineStyle.from(
@@ -512,6 +513,26 @@ fun WalkScreen(
         recommendedRoutePolyline = map.shapeManager?.layer?.addPolyline(
             PolylineOptions.from(mapPoints, style)
         )
+
+        val labelLayer = map.labelManager?.layer
+        if (labelLayer != null && directionMarkers.isNotEmpty()) {
+            val arrowBitmapCache = mutableMapOf<Int, android.graphics.Bitmap>()
+            directionMarkers.forEach { marker ->
+                val arrowBitmap = arrowBitmapCache.getOrPut(marker.color) {
+                    createRouteDirectionArrowBitmap(marker.color)
+                }
+                val labelStyle = LabelStyle.from(arrowBitmap).setAnchorPoint(0.5f, 0.5f)
+                val label = labelLayer.addLabel(
+                    LabelOptions.from(marker.position)
+                        .setStyles(LabelStyles.from(labelStyle))
+                        .setTransform(TransformMethod.AbsoluteRotation)
+                )
+                if (label != null) {
+                    label.rotateTo(Math.toRadians(marker.bearingDegrees.toDouble()).toFloat())
+                    recommendedRouteDirectionLabels.add(label)
+                }
+            }
+        }
     }
 
     // 장소 목록 변경 시: 마커 전체 교체 (PLACE 필터 ON → API 응답 도착)
@@ -638,7 +659,6 @@ fun WalkScreen(
             if (state.isWalking && stampablePlace != null) {
                 FootprintStampBanner(
                     placeName = stampablePlace.name,
-                    onStamp = { viewModel.stampPlace() },
                     onDismiss = { viewModel.dismissStampPrompt() },
                     modifier = Modifier
                         .fillMaxWidth()
@@ -1158,7 +1178,6 @@ private fun DangerZoneSelectionBanner(modifier: Modifier = Modifier) {
 @Composable
 private fun FootprintStampBanner(
     placeName: String,
-    onStamp: () -> Unit,
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -1194,21 +1213,13 @@ private fun FootprintStampBanner(
                     overflow = TextOverflow.Ellipsis
                 )
             }
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                TextButton(
-                    onClick = onStamp,
-                    colors = ButtonDefaults.textButtonColors(contentColor = Color.White)
-                ) {
-                    Text(text = "발자국 찍기", fontWeight = FontWeight.Bold, fontSize = 13.sp)
-                }
-                IconButton(onClick = onDismiss, modifier = Modifier.size(24.dp)) {
-                    Icon(
-                        imageVector = Icons.Filled.Close,
-                        contentDescription = "닫기",
-                        tint = Color.White,
-                        modifier = Modifier.size(16.dp)
-                    )
-                }
+            IconButton(onClick = onDismiss, modifier = Modifier.size(24.dp)) {
+                Icon(
+                    imageVector = Icons.Filled.Close,
+                    contentDescription = "닫기",
+                    tint = Color.White,
+                    modifier = Modifier.size(16.dp)
+                )
             }
         }
     }
@@ -1540,6 +1551,200 @@ private fun calculateSectorPoints(
 }
 
 // ── 비트맵 회전 ───────────────────────────────────────────────────────────────
+private data class RouteDirectionMarker(
+    val position: LatLng,
+    val bearingDegrees: Float,
+    val color: Int,
+)
+
+private data class RouteDirectionSegment(
+    val start: LatLng,
+    val end: LatLng,
+    val distanceMeters: Double,
+    val key: RouteSegmentKey,
+)
+
+private data class RouteSegmentKey(
+    val start: RouteSegmentPoint,
+    val end: RouteSegmentPoint,
+)
+
+private data class RouteSegmentPoint(
+    val latitudeE5: Int,
+    val longitudeE5: Int,
+)
+
+private fun buildRecommendedRouteDirectionMarkers(pathPoints: List<LatLng>): List<RouteDirectionMarker> {
+    if (pathPoints.size < 2) return emptyList()
+
+    val segments = mutableListOf<RouteDirectionSegment>()
+    val segmentOverlapCounts = mutableMapOf<RouteSegmentKey, Int>()
+    var totalDistanceMeters = 0.0
+
+    pathPoints.zipWithNext().forEach { (start, end) ->
+        val segmentDistance = calculateRouteSegmentDistanceMeters(start, end)
+        if (segmentDistance >= 5.0) {
+            val segmentKey = createRouteSegmentKey(start, end)
+            segments.add(RouteDirectionSegment(start, end, segmentDistance, segmentKey))
+            segmentOverlapCounts[segmentKey] = (segmentOverlapCounts[segmentKey] ?: 0) + 1
+            totalDistanceMeters += segmentDistance
+        }
+    }
+
+    if (segments.isEmpty() || totalDistanceMeters <= 0.0) return emptyList()
+
+    val minSpacingMeters = 40.0
+    val maxMarkerCount = 96
+    val spacingMeters = kotlin.math.max(minSpacingMeters, totalDistanceMeters / (maxMarkerCount + 1))
+    val markers = mutableListOf<RouteDirectionMarker>()
+    var nextMarkerDistance = spacingMeters
+    var traveledDistance = 0.0
+
+    segments.forEach { segment ->
+        val start = segment.start
+        val end = segment.end
+        val segmentDistance = segment.distanceMeters
+        val bearingDegrees = calculateRouteBearingDegrees(start, end)
+        val overlapOffsetMeters = if ((segmentOverlapCounts[segment.key] ?: 0) > 1) 10.0 else 0.0
+
+        while (traveledDistance + segmentDistance >= nextMarkerDistance && markers.size < maxMarkerCount) {
+            val distanceIntoSegment = nextMarkerDistance - traveledDistance
+            val fraction = (distanceIntoSegment / segmentDistance).coerceIn(0.0, 1.0)
+            val progress = (nextMarkerDistance / totalDistanceMeters).coerceIn(0.0, 1.0).toFloat()
+            val basePosition = interpolateRoutePoint(start, end, fraction)
+            markers.add(
+                RouteDirectionMarker(
+                    position = if (overlapOffsetMeters > 0.0) {
+                        offsetRoutePoint(basePosition, bearingDegrees + 90f, overlapOffsetMeters)
+                    } else {
+                        basePosition
+                    },
+                    bearingDegrees = bearingDegrees,
+                    color = resolveRouteDirectionColor(progress),
+                )
+            )
+            nextMarkerDistance += spacingMeters
+        }
+        traveledDistance += segmentDistance
+    }
+
+    return markers
+}
+
+private fun createRouteSegmentKey(start: LatLng, end: LatLng): RouteSegmentKey {
+    val startPoint = quantizeRouteSegmentPoint(start)
+    val endPoint = quantizeRouteSegmentPoint(end)
+    return if (startPoint.latitudeE5 < endPoint.latitudeE5 ||
+        (startPoint.latitudeE5 == endPoint.latitudeE5 && startPoint.longitudeE5 <= endPoint.longitudeE5)
+    ) {
+        RouteSegmentKey(startPoint, endPoint)
+    } else {
+        RouteSegmentKey(endPoint, startPoint)
+    }
+}
+
+private fun quantizeRouteSegmentPoint(point: LatLng): RouteSegmentPoint {
+    return RouteSegmentPoint(
+        latitudeE5 = kotlin.math.round(point.latitude * 100_000.0).toInt(),
+        longitudeE5 = kotlin.math.round(point.longitude * 100_000.0).toInt(),
+    )
+}
+
+private fun calculateRouteSegmentDistanceMeters(start: LatLng, end: LatLng): Double {
+    val earthRadiusMeters = 6_371_000.0
+    val lat1 = Math.toRadians(start.latitude)
+    val lat2 = Math.toRadians(end.latitude)
+    val deltaLat = lat2 - lat1
+    val deltaLng = Math.toRadians(end.longitude - start.longitude)
+
+    val a = kotlin.math.sin(deltaLat / 2).let { it * it } +
+        kotlin.math.cos(lat1) * kotlin.math.cos(lat2) *
+        kotlin.math.sin(deltaLng / 2).let { it * it }
+    val c = 2 * kotlin.math.atan2(kotlin.math.sqrt(a), kotlin.math.sqrt(1 - a))
+    return earthRadiusMeters * c
+}
+
+private fun calculateRouteBearingDegrees(start: LatLng, end: LatLng): Float {
+    val lat1 = Math.toRadians(start.latitude)
+    val lat2 = Math.toRadians(end.latitude)
+    val deltaLng = Math.toRadians(end.longitude - start.longitude)
+
+    val y = kotlin.math.sin(deltaLng) * kotlin.math.cos(lat2)
+    val x = kotlin.math.cos(lat1) * kotlin.math.sin(lat2) -
+        kotlin.math.sin(lat1) * kotlin.math.cos(lat2) * kotlin.math.cos(deltaLng)
+
+    return ((Math.toDegrees(kotlin.math.atan2(y, x)) + 360.0) % 360.0).toFloat()
+}
+
+private fun interpolateRoutePoint(start: LatLng, end: LatLng, fraction: Double): LatLng {
+    return LatLng.from(
+        start.latitude + (end.latitude - start.latitude) * fraction,
+        start.longitude + (end.longitude - start.longitude) * fraction
+    )
+}
+
+private fun offsetRoutePoint(point: LatLng, bearingDegrees: Float, distanceMeters: Double): LatLng {
+    val earthRadiusMeters = 6_371_000.0
+    val bearingRadians = Math.toRadians(bearingDegrees.toDouble())
+    val latitudeRadians = Math.toRadians(point.latitude)
+    val deltaLatitude = distanceMeters * kotlin.math.cos(bearingRadians) / earthRadiusMeters * (180.0 / Math.PI)
+    val deltaLongitude = distanceMeters * kotlin.math.sin(bearingRadians) /
+        (earthRadiusMeters * kotlin.math.cos(latitudeRadians)) * (180.0 / Math.PI)
+
+    return LatLng.from(
+        point.latitude + deltaLatitude,
+        point.longitude + deltaLongitude
+    )
+}
+
+private fun resolveRouteDirectionColor(@Suppress("UNUSED_PARAMETER") progress: Float): Int {
+    return android.graphics.Color.argb(255, 66, 133, 244)
+}
+
+private fun createRouteDirectionArrowBitmap(routeColor: Int): android.graphics.Bitmap {
+    val sizePx = 28
+    val bitmap = android.graphics.Bitmap.createBitmap(
+        sizePx,
+        sizePx,
+        android.graphics.Bitmap.Config.ARGB_8888
+    )
+    val canvas = android.graphics.Canvas(bitmap)
+    val center = sizePx / 2f
+    val radius = center - 2f
+
+    val backgroundPaint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+        color = android.graphics.Color.argb(225, 255, 255, 255)
+        style = android.graphics.Paint.Style.FILL
+    }
+    val borderPaint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+        color = routeColor
+        style = android.graphics.Paint.Style.STROKE
+        strokeWidth = 1.75f
+    }
+    val arrowPaint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+        color = routeColor
+        style = android.graphics.Paint.Style.STROKE
+        strokeWidth = 3f
+        strokeCap = android.graphics.Paint.Cap.ROUND
+        strokeJoin = android.graphics.Paint.Join.ROUND
+    }
+
+    canvas.drawCircle(center, center, radius, backgroundPaint)
+    canvas.drawCircle(center, center, radius, borderPaint)
+
+    val arrowPath = android.graphics.Path().apply {
+        moveTo(center, sizePx * 0.20f)
+        lineTo(center, sizePx * 0.74f)
+        moveTo(center, sizePx * 0.20f)
+        lineTo(sizePx * 0.68f, sizePx * 0.40f)
+        moveTo(center, sizePx * 0.20f)
+        lineTo(sizePx * 0.32f, sizePx * 0.40f)
+    }
+    canvas.drawPath(arrowPath, arrowPaint)
+
+    return bitmap
+}
+
 private fun rotateBitmap(source: android.graphics.Bitmap, degrees: Float): android.graphics.Bitmap {
     val matrix = android.graphics.Matrix().apply { postRotate(degrees) }
     return android.graphics.Bitmap.createBitmap(source, 0, 0, source.width, source.height, matrix, true)

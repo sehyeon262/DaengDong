@@ -35,6 +35,14 @@ spring:
         format_sql: true
 
 
+# 데모 모드: 시연용 사진 자동 주입 + 감정 하드코딩
+demo:
+  enabled: true
+  photo-urls: []
+  emotion-overrides:
+    dog1.png: happy
+    dog2.jpg: relaxed
+
 aws:
   s3:
     prefix: dev

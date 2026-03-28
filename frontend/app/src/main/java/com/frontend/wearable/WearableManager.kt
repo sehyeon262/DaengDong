@@ -32,8 +32,8 @@ class WearableManager @Inject constructor(
     private val messageClient: MessageClient = Wearable.getMessageClient(context)
     private val nodeClient: NodeClient = Wearable.getNodeClient(context)
 
-    // Wearable API 사용 가능 여부 캐시 (API_UNAVAILABLE 로그 스팸 방지)
-    private var available: Boolean? = null
+    // Wearable API 미지원 기기 캐시 (API_UNAVAILABLE인 경우에만 캐시)
+    private var apiUnavailable: Boolean = false
 
     // 포그라운드 메시지 수신 리스너 (WearableListenerService 백업)
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -106,18 +106,17 @@ class WearableManager @Inject constructor(
     }
 
     private suspend fun isAvailable(): Boolean {
-        available?.let {
-            Log.d("WearableManager", "isAvailable (캐시) = $it")
-            return it
+        if (apiUnavailable) {
+            Log.d("WearableManager", "isAvailable (캐시) = false (API 미지원 기기)")
+            return false
         }
         return try {
             val nodes = nodeClient.connectedNodes.await()
             Log.d("WearableManager", "connectedNodes = ${nodes.map { "${it.id}(${it.displayName})" }}")
-            available = true
             true
         } catch (e: ApiException) {
             if (e.statusCode == 17) { // API_NOT_AVAILABLE
-                available = false
+                apiUnavailable = true
                 Log.d("WearableManager", "Wearable API 미지원 기기 — 워치 기능 비활성화")
             } else {
                 Log.e("WearableManager", "ApiException statusCode=${e.statusCode}: ${e.message}")
