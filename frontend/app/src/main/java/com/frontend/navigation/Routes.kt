@@ -3,6 +3,7 @@ package com.frontend.navigation
 object Routes {
     const val SPLASH = "splash"
     const val LOGIN = "login"
+    const val PERMISSIONS = "permissions"
     const val HOME = "home"
     const val WALK = "walk"
     const val RECORD = "record"

@@ -8,6 +8,9 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.sp
@@ -25,6 +28,7 @@ import com.frontend.ui.screen.dog.DogProfileScreen
 import com.frontend.ui.screen.dog.MetDogsScreen
 import com.frontend.ui.screen.home.HomeScreen
 import com.frontend.ui.screen.login.LoginScreen
+import com.frontend.ui.screen.permission.PermissionSetupScreen
 import com.frontend.ui.screen.place.AddPlaceScreen
 import com.frontend.ui.screen.record.RecordScreen
 import com.frontend.ui.screen.splash.SplashScreen
@@ -37,6 +41,7 @@ fun NavGraph() {
     val navController = rememberNavController()
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = navBackStackEntry?.destination?.route
+    var walkRefreshRequestKey by remember { mutableStateOf(0L) }
 
     // 토큰 만료 시 로그인 화면으로 이동
     val navGraphViewModel: NavGraphViewModel = hiltViewModel()
@@ -55,7 +60,10 @@ fun NavGraph() {
     Scaffold(
         bottomBar = {
             if (showBottomBar) {
-                BottomNavBar(navController = navController)
+                BottomNavBar(
+                    navController = navController,
+                    onWalkTabClick = { walkRefreshRequestKey = walkRefreshRequestKey + 1L }
+                )
             }
         }
     ) { innerPadding ->
@@ -70,11 +78,21 @@ fun NavGraph() {
             composable(Routes.LOGIN) {
                 LoginScreen(navController = navController)
             }
+            composable(Routes.PERMISSIONS) {
+                PermissionSetupScreen(
+                    onComplete = {
+                        navController.navigate(Routes.HOME) {
+                            popUpTo(Routes.PERMISSIONS) { inclusive = true }
+                        }
+                    }
+                )
+            }
             composable(Routes.HOME) {
                 HomeScreen()
             }
             composable(Routes.WALK) {
                 WalkScreen(
+                    refreshRequestKey = walkRefreshRequestKey,
                     onNavigateToRecord = {
                         navController.navigate(Routes.RECORD) {
                             popUpTo(Routes.HOME) { saveState = true }

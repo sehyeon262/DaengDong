@@ -674,6 +674,8 @@ class WalkViewModel @Inject constructor(
      * 경로 목록을 비우면서 selectedRouteIndex도 0(자유 산책)으로 초기화
      */
     fun refreshRecommendedRoutes(latitude: Double, longitude: Double) {
+        if (_state.value.isRoutesLoading) return
+        cachedWeatherPayload = null
         _state.update { it.copy(recommendedRoutes = emptyList(), selectedRouteIndex = 0) }
         loadRecommendedRoutes(latitude, longitude)
     }
