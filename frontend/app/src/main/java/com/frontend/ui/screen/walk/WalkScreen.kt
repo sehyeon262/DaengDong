@@ -137,6 +137,7 @@ import com.kakao.vectormap.shape.PolylineStyle
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun WalkScreen(
+    refreshRequestKey: Long = 0L,
     onNavigateToRecord: () -> Unit = {},
     onNavigateToWalkDetail: (Long) -> Unit = {},
     onNavigateToHome: () -> Unit = {},
@@ -156,6 +157,8 @@ fun WalkScreen(
     var kakaoMap by remember { mutableStateOf<KakaoMap?>(null) }
     var currentLocationLabel by remember { mutableStateOf<Label?>(null) }
     val currentPosition by viewModel.currentPosition.collectAsState()
+    var hasLoadedInitialRoutes by remember { mutableStateOf(false) }
+    var lastHandledRefreshRequestKey by remember { mutableStateOf(0L) }
     var fovOverlay by remember { mutableStateOf<Polygon?>(null) }
 
     // 산책 경로 폴리라인 (실제 산책 중 GPS 트래킹)
@@ -225,13 +228,13 @@ fun WalkScreen(
                 } else {
                     Manifest.permission.READ_EXTERNAL_STORAGE
                 }
-                mediaPermissionLauncher.launch(mediaPermission)
+                Unit
             }
 
             // 알림 권한 요청 (Android 13+)
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                 if (viewModel.needsNotificationPermission()) {
-                    notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                    Unit
                 }
             }
         }
@@ -252,18 +255,17 @@ fun WalkScreen(
     // 지도 준비 완료 시 위치 트래킹 시작
     LaunchedEffect(kakaoMap) {
         if (kakaoMap == null) return@LaunchedEffect
-        val hasPermission = ActivityCompat.checkSelfPermission(
-            context, Manifest.permission.ACCESS_FINE_LOCATION
-        ) == PackageManager.PERMISSION_GRANTED
+        val hasPermission =
+            ActivityCompat.checkSelfPermission(
+                context,
+                Manifest.permission.ACCESS_FINE_LOCATION
+            ) == PackageManager.PERMISSION_GRANTED ||
+            ActivityCompat.checkSelfPermission(
+                context,
+                Manifest.permission.ACCESS_COARSE_LOCATION
+            ) == PackageManager.PERMISSION_GRANTED
         if (hasPermission) {
             viewModel.startLocationTracking()
-        } else {
-            locationPermissionLauncher.launch(
-                arrayOf(
-                    Manifest.permission.ACCESS_FINE_LOCATION,
-                    Manifest.permission.ACCESS_COARSE_LOCATION
-                )
-            )
         }
     }
 
@@ -281,7 +283,6 @@ fun WalkScreen(
             currentLocationLabel = label
 
             // 최초 위치 수신 시 추천 경로 로드
-            viewModel.loadRecommendedRoutes(pos.latitude, pos.longitude)
         } else {
             // 이후: moveTo()로 이동 (마커 사라짐 없이, 카메라는 자유이동 유지)
             currentLocationLabel?.moveTo(pos)
@@ -292,6 +293,24 @@ fun WalkScreen(
     }
 
     // azimuth 변경 시 강아지 마커 회전 + FOV cone 업데이트
+    // Refresh recommendations only when the user taps the walk tab again.
+    LaunchedEffect(currentPosition, refreshRequestKey) {
+        val pos = currentPosition ?: return@LaunchedEffect
+        when {
+            refreshRequestKey > lastHandledRefreshRequestKey -> {
+                lastHandledRefreshRequestKey = refreshRequestKey
+                if (!state.isWalking) {
+                    viewModel.refreshRecommendedRoutes(pos.latitude, pos.longitude)
+                    hasLoadedInitialRoutes = true
+                }
+            }
+            !hasLoadedInitialRoutes -> {
+                viewModel.loadRecommendedRoutes(pos.latitude, pos.longitude)
+                hasLoadedInitialRoutes = true
+            }
+        }
+    }
+
     LaunchedEffect(azimuth) {
         val pos = currentPosition ?: return@LaunchedEffect
         val map = kakaoMap ?: return@LaunchedEffect

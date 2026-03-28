@@ -36,7 +36,10 @@ data class BottomNavItem(
 )
 
 @Composable
-fun BottomNavBar(navController: NavController) {
+fun BottomNavBar(
+    navController: NavController,
+    onWalkTabClick: () -> Unit = {}
+) {
     val items = listOf(
         BottomNavItem(Routes.HOME, "홈", Icons.Filled.Home),
         BottomNavItem(Routes.WALK, "산책", Icons.Filled.Pets),
@@ -94,6 +97,9 @@ fun BottomNavBar(navController: NavController) {
                     label = { Text(item.label) },
                     selected = currentRoute == item.route,
                     onClick = {
+                        if (item.route == Routes.WALK) {
+                            onWalkTabClick()
+                        }
                         if (currentRoute != item.route) {
                             navController.navigate(item.route) {
                                 popUpTo(Routes.HOME) { saveState = true }
