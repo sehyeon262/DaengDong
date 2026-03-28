@@ -29,10 +29,6 @@ object WearableActionBus {
         when (action) {
             is WearableAction.StartWalk -> _pendingStartWalk.value = true
             is WearableAction.SelectCourse -> _pendingCourseIndex.value = action.courseIndex
-            is WearableAction.EndWalk -> {
-                _pendingStartWalk.value = false
-                _pendingCourseIndex.value = null
-            }
             else -> {}
         }
         _actions.emit(action)
