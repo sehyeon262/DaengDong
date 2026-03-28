@@ -548,10 +548,19 @@ class WalkViewModel @Inject constructor(
                 title = route.name,
                 subtitle = route.getSubtitle(),
                 distanceKm = route.distanceKm(),
-                durationMin = route.estimatedMinutes
+                durationMin = route.getDisplayDurationMinutes()
             )
         }
         return listOf(freeWalkRoute) + recommended
+    }
+
+    // Temporary guard: replace obviously broken route times with a distance-based estimate.
+    private fun RecommendedRoute.getDisplayDurationMinutes(): Int {
+        val fallbackMinutes = kotlin.math.ceil(totalDistanceM / 67.0).toInt().coerceAtLeast(1)
+        if (estimatedMinutes <= 0) return fallbackMinutes
+
+        val isSuspiciouslyShort = fallbackMinutes >= 10 && estimatedMinutes * 2 < fallbackMinutes
+        return if (isSuspiciouslyShort) fallbackMinutes else estimatedMinutes
     }
 
     private suspend fun getCurrentWeatherPayload(): RouteWeatherPayload? {
