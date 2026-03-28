@@ -249,6 +249,12 @@ fun WalkScreen(
         }
     }
 
+    // 산책 시작 실패 시 Toast로 오류 메시지 표시
+    LaunchedEffect(state.walkError) {
+        val error = state.walkError ?: return@LaunchedEffect
+        android.widget.Toast.makeText(context, error, android.widget.Toast.LENGTH_LONG).show()
+    }
+
     // 지도 준비 완료 시 위치 트래킹 시작
     LaunchedEffect(kakaoMap) {
         if (kakaoMap == null) return@LaunchedEffect
@@ -712,7 +718,7 @@ fun WalkScreen(
                     // 산책 시작 버튼
                     Button(
                         onClick = { viewModel.startFreeWalk() },
-                        enabled = !state.isWalking,
+                        enabled = !state.isWalking && !state.isRoutesLoading,
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(screenHeight * 0.067f)

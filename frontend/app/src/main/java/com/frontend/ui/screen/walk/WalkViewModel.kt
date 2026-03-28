@@ -144,6 +144,8 @@ class WalkViewModel @Inject constructor(
     private var currentWalkId: Long? = null
     // 산책 시작 API 응답을 기다리기 위한 Deferred (endWalk에서 대기 가능)
     private var walkIdDeferred: CompletableDeferred<Long?>? = null
+    // 산책 세션 ID: startFreeWalk()마다 증가 → endWalk() 코루틴이 새 산책 상태를 덮어쓰는 race condition 방지
+    private var walkSessionId = 0
 
     // ── 위험구역 최초 로드 여부 (위치 수신 후 1회만 로드) ───────────────────────
     private var dangerZonesLoaded = false
@@ -217,13 +219,32 @@ class WalkViewModel @Inject constructor(
         loadPersistedDangerZones()
 
         // 워치→폰 액션 수신
+        // ViewModel 생성 전에 도착한 액션 처리: SharedFlow는 replay=0이라 새 collector가 과거 이벤트를 받지 못함
+        // WearableActionBus의 StateFlow(pendingStartWalk/pendingCourseIndex)로 보완
+        if (WearableActionBus.pendingStartWalk.value) {
+            WearableActionBus.consumePendingStartWalk()
+            startFreeWalk()
+        }
+        WearableActionBus.pendingCourseIndex.value?.let { courseIndex ->
+            WearableActionBus.consumePendingCourseIndex()
+            selectRoute(courseIndex)
+            if (!_state.value.isWalking) startFreeWalk()
+        }
+
         viewModelScope.launch {
             WearableActionBus.actions.collect { action ->
                 when (action) {
-                    is WearableAction.StartWalk -> startFreeWalk()
+                    is WearableAction.StartWalk -> {
+                        WearableActionBus.consumePendingStartWalk()
+                        if (!_state.value.isWalking) startFreeWalk()
+                    }
                     is WearableAction.SelectCourse -> {
-                        selectRoute(action.courseIndex)
-                        startFreeWalk()
+                        // isWalking 중일 때는 무시 (이전 endWalk 코루틴이 아직 실행 중인 경우 대비)
+                        if (!_state.value.isWalking) {
+                            WearableActionBus.consumePendingCourseIndex()
+                            selectRoute(action.courseIndex)
+                            startFreeWalk()
+                        }
                     }
                     is WearableAction.EndWalk -> endWalk()
                     is WearableAction.PauseWalk -> pauseWalk()
@@ -823,6 +844,7 @@ class WalkViewModel @Inject constructor(
      * 산책 시작 실패 시 상태를 완전히 원복
      */
     private fun resetWalkStateOnFailure(errorMessage: String) {
+        android.util.Log.e("WalkVM", "산책 시작 실패: $errorMessage")
         timerJob?.cancel()
         timerJob = null
         stopPhotoObserver()
@@ -853,6 +875,7 @@ class WalkViewModel @Inject constructor(
      * 실패 시 상태를 완전히 원복하여 산책 중 상태가 남지 않도록 보장
      */
     fun startFreeWalk() {
+        walkSessionId++  // 새 산책 세션 시작 — 진행 중인 endWalk 코루틴이 이 산책 상태를 덮어쓰지 못하도록 방어
         // 즉시 UI 전환
         walkPlacesLoaded = false
         _state.update {
@@ -964,6 +987,7 @@ class WalkViewModel @Inject constructor(
      * - 비선호 강아지 알림 상태 정리
      */
     fun endWalk() {
+        val sessionId = walkSessionId  // 현재 세션 캡처 — 코루틴 완료 시 새 산책이 시작됐는지 검증용
         timerJob?.cancel()
         timerJob = null
         stopNearbyDogsPolling()
@@ -1007,9 +1031,23 @@ class WalkViewModel @Inject constructor(
         stampCandidatesCenter = null
         _state.update { it.copy(nearbyStampablePlace = null, stampedPlaceIds = emptySet()) }
 
+        // summarySeconds/Distance 캡처 후 즉시 isWalking=false 전환:
+        // - 워치가 새 코스를 빠르게 선택해도 endWalk 코루틴 완료를 기다리지 않고 새 산책 시작 가능
+        // - 타이머가 멈춘 채 UI가 '산책 중' 상태로 유지되는 현상 제거
         val summarySeconds = _state.value.elapsedSeconds
         val summaryDistance = _state.value.distanceMeters
         val summaryRoute = getDisplayRoutes().getOrNull(_state.value.selectedRouteIndex)?.title ?: "자유 산책"
+
+        _state.update {
+            it.copy(
+                isWalking = false,
+                isPaused = false,
+                elapsedSeconds = 0,
+                distanceMeters = 0.0,
+                nearbyDogs = emptyList(),
+                currentWalkId = null,
+            )
+        }
 
         viewModelScope.launch {
             // currentWalkId가 아직 null이면 산책 시작 API 응답을 대기
@@ -1021,21 +1059,18 @@ class WalkViewModel @Inject constructor(
             if (walkId == null) {
                 batchSendJob?.cancel()
                 pendingPoints.clear()
-                _state.update {
-                    it.copy(
-                        isWalking = false,
-                        isPaused = false,
-                        elapsedSeconds = 0,
-                        distanceMeters = 0.0,
-                        walkError = "산책 시작에 실패하여 기록이 저장되지 않았습니다.",
-                        currentWalkId = null,
-                        nearbyDogs = emptyList(),
-                        isWalkSummaryVisible = true,
-                        summaryElapsedSeconds = summarySeconds,
-                        summaryDistanceMeters = summaryDistance,
-                        summaryRouteName = summaryRoute,
-                        summaryRating = 0,
-                    )
+                // 새 산책이 이미 시작됐으면 요약 화면을 띄우지 않음
+                if (walkSessionId == sessionId) {
+                    _state.update {
+                        it.copy(
+                            walkError = "산책 시작에 실패하여 기록이 저장되지 않았습니다.",
+                            isWalkSummaryVisible = true,
+                            summaryElapsedSeconds = summarySeconds,
+                            summaryDistanceMeters = summaryDistance,
+                            summaryRouteName = summaryRoute,
+                            summaryRating = 0,
+                        )
+                    }
                 }
                 return@launch
             }
@@ -1048,8 +1083,11 @@ class WalkViewModel @Inject constructor(
             }
 
             val result = endWalkUseCase(walkId)
-            currentWalkId = null
-            walkIdDeferred = null
+            // 새 산책이 시작되지 않은 경우에만 walkId/Deferred 초기화 (새 산책의 ID를 지우지 않도록)
+            if (walkSessionId == sessionId) {
+                currentWalkId = null
+                walkIdDeferred = null
+            }
             val newBadges = result.getOrDefault(emptyList())
             // 워치에 배지 획득 알림 전송
             newBadges.forEach { badge ->
@@ -1059,23 +1097,20 @@ class WalkViewModel @Inject constructor(
                 })
             }
 
-            _state.update {
-                it.copy(
-                    isWalking = false,
-                    isPaused = false,
-                    elapsedSeconds = 0,
-                    distanceMeters = 0.0,
-                    walkError = null,
-                    currentWalkId = null,
-                    nearbyDogs = emptyList(),
-                    isWalkSummaryVisible = true,
-                    summaryWalkId = walkId,
-                    summaryElapsedSeconds = summarySeconds,
-                    summaryDistanceMeters = summaryDistance,
-                    summaryRouteName = summaryRoute,
-                    summaryRating = 0,
-                    newBadges = newBadges,
-                )
+            // 새 산책이 이미 시작됐으면 이전 산책의 요약 화면을 덮어쓰지 않음
+            if (walkSessionId == sessionId) {
+                _state.update {
+                    it.copy(
+                        walkError = null,
+                        isWalkSummaryVisible = true,
+                        summaryWalkId = walkId,
+                        summaryElapsedSeconds = summarySeconds,
+                        summaryDistanceMeters = summaryDistance,
+                        summaryRouteName = summaryRoute,
+                        summaryRating = 0,
+                        newBadges = newBadges,
+                    )
+                }
             }
         }
     }
