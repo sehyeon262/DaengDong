@@ -21,14 +21,14 @@ spring:
         - classpath:sql/init_places.sql
         - classpath:sql/walk_records.sql
         - classpath:sql/badges.sql
+        - classpath:sql/demo_personas.sql
       continue-on-error: true
-      mode: never
 
   # 개발용 JPA 설정
   jpa:
     defer-datasource-initialization: true
     hibernate:
-      ddl-auto: update
+      ddl-auto: create
     show-sql: true
     properties:
       hibernate:
