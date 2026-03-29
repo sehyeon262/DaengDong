@@ -5,9 +5,11 @@ import com.frontend.domain.model.DangerZoneApiResponse
 import com.frontend.domain.model.NearbyRiskReportData
 import com.frontend.domain.model.ReportDangerZoneRequest
 import com.frontend.domain.model.RiskReportData
+import retrofit2.http.DELETE
 import retrofit2.http.Body
 import retrofit2.http.GET
 import retrofit2.http.Header
+import retrofit2.http.Path
 import retrofit2.http.POST
 import retrofit2.http.Query
 
@@ -54,4 +56,10 @@ interface DangerZoneApi {
         @Query("longitude") longitude: Double,
         @Query("radiusMeters") radiusMeters: Double = 200.0
     ): ApiResponse<List<NearbyRiskReportData>>
+
+    @DELETE("safety/risk-zones/{riskReportId}")
+    suspend fun deleteMyRiskZone(
+        @Header("Authorization") authorization: String,
+        @Path("riskReportId") riskReportId: Long
+    ): ApiResponse<Unit>
 }

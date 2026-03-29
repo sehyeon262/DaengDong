@@ -10,6 +10,7 @@ import java.util.stream.Collectors;
 import com.e108.be.domain.safety.entity.RiskReport;
 import com.e108.be.domain.safety.exception.InvalidCoordinateException;
 import com.e108.be.domain.safety.exception.InvalidDescriptionException;
+import com.e108.be.domain.safety.exception.RiskReportNotFoundException;
 import com.e108.be.domain.safety.exception.UnauthenticatedAccessException;
 import com.e108.be.domain.safety.exception.WalkSessionNotFoundException;
 import com.e108.be.domain.safety.repository.RiskReportRepository;
@@ -111,6 +112,14 @@ public class RiskReportService {
      *
      * 산책 중 근접 알림 입력 용도
      */
+    @Transactional
+    public void deleteMyRiskZone(Long riskReportId) {
+        Long userId = getCurrentUserId();
+        RiskReport riskReport = riskReportRepository.findByIdAndUserId(riskReportId, userId)
+                .orElseThrow(RiskReportNotFoundException::new);
+        riskReportRepository.delete(riskReport);
+    }
+
     public List<NearbyRiskReportResponse> getNearbyMyRiskZones(double latitude, double longitude, double radiusMeters) {
         validateCoordinates(latitude, longitude);
         Long userId = getCurrentUserId();
