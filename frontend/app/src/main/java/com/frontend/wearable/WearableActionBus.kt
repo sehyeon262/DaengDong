@@ -12,6 +12,10 @@ import kotlinx.coroutines.flow.asStateFlow
  *
  * SharedFlow(replay=0)는 새 collector에게 과거 이벤트를 전달하지 않으므로,
  * WalkViewModel 생성 전에 도착한 StartWalk/SelectCourse는 StateFlow로 별도 보관.
+ *
+ * 중복 emit 방지: PhoneWearableListenerService(백그라운드)와 WearableManager.foregroundListener(포그라운드)가
+ * 동시에 같은 메시지를 처리하면 액션이 두 번 emit되어 네비게이션이 두 번 실행됨.
+ * 1초 이내 동일 액션은 중복으로 간주해 무시한다.
  */
 object WearableActionBus {
     private val _actions = MutableSharedFlow<WearableAction>(extraBufferCapacity = 10)
@@ -25,7 +29,17 @@ object WearableActionBus {
     private val _pendingCourseIndex = MutableStateFlow<Int?>(null)
     val pendingCourseIndex: StateFlow<Int?> = _pendingCourseIndex.asStateFlow()
 
+    // 중복 emit 방지용
+    private var lastAction: WearableAction? = null
+    private var lastActionTime: Long = 0L
+    private const val DEDUP_WINDOW_MS = 1000L
+
     suspend fun emit(action: WearableAction) {
+        val now = System.currentTimeMillis()
+        if (action == lastAction && now - lastActionTime < DEDUP_WINDOW_MS) return
+        lastAction = action
+        lastActionTime = now
+
         when (action) {
             is WearableAction.StartWalk -> _pendingStartWalk.value = true
             is WearableAction.SelectCourse -> _pendingCourseIndex.value = action.courseIndex

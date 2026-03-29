@@ -1361,12 +1361,14 @@ private fun KakaoMapView(
     val lifecycleOwner = LocalLifecycleOwner.current
     val mapView = remember { MapView(context) }
 
-    // MapView.start() 성공 여부 추적 (실패 시 resume/pause NPE 방지)
-    var mapStarted by remember { mutableStateOf(false) }
+    // onMapReady 완료 여부 (false이면 resume/pause/finish 호출 불가)
+    val mapStarted = remember { mutableStateOf(false) }
+    // onDispose가 onMapReady보다 먼저 불린 경우 → onMapReady에서 finish() 위임
+    val finishPending = remember { mutableStateOf(false) }
 
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
-            if (!mapStarted) return@LifecycleEventObserver
+            if (!mapStarted.value) return@LifecycleEventObserver
             when (event) {
                 Lifecycle.Event.ON_RESUME -> runCatching { mapView.resume() }
                 Lifecycle.Event.ON_PAUSE  -> runCatching { mapView.pause() }
@@ -1377,7 +1379,14 @@ private fun KakaoMapView(
 
         onDispose {
             lifecycleOwner.lifecycle.removeObserver(observer)
-            runCatching { mapView.finish() }
+            if (mapStarted.value) {
+                // onMapReady 완료 후 정상 경로: 바로 finish
+                runCatching { mapView.finish() }
+            } else {
+                // start()가 아직 완료 전: onMapReady 콜백에서 finish 처리
+                // (finish()를 미완료 상태의 SDK에 호출하면 내부 상태 오염)
+                finishPending.value = true
+            }
         }
     }
 
@@ -1390,12 +1399,18 @@ private fun KakaoMapView(
                             override fun onMapDestroy() {}
                             override fun onMapError(error: Exception) {
                                 android.util.Log.e("KakaoMap", "onMapError: ${error.message}", error)
+                                finishPending.value = false
                             }
                         },
                         object : KakaoMapReadyCallback() {
                             override fun onMapReady(kakaoMap: KakaoMap) {
                                 android.util.Log.d("KakaoMap", "onMapReady 성공!")
-                                mapStarted = true
+                                mapStarted.value = true
+                                if (finishPending.value) {
+                                    // 이미 dispose됨 → resume 없이 바로 finish
+                                    runCatching { mapView.finish() }
+                                    return
+                                }
                                 // onMapReady가 ON_RESUME 이후에 도착한 경우(워치에서 산책 시작 등
                                 // 네비게이션으로 화면에 진입할 때)에도 지도가 정상 표시되도록 resume() 호출
                                 if (lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) {
