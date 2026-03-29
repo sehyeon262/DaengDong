@@ -59,7 +59,7 @@ public class DiaryGenerationWorker {
             log.info("[일기생성] 시작: diaryId={}, walkId={}, dogId={}", diaryId, walkId, dogId);
 
             // ===== [DEMO 시작] 시연용 - 시연 끝나면 이 블록 삭제하고 아래 주석 해제 =====
-            Thread.sleep(30_000);
+            Thread.sleep(20_000);
             String content = "오늘 아침에 형아랑 산책 나갔는데 하늘에 구름이 좀 많았어~ " +
                     "바람도 살랑살랑 불어서 코끝이 간질간질했지 ㅎㅎ " +
                     "풀밭 쪽으로 걸어가는데 갑자기 풀숲에서 고양이가 나타났어..! " +
