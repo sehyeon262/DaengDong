@@ -55,6 +55,22 @@ public class MapController {
     }
 
     /**
+     * DELETE /api/v1/maps/stamps?dogId={dogId}&placeId={placeId}
+     * 발자국 도장 취소 (해당 강아지의 해당 장소 도장 전체 삭제 — 현재/과거 산책 모두)
+     */
+    @DeleteMapping("/stamps")
+    public ResponseEntity<ResTemplate<Void>> cancelStamp(
+            @AuthenticationPrincipal Long memberId,
+            @RequestParam Long dogId,
+            @RequestParam Long placeId
+    ) {
+        mapService.cancelStamp(dogId, placeId);
+        return ResponseEntity.ok(
+                ResTemplate.success(HttpStatus.OK, "발자국 도장 취소 성공", null)
+        );
+    }
+
+    /**
      * GET /api/v1/maps/stamps?dogId={dogId}
      * 강아지가 발자국 도장을 찍은 장소 목록 조회
      */

@@ -68,6 +68,15 @@ public class MapService {
     }
 
     /**
+     * DELETE /api/v1/maps/stamps
+     * 발자국 도장 취소 (해당 강아지의 해당 장소 도장 전체 삭제)
+     */
+    @Transactional
+    public void cancelStamp(Long dogId, Long placeId) {
+        footprintService.cancelStamp(dogId, placeId);
+    }
+
+    /**
      * GET /api/v1/maps/stamps?dogId={dogId}
      * 강아지가 발자국 도장을 찍은 장소 목록 조회 (중복 제거)
      */

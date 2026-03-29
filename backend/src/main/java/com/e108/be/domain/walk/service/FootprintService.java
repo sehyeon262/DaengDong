@@ -26,6 +26,11 @@ public class FootprintService {
      * @param placeId 방문한 장소 ID
      */
     @Transactional
+    public void cancelStamp(Long dogId, Long placeId) {
+        footprintRepository.deleteByDogIdAndPlaceId(dogId, placeId);
+    }
+
+    @Transactional
     public void registerStamp(Long walkId, Long dogId, Long placeId) {
         if (footprintRepository.existsByWalkRecordIdAndPlaceId(walkId, placeId)) {
             return;
