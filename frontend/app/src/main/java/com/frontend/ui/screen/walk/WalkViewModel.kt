@@ -118,7 +118,7 @@ class WalkViewModel @Inject constructor(
         private const val ALERT_ENTER_RADIUS_M = 50.0   // 알림 발생 반경
         private const val ALERT_EXIT_RADIUS_M = 70.0    // 반경 이탈 판정 거리
         private const val ALERT_COOLDOWN_MS = 2 * 60 * 1000L  // 2분 쿨다운
-        private const val FOOTPRINT_ALERT_RADIUS_M = 30.0     // 발자국 알림 반경 (GPS 오차 흡수)
+        private const val FOOTPRINT_ALERT_RADIUS_M = 25.0     // 오버레이 표시 반경
 
         // 위험장소 알림 상수
         private const val RISK_ZONE_ENTER_RADIUS_M = 100.0    // 알림 발생 반경
@@ -763,7 +763,7 @@ class WalkViewModel @Inject constructor(
         val nearbyPlace = stampCandidates.firstOrNull { place ->
             place.id !in stampedIds &&
                 place.id !in historicalStampedPlaceIds &&
-                haversineMeters(lat, lon, place.latitude, place.longitude) <= 30.0
+                haversineMeters(lat, lon, place.latitude, place.longitude) <= 50.0
         }
         // 새로 30m 이내 진입한 경우에만 시스템 알림 발송 (UI 배너 대신)
         val prevNearby = _state.value.nearbyStampablePlace
