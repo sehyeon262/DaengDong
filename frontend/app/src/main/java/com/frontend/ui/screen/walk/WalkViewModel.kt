@@ -271,10 +271,9 @@ class WalkViewModel @Inject constructor(
                             }
                     }
                     is WearableAction.Stamp -> {
-                        stampPlaceUseCase(action.walkId, action.dogId, action.placeId)
-                            .onFailure { e ->
-                                android.util.Log.e("WalkVM", "워치 발자국 도장 실패: ${e.message}")
-                            }
+                        // 워치에서 발자국 찍기: 폰의 stampFootprint()와 동일한 상태 업데이트 수행
+                        // (footprintStamped, hasStamped, stampedPlaceIds, footprintPlaces 모두 반영)
+                        stampFootprint()
                     }
                 }
             }
