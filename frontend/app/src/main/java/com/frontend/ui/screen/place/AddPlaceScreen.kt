@@ -110,6 +110,7 @@ fun AddPlaceScreen(
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val snackbarHostState = remember { SnackbarHostState() }
+    var scrollEnabled by remember { mutableStateOf(true) }
     val scope = rememberCoroutineScope()
 
     // 갤러리에서 이미지 선택
@@ -209,7 +210,7 @@ fun AddPlaceScreen(
             modifier = Modifier
                 .padding(innerPadding)
                 .fillMaxSize()
-                .verticalScroll(rememberScrollState())
+                .verticalScroll(rememberScrollState(), enabled = scrollEnabled)
                 .padding(horizontal = 20.dp, vertical = 8.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
@@ -282,7 +283,8 @@ fun AddPlaceScreen(
             MiniKakaoMap(
                 latitude = state.latitude,
                 longitude = state.longitude,
-                onMapTapped = { lat, lon -> viewModel.onMapTapped(lat, lon) }
+                onMapTapped = { lat, lon -> viewModel.onMapTapped(lat, lon) },
+                onTouchStateChanged = { isTouching -> scrollEnabled = !isTouching }
             )
             Text(
                 text = "지도를 탭하면 위치를 변경할 수 있어요",
@@ -602,7 +604,8 @@ private fun SectionLabel(text: String) {
 private fun MiniKakaoMap(
     latitude: Double,
     longitude: Double,
-    onMapTapped: (Double, Double) -> Unit = { _, _ -> }
+    onMapTapped: (Double, Double) -> Unit = { _, _ -> },
+    onTouchStateChanged: (Boolean) -> Unit = {}
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -629,13 +632,6 @@ private fun MiniKakaoMap(
         }
     }
 
-    // 탭 리스너 등록
-    LaunchedEffect(kakaoMap) {
-        kakaoMap?.setOnMapClickListener { _, latLng, _, _ ->
-            latLng?.let { onMapTapped(it.latitude, it.longitude) }
-        }
-    }
-
     // 80px 높이로 스케일된 마커 비트맵 (WalkScreen 과 동일한 방식)
     val markerBitmap = remember {
         val src = android.graphics.BitmapFactory.decodeResource(
@@ -647,7 +643,8 @@ private fun MiniKakaoMap(
     }
 
     // 좌표 변경 시 마커 업데이트 — 탭으로 찍은 경우 카메라 이동 없이 마커만 업데이트
-    LaunchedEffect(latitude, longitude) {
+    // kakaoMap 도 키에 포함: 지도 초기화 완료 후에도 재실행되어 현재 위치 반영
+    LaunchedEffect(kakaoMap, latitude, longitude) {
         kakaoMap?.let { map ->
             val pos = LatLng.from(latitude, longitude)
             val isTap = lastTapCoords?.first == latitude && lastTapCoords?.second == longitude
@@ -668,10 +665,14 @@ private fun MiniKakaoMap(
                 // 지도 위 터치 시 부모 ScrollView 스크롤 차단
                 setOnTouchListener { v, event ->
                     when (event.actionMasked) {
-                        MotionEvent.ACTION_DOWN, MotionEvent.ACTION_MOVE ->
+                        MotionEvent.ACTION_DOWN, MotionEvent.ACTION_MOVE -> {
                             v.parent?.requestDisallowInterceptTouchEvent(true)
-                        MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL ->
+                            onTouchStateChanged(true)
+                        }
+                        MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
                             v.parent?.requestDisallowInterceptTouchEvent(false)
+                            onTouchStateChanged(false)
+                        }
                     }
                     false // 이벤트는 지도로 전달
                 }
