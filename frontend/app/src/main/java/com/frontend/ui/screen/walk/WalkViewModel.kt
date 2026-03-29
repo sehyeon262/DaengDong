@@ -118,7 +118,7 @@ class WalkViewModel @Inject constructor(
         private const val ALERT_ENTER_RADIUS_M = 50.0   // 알림 발생 반경
         private const val ALERT_EXIT_RADIUS_M = 70.0    // 반경 이탈 판정 거리
         private const val ALERT_COOLDOWN_MS = 2 * 60 * 1000L  // 2분 쿨다운
-        private const val FOOTPRINT_ALERT_RADIUS_M = 20.0     // 발자국 알림 반경
+        private const val FOOTPRINT_ALERT_RADIUS_M = 3.0      // 발자국 알림 반경
 
         // 위험장소 알림 상수
         private const val RISK_ZONE_ENTER_RADIUS_M = 100.0    // 알림 발생 반경
@@ -746,7 +746,7 @@ class WalkViewModel @Inject constructor(
 
     // ── 발자국 도장 근접 감지 ──────────────────────────────────────────────────
 
-    /** 현재 위치와 후보 장소 간 근접 여부 확인, 50m 이내 장소가 있으면 stamp prompt 표시 */
+    /** 현재 위치와 후보 장소 간 근접 여부 확인, 15m 이내 장소가 있으면 stamp prompt 표시 */
     private fun checkAndUpdateStampPrompt(lat: Double, lon: Double) {
         val loadedAt = stampCandidatesCenter
         // 처음이거나 300m 이상 이동했으면 후보 재로드
@@ -759,7 +759,7 @@ class WalkViewModel @Inject constructor(
         val stampedIds = _state.value.stampedPlaceIds
         val nearbyPlace = stampCandidates.firstOrNull { place ->
             place.id !in stampedIds &&
-                haversineMeters(lat, lon, place.latitude, place.longitude) <= 50.0
+                haversineMeters(lat, lon, place.latitude, place.longitude) <= 15.0
         }
         _state.update { it.copy(nearbyStampablePlace = nearbyPlace) }
     }
@@ -1767,10 +1767,10 @@ class WalkViewModel @Inject constructor(
     }
 
     /**
-     * 20m 진입/이탈 기반 발자국 알림 처리
-     * - 20m 진입 시: 알림 + 오버레이 표시
-     * - 20m 이탈 시: 알림 취소 + 오버레이 닫기
-     * - 20m 재진입 시: 알림 + 오버레이 다시 표시
+     * 3m 진입/이탈 기반 발자국 알림 처리
+     * - 3m 진입 시: 알림 + 오버레이 표시
+     * - 3m 이탈 시: 알림 취소 + 오버레이 닫기
+     * - 3m 재진입 시: 알림 + 오버레이 다시 표시
      * - 도장 찍은 장소: hasStamped=true로 영구 무시
      */
     private fun checkNearbyPlacesForFootprint(currentPos: LatLng) {
@@ -1833,7 +1833,7 @@ class WalkViewModel @Inject constructor(
                 footprintAlertPlace = newAlertPlace,
                 // 오버레이가 사라지면 stamped 상태도 초기화
                 footprintStamped = if (newAlertPlace == null) false else it.footprintStamped,
-                // 20m 오버레이가 뜨면 50m 배너 숨기기
+                // 3m 오버레이가 뜨면 15m 배너 숨기기
                 nearbyStampablePlace = if (newAlertPlace != null) null else it.nearbyStampablePlace,
             )
         }

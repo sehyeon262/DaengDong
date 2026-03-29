@@ -630,7 +630,7 @@ fun WalkScreen(
                 )
             }
 
-            // 발자국 도장 프롬프트 (산책 중 50m 이내 장소 감지 시)
+            // 발자국 도장 프롬프트 (산책 중 15m 이내 장소 감지 시)
             val stampablePlace = state.nearbyStampablePlace
             if (state.isWalking && stampablePlace != null) {
                 FootprintStampBanner(
