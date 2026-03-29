@@ -7,7 +7,6 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 import java.util.List;
-import java.util.Optional;
 
 /**
  * [RiskReport JPA Repository]
@@ -23,8 +22,6 @@ import java.util.Optional;
  *   서비스에서 save() 대신 saveWithNativePoint() 를 호출합니다.
  */
 public interface RiskReportRepository extends JpaRepository<RiskReport, Long> {
-
-    Optional<RiskReport> findByIdAndUserId(Long id, Long userId);
 
     /**
      * Projection interface for nearby risk report query results with distance

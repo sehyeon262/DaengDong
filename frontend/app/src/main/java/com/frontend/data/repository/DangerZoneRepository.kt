@@ -153,20 +153,6 @@ class DangerZoneRepository @Inject constructor(
      * 저장된 description 문자열에서 DangerReason과 customReason을 복원합니다.
      * 포맷: "${reason.label}: $customReason" 또는 "${reason.label}"
      */
-    suspend fun deleteMyRiskZone(riskReportId: Long): Result<Unit> = runCatching {
-        val token = tokenDataStore.getAccessToken().first()
-            ?: error("æ¿¡ì’“ë ‡?ëª„ì”  ?ê¾©ìŠ‚?â‘¸ë•²??")
-
-        val response = dangerZoneApi.deleteMyRiskZone(
-            authorization = "Bearer $token",
-            riskReportId = riskReportId
-        )
-
-        if (response.code !in 200..299) {
-            throw Exception(response.message)
-        }
-    }
-
     private fun parseDescription(description: String): Pair<DangerReason, String?> {
         for (reason in DangerReason.entries) {
             if (description.startsWith("${reason.label}: ")) {

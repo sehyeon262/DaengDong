@@ -65,12 +65,6 @@ public class RiskReportController {
      * 산책 중 근접 알림 입력 용도
      * Authorization: Bearer {accessToken} 필수
      */
-    @DeleteMapping("/risk-zones/{riskReportId}")
-    public ResTemplate<Void> deleteMyRiskZone(@PathVariable Long riskReportId) {
-        riskReportService.deleteMyRiskZone(riskReportId);
-        return ResTemplate.success(HttpStatus.OK, "위험 구역이 삭제되었습니다.");
-    }
-
     @GetMapping("/risk-zones/nearby")
     public ResTemplate<List<NearbyRiskReportResponse>> getNearbyMyRiskZones(
             @RequestParam double latitude,
