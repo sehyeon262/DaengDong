@@ -124,6 +124,7 @@ import com.frontend.domain.model.PersistedDangerZone
 import com.frontend.ui.component.MapOverlayButton
 import com.frontend.ui.screen.walk.components.DangerReportModal
 import com.frontend.ui.screen.walk.components.DogWarningDialog
+import com.frontend.ui.screen.walk.components.FootprintCancelDialog
 import com.frontend.ui.screen.walk.components.RiskZoneWarningDialog
 import com.frontend.ui.screen.walk.components.NearbyDogProfilePopup
 import com.frontend.ui.screen.walk.components.PlaceDetailBottomSheet
@@ -624,7 +625,7 @@ fun WalkScreen(
                 viewModel.loadPlacesByPosition(center.latitude, center.longitude)
             }
         }
-        // 마커 클릭 시 처리 (주변 강아지 / 장소 구분)
+        // 마커 클릭 시 처리 (주변 강아지 / 발자국 취소 / 장소 구분)
         map.setOnLabelClickListener { _, _, label ->
             val dog = label.tag as? NearbyDogResponse
             if (dog != null) {
@@ -643,8 +644,22 @@ fun WalkScreen(
                 }
             }
             val placeId = label.tag as? Long
-            val place = viewModel.state.value.places.find { it.id == placeId }
-            if (place != null) viewModel.selectPlace(place)
+            if (placeId != null) {
+                val walkState = viewModel.state.value
+                // 현재 산책 도장 또는 과거 발자국 마커이면 취소 다이얼로그 표시
+                val isStampedMarker = placeId in walkState.stampedPlaceIds ||
+                    walkState.footprintPlaces.any { it.id == placeId }
+                if (isStampedMarker) {
+                    val stampedPlace = walkState.places.find { it.id == placeId }
+                        ?: walkState.footprintPlaces.find { it.id == placeId }
+                    if (stampedPlace != null) {
+                        viewModel.showCancelStampDialog(stampedPlace)
+                        return@setOnLabelClickListener true
+                    }
+                }
+                val place = walkState.places.find { it.id == placeId }
+                if (place != null) viewModel.selectPlace(place)
+            }
             true
         }
     }
@@ -955,6 +970,15 @@ fun WalkScreen(
             DogWarningDialog(
                 dog = dog,
                 onDismiss = { viewModel.dismissWarning() },
+            )
+        }
+
+        // ── 발자국 취소 확인 다이얼로그 ──────────────────────────────────
+        state.cancelStampPlace?.let { place ->
+            FootprintCancelDialog(
+                place = place,
+                onConfirm = { viewModel.cancelStamp() },
+                onDismiss = { viewModel.dismissCancelStampDialog() },
             )
         }
 

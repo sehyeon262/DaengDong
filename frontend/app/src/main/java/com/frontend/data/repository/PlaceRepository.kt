@@ -86,6 +86,16 @@ class PlaceRepository constructor(
         )
     }
 
+    /** 발자국 도장 취소 — DELETE /maps/stamps */
+    suspend fun cancelStamp(dogId: Long, placeId: Long): Result<Unit> = runCatching {
+        val token = tokenDataStore.getAccessToken().first() ?: error("인증 토큰 없음")
+        placeApi.cancelStamp(
+            authorization = "Bearer $token",
+            dogId = dogId,
+            placeId = placeId
+        )
+    }
+
     /** 신규 장소 등록 — POST /places (multipart/form-data)
      *  @param context  Uri → InputStream 변환에 필요
      *  @param imageUri 사용자가 선택한 이미지 Uri (null이면 이미지 없이 등록)

@@ -69,6 +69,7 @@ data class WalkState(
     val isFootprintPlacesLoading: Boolean = false,    // 발자국 장소 로딩 중 여부
     val nearbyStampablePlace: Place? = null,          // 50m 이내 도장 찍을 수 있는 장소
     val stampedPlaceIds: Set<Long> = emptySet(),      // 이번 산책에서 도장 찍은 장소 ID
+    val cancelStampPlace: Place? = null,              // 취소 확인 다이얼로그 표시용 장소 (null=숨김)
 
     // ── 발자국 찍기 오버레이 ────────────────────────────────────────────────
     val footprintAlertPlace: Place? = null,                        // 현재 20m 이내의 장소 (null=오버레이 없음)
