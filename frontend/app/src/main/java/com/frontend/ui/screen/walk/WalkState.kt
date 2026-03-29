@@ -54,8 +54,8 @@ data class WalkState(
     val fallbackMessage: String? = null,                           // 폴백 안내 메시지
     val showRecommendedRoute: Boolean = true,                      // 추천 경로 표시 여부 (토글)
 
-    // 다중 선택 필터 (각 항목을 독립적으로 on/off)
-    val activeFilters: Set<WalkFilterType> = emptySet(),
+    // 다중 선택 필터 (각 항목을 독립적으로 on/off) — 기본값: 전체 ON
+    val activeFilters: Set<WalkFilterType> = setOf(WalkFilterType.PLACE, WalkFilterType.NEARBY_DOG, WalkFilterType.FOOTPRINT),
     // 바텀시트에서 임시로 편집 중인 필터 상태 (적용하기 전)
     val pendingFilters: Set<WalkFilterType> = emptySet(),
 
