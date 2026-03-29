@@ -24,7 +24,7 @@ public class RestTemplateConfig {
     public RestTemplate gmsRestTemplate(RestTemplateBuilder builder) {
         return builder
                 .connectTimeout(Duration.ofSeconds(5))
-                .readTimeout(Duration.ofSeconds(60))
+                .readTimeout(Duration.ofSeconds(120))
                 .build();
     }
 
