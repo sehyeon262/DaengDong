@@ -268,8 +268,9 @@ fun WalkWatchScreen() {
                 }
             } else {
                 // 산책 중 — HorizontalPager
-                val pagerState = rememberPagerState(pageCount = { 2 })
+                val pagerState = rememberPagerState(pageCount = { 3 })
                 val timeColor = if (stats.isPaused) Color(0xFF888888) else Color.White
+                var dangerZoneSetSuccess by remember { mutableStateOf(false) }
 
                 HorizontalPager(state = pagerState, modifier = Modifier.fillMaxSize()) { page ->
                     when (page) {
@@ -325,6 +326,7 @@ fun WalkWatchScreen() {
                                     .padding(bottom = 16.dp),
                             ) {
                                 Box(Modifier.size(5.dp).background(Color.White, CircleShape))
+                                Box(Modifier.size(5.dp).background(Color(0xFF444444), CircleShape))
                                 Box(Modifier.size(5.dp).background(Color(0xFF444444), CircleShape))
                             }
                         }
@@ -387,8 +389,17 @@ fun WalkWatchScreen() {
                             ) {
                                 Box(Modifier.size(5.dp).background(Color(0xFF444444), CircleShape))
                                 Box(Modifier.size(5.dp).background(Color.White, CircleShape))
+                                Box(Modifier.size(5.dp).background(Color(0xFF444444), CircleShape))
                             }
                         }
+
+                        else -> DangerZoneSetPage(
+                            dangerZoneSetSuccess = dangerZoneSetSuccess,
+                            onSet = {
+                                sendAction("/action/set_danger_zone", null)
+                                dangerZoneSetSuccess = true
+                            },
+                        )
                     }
                 }
             }
@@ -448,6 +459,92 @@ fun WalkWatchScreen() {
                     },
                 )
             }
+        }
+    }
+}
+
+// ── 위험 구역 설정 페이지 ───────────────────────────────────────────
+@Composable
+private fun DangerZoneSetPage(
+    dangerZoneSetSuccess: Boolean,
+    onSet: () -> Unit,
+) {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color.Black),
+    ) {
+        if (dangerZoneSetSuccess) {
+            Column(
+                modifier = Modifier.align(Alignment.Center),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                Text(
+                    text = "✓",
+                    fontSize = 36.sp,
+                    color = Color(0xFF76C442),
+                    fontWeight = FontWeight.Bold,
+                )
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    text = "위험 구역으로\n설정되었습니다",
+                    fontSize = 13.sp,
+                    color = Color.White,
+                    textAlign = TextAlign.Center,
+                )
+            }
+        } else {
+            Column(
+                modifier = Modifier.align(Alignment.Center),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                Image(
+                    painter = painterResource(id = R.drawable.danger_flag),
+                    contentDescription = "위험 구역",
+                    modifier = Modifier.size(70.dp),
+                )
+                Spacer(Modifier.height(6.dp))
+                Text(
+                    text = "위험 구역 설정",
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color(0xFFE07060),
+                )
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    text = "현재 위치를\n위험 구역으로 설정하시겠습니까?",
+                    fontSize = 10.sp,
+                    color = Color.White,
+                    textAlign = TextAlign.Center,
+                )
+                Spacer(Modifier.height(10.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Button(
+                        onClick = { },
+                        colors = ButtonDefaults.buttonColors(backgroundColor = Color(0xFFEEEEEE)),
+                        modifier = Modifier.size(width = 60.dp, height = 36.dp),
+                    ) {
+                        Text("뒤로", fontSize = 13.sp, color = Color.Black, fontWeight = FontWeight.Bold)
+                    }
+                    Button(
+                        onClick = onSet,
+                        colors = ButtonDefaults.buttonColors(backgroundColor = Color(0xFFB8634A)),
+                        modifier = Modifier.size(width = 60.dp, height = 36.dp),
+                    ) {
+                        Text("설정", fontSize = 13.sp, color = Color.White, fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
+        }
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .padding(bottom = 16.dp),
+        ) {
+            Box(Modifier.size(5.dp).background(Color(0xFF444444), CircleShape))
+            Box(Modifier.size(5.dp).background(Color(0xFF444444), CircleShape))
+            Box(Modifier.size(5.dp).background(Color.White, CircleShape))
         }
     }
 }
