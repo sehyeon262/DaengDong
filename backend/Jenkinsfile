@@ -1,11 +1,14 @@
-checkHealth = { containerName, port ->
+def checkHealth = { containerName, port ->
     try {
         def hostPort = (containerName == "be-app-dev") ? "8081" : "8080"
-        timeout(time: 3, unit: 'MINUTES') {
+        timeout(time: 5, unit: 'MINUTES') {
             waitUntil {
                 try {
-                    def response = sh(script: "curl -Is http://172.17.0.1:${hostPort}/api/v1/actuator/health | head -n 1", returnStdout: true).trim()
-                    return response.contains('200') || response.contains('403') || response.contains('UP')
+                    def responseCode = sh(
+                        script: "curl -s -o /dev/null -w '%{http_code}' http://172.17.0.1:${hostPort}/api/v1/actuator/health",
+                        returnStdout: true
+                    ).trim()
+                    return responseCode == '200'
                 } catch (e) { return false }
             }
         }
@@ -96,7 +99,12 @@ pipeline {
                     sh "docker rm -f be-app-dev || true"
                     sh "docker compose -p dev -f ./docker-compose-dev.yaml --env-file ${TEMP_ENV} up -d --build --no-deps app"
                     sh "docker network connect ssafy-network be-app-dev || true"
-                    script { env.SERVER_STATUS = checkHealth("be-app-dev", "8080") } 
+                    script {
+                        env.SERVER_STATUS = checkHealth("be-app-dev", "8080")
+                        if (env.SERVER_STATUS != "SUCCESS") {
+                            error("Dev deployment health check failed")
+                        }
+                    }
                 }
             }
         }
@@ -117,7 +125,12 @@ pipeline {
                     sh "docker rm -f be-app-prod || true"
                     sh "docker compose -p prod -f ./docker-compose-prod.yaml --env-file ${TEMP_ENV} up -d --build --no-deps app"
                     sh "docker network connect ssafy-network be-app-prod || true"
-                    script { env.SERVER_STATUS = checkHealth("be-app-prod", "8080") }
+                    script {
+                        env.SERVER_STATUS = checkHealth("be-app-prod", "8080")
+                        if (env.SERVER_STATUS != "SUCCESS") {
+                            error("Prod deployment health check failed")
+                        }
+                    }
                 }
             }
         }
