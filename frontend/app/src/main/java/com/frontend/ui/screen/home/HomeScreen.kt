@@ -76,12 +76,20 @@ fun HomeScreen(
 
     LaunchedEffect(Unit) {
         if (!locationLoaded) {
-            permissionLauncher.launch(
-                arrayOf(
-                    Manifest.permission.ACCESS_FINE_LOCATION,
-                    Manifest.permission.ACCESS_COARSE_LOCATION
-                )
-            )
+            if (hasLocationPermission(context)) {
+                fetchLocation(context) { lat, lng, fallbackAddress ->
+                    scope.launch {
+                        val address = fallbackAddress ?: withContext(Dispatchers.IO) {
+                            getAddressFromLatLng(context, lat, lng)
+                        }
+                        viewModel.loadHomeData(lat, lng, address)
+                        locationLoaded = true
+                    }
+                }
+            } else {
+                viewModel.loadHomeData(35.2322, 128.5469, "기본 위치")
+                locationLoaded = true
+            }
         }
     }
 
@@ -108,13 +116,17 @@ fun HomeScreen(
                     )
                     Spacer(modifier = Modifier.height(8.dp))
                     TextButton(onClick = {
-                        fetchLocation(context) { lat, lng, fallbackAddress ->
-                            scope.launch {
-                                val address = fallbackAddress ?: withContext(Dispatchers.IO) {
-                                    getAddressFromLatLng(context, lat, lng)
+                        if (hasLocationPermission(context)) {
+                            fetchLocation(context) { lat, lng, fallbackAddress ->
+                                scope.launch {
+                                    val address = fallbackAddress ?: withContext(Dispatchers.IO) {
+                                        getAddressFromLatLng(context, lat, lng)
+                                    }
+                                    viewModel.loadHomeData(lat, lng, address)
                                 }
-                                viewModel.loadHomeData(lat, lng, address)
                             }
+                        } else {
+                            viewModel.loadHomeData(35.2322, 128.5469, "기본 위치")
                         }
                     }) {
                         Text("다시 시도")
@@ -166,6 +178,17 @@ fun HomeScreen(
             }
         }
     }
+}
+
+private fun hasLocationPermission(context: android.content.Context): Boolean {
+    return androidx.core.content.ContextCompat.checkSelfPermission(
+        context,
+        Manifest.permission.ACCESS_FINE_LOCATION
+    ) == android.content.pm.PackageManager.PERMISSION_GRANTED ||
+        androidx.core.content.ContextCompat.checkSelfPermission(
+            context,
+            Manifest.permission.ACCESS_COARSE_LOCATION
+        ) == android.content.pm.PackageManager.PERMISSION_GRANTED
 }
 
 @SuppressLint("MissingPermission")

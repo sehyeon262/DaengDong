@@ -83,9 +83,9 @@ public class WalkService {
      */
     @Transactional
     public StartWalkResponse startWalk(Long memberId, StartWalkRequest request) {
-        // 기존 IN_PROGRESS 산책이 있으면 자동 강제 종료 (stuck 방지)
-        walkRecordRepository.findByDogIdAndWalkStatus(request.getDogId(), WalkStatus.IN_PROGRESS)
-                .ifPresent(w -> {
+        // 기존 IN_PROGRESS 산책이 있으면 모두 강제 종료 (stuck 방지, 중복 레코드 대응)
+        walkRecordRepository.findAllByDogIdAndWalkStatus(request.getDogId(), WalkStatus.IN_PROGRESS)
+                .forEach(w -> {
                     log.warn("[startWalk] 기존 IN_PROGRESS 산책 강제 종료: walkId={}", w.getId());
                     w.end(w.getTotalDistance() != null ? w.getTotalDistance() : BigDecimal.ZERO,
                           w.getCalories() != null ? w.getCalories() : BigDecimal.ZERO);

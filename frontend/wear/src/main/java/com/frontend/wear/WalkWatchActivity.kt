@@ -212,7 +212,10 @@ fun WalkWatchScreen() {
                         }
                         Spacer(Modifier.height(16.dp))
                         Button(
-                            onClick = { walkResult = null },
+                            onClick = {
+                                walkResult = null
+                                sendAction("/action/dismiss_summary", null)
+                            },
                             colors = ButtonDefaults.buttonColors(backgroundColor = Color(0xFF5B9E5F)),
                             modifier = Modifier.size(width = 100.dp, height = 36.dp),
                         ) { Text("확인", fontSize = 14.sp, color = Color.White, fontWeight = FontWeight.Bold) }

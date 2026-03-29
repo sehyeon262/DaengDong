@@ -27,7 +27,7 @@ fun SplashScreen(
 
     LaunchedEffect(authState) {
         when (authState) {
-            is AuthState.LoggedIn -> navController.navigate(Routes.HOME) {
+            is AuthState.LoggedIn -> navController.navigate(Routes.PERMISSIONS) {
                 popUpTo(Routes.SPLASH) { inclusive = true }
             }
             is AuthState.NotLoggedIn -> navController.navigate(Routes.LOGIN) {

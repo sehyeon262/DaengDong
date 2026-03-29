@@ -19,6 +19,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
+import com.frontend.navigation.Routes
 import com.frontend.ui.theme.*
 
 @Composable
@@ -34,8 +35,8 @@ fun LoginScreen(
     // 로그인 성공 시 홈으로 이동
     LaunchedEffect(state.isSuccess) {
         if (state.isSuccess) {
-            navController.navigate("home") {
-                popUpTo("login") { inclusive = true }
+            navController.navigate(Routes.PERMISSIONS) {
+                popUpTo(Routes.LOGIN) { inclusive = true }
             }
         }
     }
