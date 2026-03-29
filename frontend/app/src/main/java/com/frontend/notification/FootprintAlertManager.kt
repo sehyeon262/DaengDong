@@ -73,7 +73,7 @@ class FootprintAlertManager @Inject constructor(
             val notification = NotificationCompat.Builder(context, CHANNEL_ID)
                 .setSmallIcon(R.drawable.ic_launcher_foreground)
                 .setContentTitle("발자국 알림")
-                .setContentText("발자국을 남겨보세요!")
+                .setContentText("근처에 발자국을 찍을 수 있는 장소가 있어요!")
                 .setPriority(NotificationCompat.PRIORITY_HIGH)
                 .setAutoCancel(true)
                 .setContentIntent(pendingIntent)
