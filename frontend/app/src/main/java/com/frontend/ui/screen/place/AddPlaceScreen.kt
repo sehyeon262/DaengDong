@@ -629,13 +629,6 @@ private fun MiniKakaoMap(
         }
     }
 
-    // 탭 리스너 등록
-    LaunchedEffect(kakaoMap) {
-        kakaoMap?.setOnMapClickListener { _, latLng, _, _ ->
-            latLng?.let { onMapTapped(it.latitude, it.longitude) }
-        }
-    }
-
     // 80px 높이로 스케일된 마커 비트맵 (WalkScreen 과 동일한 방식)
     val markerBitmap = remember {
         val src = android.graphics.BitmapFactory.decodeResource(
