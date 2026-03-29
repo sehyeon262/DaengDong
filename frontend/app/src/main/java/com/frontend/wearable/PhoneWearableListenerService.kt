@@ -44,6 +44,9 @@ class PhoneWearableListenerService : WearableListenerService() {
                     WearableActionBus.emit(WearableAction.SelectCourse(courseIndex))
                 }
             }
+            "/action/dismiss_summary" -> serviceScope.launch {
+                WearableActionBus.emit(WearableAction.DismissWalkSummary)
+            }
             "/response/proposal_accept" -> json?.let {
                 val proposalId = it.optString("proposalId", "")
                 val myWalkRecordId = it.optLong("myWalkRecordId", 0L)

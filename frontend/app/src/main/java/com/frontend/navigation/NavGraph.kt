@@ -56,14 +56,27 @@ fun NavGraph() {
     }
 
     // 워치에서 산책 시작/코스 선택 시 Walk 탭으로 자동 이동
+    // 이미 Walk 탭에 있는 경우 navigate 자체를 건너뜀 — navigate() 호출이 MapView 재구성을 유발할 수 있음
     LaunchedEffect(Unit) {
         // NavGraph 활성화 전에 이미 액션이 도착한 경우 (StateFlow로 보관된 pending 상태 확인)
         if (WearableActionBus.pendingStartWalk.value || WearableActionBus.pendingCourseIndex.value != null) {
-            navController.navigate(Routes.WALK) { launchSingleTop = true }
+            if (navController.currentDestination?.route != Routes.WALK) {
+                navController.navigate(Routes.WALK) {
+                    popUpTo(Routes.HOME) { saveState = true }
+                    launchSingleTop = true
+                    restoreState = true
+                }
+            }
         }
         WearableActionBus.actions.collect { action ->
             if (action is WearableAction.StartWalk || action is WearableAction.SelectCourse) {
-                navController.navigate(Routes.WALK) { launchSingleTop = true }
+                if (navController.currentDestination?.route != Routes.WALK) {
+                    navController.navigate(Routes.WALK) {
+                        popUpTo(Routes.HOME) { saveState = true }
+                        launchSingleTop = true
+                        restoreState = true
+                    }
+                }
             }
         }
     }
