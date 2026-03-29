@@ -39,6 +39,14 @@ public class RouteGeneratorService {
 
     // WALK_ONLY 순수 산책 코스 반경별 거리 (미터)
     private static final double[] WALK_ONLY_DISTANCES = {300.0, 500.0, 700.0};
+    private static final String PREVIEW_ROUTE_NAME = "가벼운 산책 코스";
+    private static final long PREVIEW_TRAIL_ID = -900001L;
+    private static final long PREVIEW_PARK_ID = -900002L;
+    private static final long PREVIEW_RESTROOM_ID = -900003L;
+    private static final LatLng PREVIEW_FALLBACK_START = new LatLng(35.09205, 128.85295);
+    private static final LatLng PREVIEW_TRAIL_POINT = new LatLng(35.092346, 128.85295);
+    private static final LatLng PREVIEW_PARK_POINT = new LatLng(35.09309167, 128.853142);
+    private static final LatLng PREVIEW_RESTROOM_POINT = new LatLng(35.093079, 128.853172);
     private static final String[] WALK_ONLY_NAMES = {"가벼운 산책", "보통 산책", "긴 산책"};
 
     // ==================== NORMAL (3개 경로) ====================
@@ -339,6 +347,74 @@ public class RouteGeneratorService {
     /**
      * polyline 좌표의 총 직선 거리 합산 (미터)
      */
+    public RouteDetailResponse buildPreviewRoute(double originLat, double originLon) {
+        List<RoutePlaceResponse> previewPlaces = List.of(
+                buildPreviewPlace(PREVIEW_TRAIL_ID, "산책로", PREVIEW_TRAIL_POINT, originLat, originLon, null),
+                buildPreviewPlace(PREVIEW_PARK_ID, "공원", PREVIEW_PARK_POINT, originLat, originLon, "부산광역시 강서구 녹산산단321로 50"),
+                buildPreviewPlace(PREVIEW_RESTROOM_ID, "화장실", PREVIEW_RESTROOM_POINT, originLat, originLon, null)
+        );
+
+        List<LatLng> fallbackPolyline = List.of(
+                PREVIEW_FALLBACK_START,
+                PREVIEW_TRAIL_POINT,
+                PREVIEW_PARK_POINT,
+                PREVIEW_RESTROOM_POINT
+        );
+
+        PathResult pathResult = tmapPathService.getWalkingPath(
+                new LatLng(originLat, originLon),
+                previewPlaces.subList(0, previewPlaces.size() - 1),
+                PREVIEW_RESTROOM_POINT
+        );
+
+        if (pathResult != null) {
+            return RouteDetailResponse.builder()
+                    .name(PREVIEW_ROUTE_NAME)
+                    .type(RouteType.RECOMMENDED)
+                    .totalDistanceM(pathResult.totalDistanceM())
+                    .estimatedMinutes(pathResult.estimatedMinutes())
+                    .places(previewPlaces)
+                    .polyline(fallbackPolyline)
+                    .actualPathPoints(pathResult.pathPoints())
+                    .provider(pathResult.provider())
+                    .roadBased(pathResult.roadBased())
+                    .build();
+        }
+
+        int fallbackDistanceM = calculateTotalDistance(fallbackPolyline);
+        int fallbackMinutes = Math.max(1, (int) Math.ceil(fallbackDistanceM / 67.0));
+        return RouteDetailResponse.builder()
+                .name(PREVIEW_ROUTE_NAME)
+                .type(RouteType.RECOMMENDED)
+                .totalDistanceM(fallbackDistanceM)
+                .estimatedMinutes(fallbackMinutes)
+                .places(previewPlaces)
+                .polyline(fallbackPolyline)
+                .provider("preview")
+                .roadBased(false)
+                .build();
+    }
+
+    private RoutePlaceResponse buildPreviewPlace(
+            long id,
+            String name,
+            LatLng point,
+            double originLat,
+            double originLon,
+            String address
+    ) {
+        return RoutePlaceResponse.builder()
+                .id(id)
+                .name(name)
+                .categoryName(name)
+                .latitude(point.latitude())
+                .longitude(point.longitude())
+                .distanceMeters(GeoUtils.haversine(originLat, originLon, point.latitude(), point.longitude()))
+                .address(address)
+                .imageUrl(null)
+                .build();
+    }
+
     private int calculateTotalDistance(List<LatLng> polyline) {
         double total = 0;
         for (int i = 0; i < polyline.size() - 1; i++) {

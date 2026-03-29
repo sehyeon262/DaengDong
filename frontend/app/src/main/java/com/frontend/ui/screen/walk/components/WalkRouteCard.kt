@@ -8,7 +8,6 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
@@ -18,8 +17,8 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.AccessTime
 import androidx.compose.material.icons.automirrored.filled.DirectionsWalk
+import androidx.compose.material.icons.filled.AccessTime
 import androidx.compose.material.icons.filled.Room
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
@@ -42,6 +41,7 @@ import com.frontend.domain.model.WalkRoute
 import com.frontend.ui.theme.PointGreen
 import com.frontend.ui.theme.TextGray
 import com.frontend.ui.theme.TextMain
+import java.util.Locale
 
 @Composable
 fun WalkRouteCard(
@@ -105,7 +105,7 @@ fun WalkRouteCard(
                     }
                 )
 
-                // 항상 공간을 예약해서 모든 카드의 높이를 동일하게 유지
+                // 항상 공간을 예약해서 모든 카드의 높이를 동일하게 유지한다.
                 Spacer(modifier = Modifier.height(8.dp))
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
@@ -120,12 +120,14 @@ fun WalkRouteCard(
                         )
                         Spacer(modifier = Modifier.width(1.dp))
                         Text(
-                            text = String.format(java.util.Locale.US, "%.2fkm", distance),
+                            text = String.format(Locale.US, "%.2fkm", distance),
                             fontSize = 12.sp,
                             color = TextGray,
-                            maxLines = 1
+                            maxLines = 1,
+                            softWrap = false,
+                            overflow = TextOverflow.Visible
                         )
-                        Spacer(modifier = Modifier.width(6.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
                     }
                     route.durationMin?.let { duration ->
                         Icon(
@@ -139,13 +141,15 @@ fun WalkRouteCard(
                             text = "${duration}분",
                             fontSize = 12.sp,
                             color = TextGray,
-                            maxLines = 1
+                            maxLines = 1,
+                            softWrap = false,
+                            overflow = TextOverflow.Visible
                         )
                     }
                 }
             }
 
-            Spacer(modifier = Modifier.width(12.dp))
+            Spacer(modifier = Modifier.width(8.dp))
 
             Box(
                 modifier = Modifier
