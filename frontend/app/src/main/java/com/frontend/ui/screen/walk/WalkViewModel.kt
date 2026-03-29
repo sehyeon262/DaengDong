@@ -38,6 +38,7 @@ import com.frontend.domain.model.RecommendedRoute
 import com.frontend.domain.model.StartWalkRequest
 import com.frontend.domain.model.WalkRoute
 import com.frontend.domain.model.NearbyDangerZone
+import com.frontend.domain.usecase.DeleteMyRiskZoneUseCase
 import com.frontend.domain.usecase.EndWalkUseCase
 import com.frontend.domain.usecase.GetDangerZonesUseCase
 import com.frontend.domain.usecase.GetFootprintPlacesUseCase
@@ -86,6 +87,7 @@ import kotlin.math.sqrt
 class WalkViewModel @Inject constructor(
     @ApplicationContext private val context: Context,
     private val reportDangerZoneUseCase: ReportDangerZoneUseCase,
+    private val deleteMyRiskZoneUseCase: DeleteMyRiskZoneUseCase,
     private val getDangerZonesUseCase: GetDangerZonesUseCase,
     private val getMyRiskZonesUseCase: GetMyRiskZonesUseCase,
     private val getNearbyMyRiskZonesUseCase: GetNearbyMyRiskZonesUseCase,
@@ -1745,7 +1747,8 @@ class WalkViewModel @Inject constructor(
             it.copy(
                 isDangerReportDialogOpen = false,
                 selectedDangerReason = null,
-                customDangerReason = ""
+                customDangerReason = "",
+                error = null
             )
         }
     }
@@ -1811,6 +1814,42 @@ class WalkViewModel @Inject constructor(
     // ── 발자국 찍기 ────────────────────────────────────────────────────────────
 
     /** 발자국 감지용 주변 장소 로드 (산책 시작 시 1회) — 이미 도장 찍은 장소 제외 */
+    fun deletePersistedDangerZone(riskReportId: Long) {
+        viewModelScope.launch {
+            _state.update { it.copy(isLoading = true, error = null, walkError = null) }
+
+            deleteMyRiskZoneUseCase(riskReportId)
+                .onSuccess {
+                    dangerZoneAlertTimes.remove(riskReportId)
+                    riskZoneAlertManager.cancelAlert(riskReportId)
+                    _state.update {
+                        it.copy(
+                            persistedDangerZones = it.persistedDangerZones.filterNot { zone -> zone.id == riskReportId },
+                            nearbyDangerZones = it.nearbyDangerZones.filterNot { zone -> zone.id == riskReportId },
+                            dangerZones = it.dangerZones.filterNot { zone -> zone.id == riskReportId },
+                            riskZoneAlertStates = it.riskZoneAlertStates - riskReportId,
+                            warningRiskZoneQueue = it.warningRiskZoneQueue.filterNot { zone -> zone.id == riskReportId },
+                            isLoading = false,
+                            error = null,
+                            walkError = null
+                        )
+                    }
+                }
+                .onFailure { e ->
+                    _state.update {
+                        it.copy(
+                            isLoading = false,
+                            walkError = "위험 구역 삭제 실패: ${e.message}"
+                        )
+                    }
+                }
+        }
+    }
+
+    fun consumeWalkError() {
+        _state.update { it.copy(walkError = null) }
+    }
+
     private fun loadWalkPlaces(latitude: Double, longitude:Double) {
         val dogId = _state.value.myDogId ?: return  // dogId 없으면 로드 포기 → 다음 GPS 업데이트에서 재시도
         walkPlacesLoaded = true  // dogId 확인 후에만 플래그 설정

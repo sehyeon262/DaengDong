@@ -47,6 +47,7 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.ModalBottomSheet
@@ -181,6 +182,7 @@ fun WalkScreen(
     var hasLoadedInitialRoutes by remember { mutableStateOf(false) }
     var lastHandledRefreshRequestKey by remember { mutableStateOf(0L) }
     var fovOverlay by remember { mutableStateOf<Polygon?>(null) }
+    var selectedPersistedDangerZone by remember { mutableStateOf<PersistedDangerZone?>(null) }
 
     // 산책 경로 폴리라인 (실제 산책 중 GPS 트래킹)
     val routePoints by viewModel.routePoints.collectAsState()
@@ -277,6 +279,14 @@ fun WalkScreen(
     LaunchedEffect(state.walkError) {
         val error = state.walkError ?: return@LaunchedEffect
         android.widget.Toast.makeText(context, error, android.widget.Toast.LENGTH_LONG).show()
+        viewModel.consumeWalkError()
+    }
+
+    LaunchedEffect(state.persistedDangerZones, state.isLoading, selectedPersistedDangerZone) {
+        val selected = selectedPersistedDangerZone ?: return@LaunchedEffect
+        if (!state.isLoading && state.persistedDangerZones.none { it.id == selected.id }) {
+            selectedPersistedDangerZone = null
+        }
     }
 
     // 지도 준비 완료 시 위치 트래킹 시작
@@ -621,6 +631,17 @@ fun WalkScreen(
                 viewModel.selectNearbyDog(dog)
                 return@setOnLabelClickListener true
             }
+            val dangerZoneId = (label.tag as? String)
+                ?.removePrefix("riskZone:")
+                ?.toLongOrNull()
+            if (dangerZoneId != null) {
+                val persistedDangerZone = viewModel.state.value.persistedDangerZones
+                    .find { it.id == dangerZoneId }
+                if (persistedDangerZone != null) {
+                    selectedPersistedDangerZone = persistedDangerZone
+                    return@setOnLabelClickListener true
+                }
+            }
             val placeId = label.tag as? Long
             val place = viewModel.state.value.places.find { it.id == placeId }
             if (place != null) viewModel.selectPlace(place)
@@ -949,6 +970,44 @@ fun WalkScreen(
         }
 
         // ── 6. 위험 구역 신고 모달 ──────────────────────────────────────
+        selectedPersistedDangerZone?.let { zone ->
+            val reasonText = zone.customReason ?: zone.reason.label
+            AlertDialog(
+                onDismissRequest = {
+                    if (!state.isLoading) {
+                        selectedPersistedDangerZone = null
+                    }
+                },
+                title = { Text("위험 구역 삭제") },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text("등록한 위험 구역을 삭제할까요?")
+                        Text("사유: $reasonText")
+                        zone.createdAt?.let { createdAt ->
+                            Text("등록 시각: $createdAt")
+                        }
+                    }
+                },
+                confirmButton = {
+                    TextButton(
+                        onClick = { viewModel.deletePersistedDangerZone(zone.id) },
+                        enabled = !state.isLoading,
+                        colors = ButtonDefaults.textButtonColors(contentColor = Color.Red)
+                    ) {
+                        Text(if (state.isLoading) "삭제 중..." else "삭제")
+                    }
+                },
+                dismissButton = {
+                    TextButton(
+                        onClick = { selectedPersistedDangerZone = null },
+                        enabled = !state.isLoading
+                    ) {
+                        Text("취소")
+                    }
+                }
+            )
+        }
+
         if (state.isDangerReportDialogOpen) {
             DangerReportModal(
                 selectedReason = state.selectedDangerReason,
@@ -1481,7 +1540,9 @@ private fun addDangerZoneMarker(
     val scaled = source.scale(targetWidth, targetHeight)
     val style = LabelStyle.from(scaled).setAnchorPoint(0.5f, 1.0f)   // 하단 중앙을 좌표에 맞춤
     val styles = LabelStyles.from(style)
-    val options = LabelOptions.from(position).setStyles(styles)
+    val options = LabelOptions.from(position)
+        .setStyles(styles)
+        .setTag("riskZone:${zone.id}")
     return kakaoMap.labelManager?.layer?.addLabel(options)
 }
 
