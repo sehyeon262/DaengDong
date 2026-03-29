@@ -647,7 +647,8 @@ private fun MiniKakaoMap(
     }
 
     // 좌표 변경 시 마커 업데이트 — 탭으로 찍은 경우 카메라 이동 없이 마커만 업데이트
-    LaunchedEffect(latitude, longitude) {
+    // kakaoMap 도 키에 포함: 지도 초기화 완료 후에도 재실행되어 현재 위치 반영
+    LaunchedEffect(kakaoMap, latitude, longitude) {
         kakaoMap?.let { map ->
             val pos = LatLng.from(latitude, longitude)
             val isTap = lastTapCoords?.first == latitude && lastTapCoords?.second == longitude
