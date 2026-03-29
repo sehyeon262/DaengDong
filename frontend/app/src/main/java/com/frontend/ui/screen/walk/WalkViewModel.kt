@@ -118,7 +118,7 @@ class WalkViewModel @Inject constructor(
         private const val ALERT_ENTER_RADIUS_M = 50.0   // 알림 발생 반경
         private const val ALERT_EXIT_RADIUS_M = 70.0    // 반경 이탈 판정 거리
         private const val ALERT_COOLDOWN_MS = 2 * 60 * 1000L  // 2분 쿨다운
-        private const val FOOTPRINT_ALERT_RADIUS_M = 10.0     // 발자국 알림 반경
+        private const val FOOTPRINT_ALERT_RADIUS_M = 30.0     // 발자국 알림 반경 (GPS 오차 흡수)
 
         // 위험장소 알림 상수
         private const val RISK_ZONE_ENTER_RADIUS_M = 100.0    // 알림 발생 반경
@@ -764,6 +764,11 @@ class WalkViewModel @Inject constructor(
             place.id !in stampedIds &&
                 place.id !in historicalStampedPlaceIds &&
                 haversineMeters(lat, lon, place.latitude, place.longitude) <= 30.0
+        }
+        // 새로 30m 이내 진입한 경우에만 시스템 알림 발송 (UI 배너 대신)
+        val prevNearby = _state.value.nearbyStampablePlace
+        if (nearbyPlace != null && prevNearby?.id != nearbyPlace.id) {
+            footprintAlertManager.showFootprintAlert(nearbyPlace.name)
         }
         _state.update { it.copy(nearbyStampablePlace = nearbyPlace) }
     }
@@ -1771,6 +1776,8 @@ class WalkViewModel @Inject constructor(
             getPlacesUseCase(latitude, longitude, radius = 500.0)
                 .onSuccess { places ->
                     _state.update { it.copy(walkPlaces = places.filter { it.id !in historicalStampedPlaceIds }) }
+                    // 장소 로드 완료 후 현재 위치에서 즉시 체크 (첫 진입 시 오버레이 즉시 표시)
+                    _currentPosition.value?.let { checkNearbyPlacesForFootprint(it) }
                 }
                 .onFailure {
                     walkPlacesLoaded = false  // API 실패 시 다음 GPS 업데이트에서 재시도
@@ -1817,9 +1824,8 @@ class WalkViewModel @Inject constructor(
                 val prev = prevStates[place.id] ?: FootprintAlertState()
                 val next = newStates[place.id] ?: FootprintAlertState()
                 if (next.hasStamped || !next.isInsideRadius) continue
-                // 이번에 새로 진입한 경우에만 알림 발송
+                // 이번에 새로 진입한 경우: 워치에 발자국 알림 전송 (시스템 알림은 30m에서 처리)
                 if (!prev.isInsideRadius) {
-                    footprintAlertManager.showFootprintAlert(place.name)
                     // 워치에 발자국 알림 전송
                     val wId = currentWalkId
                     val dId = _state.value.myDogId
@@ -1845,8 +1851,6 @@ class WalkViewModel @Inject constructor(
                 footprintAlertPlace = newAlertPlace,
                 // 오버레이가 사라지면 stamped 상태도 초기화
                 footprintStamped = if (newAlertPlace == null) false else it.footprintStamped,
-                // 3m 오버레이가 뜨면 15m 배너 숨기기
-                nearbyStampablePlace = if (newAlertPlace != null) null else it.nearbyStampablePlace,
             )
         }
     }
@@ -1864,6 +1868,11 @@ class WalkViewModel @Inject constructor(
                 footprintStamped = true,
                 footprintAlertStates = newStates,
                 stampedPlaceIds = state.stampedPlaceIds + place.id,
+                // FOOTPRINT 필터 ON 상태면 발자국 목록에 즉시 추가 (API 재호출 없이)
+                footprintPlaces = if (
+                    WalkFilterType.FOOTPRINT in state.activeFilters &&
+                    state.footprintPlaces.none { it.id == place.id }
+                ) state.footprintPlaces + place else state.footprintPlaces,
             )
         }
         viewModelScope.launch {

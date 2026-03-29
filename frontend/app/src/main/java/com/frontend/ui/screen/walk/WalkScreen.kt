@@ -533,17 +533,24 @@ fun WalkScreen(
     }
 
     // 장소 목록 변경 시: 마커 전체 교체 (PLACE 필터 ON → API 응답 도착)
-    // 발자국 찍은 장소는 dog_footprint 마커로 대체되므로 place_mark 마커 제외
-    LaunchedEffect(state.places, state.footprintPlaces, kakaoMap) {
+    // 발자국 찍은 장소(FOOTPRINT 필터 + 현재 산책 도장)는 dog_footprint 마커로 대체
+    LaunchedEffect(state.places, state.footprintPlaces, state.stampedPlaceIds, kakaoMap) {
         val map = kakaoMap ?: return@LaunchedEffect
         placeLabels.forEach { map.labelManager?.layer?.remove(it) }
         placeLabels.clear()
         if (state.places.isEmpty()) return@LaunchedEffect
-        val footprintPlaceIds = state.footprintPlaces.map { it.id }.toSet()
+        val footprintFilterIds = state.footprintPlaces.map { it.id }.toSet()
         state.places.forEach { place ->
-            if (place.id !in footprintPlaceIds) {
-                val label = addPlaceMarker(context, map, place)
-                if (label != null) placeLabels.add(label)
+            when {
+                place.id in state.stampedPlaceIds -> {
+                    // 현재 산책에서 도장 찍은 장소: dog_footprint 마커로 표시
+                    val label = addFootprintMarker(context, map, place)
+                    if (label != null) placeLabels.add(label)
+                }
+                place.id !in footprintFilterIds -> {
+                    val label = addPlaceMarker(context, map, place)
+                    if (label != null) placeLabels.add(label)
+                }
             }
         }
     }
@@ -652,17 +659,6 @@ fun WalkScreen(
                 )
             }
 
-            // 발자국 도장 프롬프트 (산책 중 30m 이내 장소 감지 시)
-            val stampablePlace = state.nearbyStampablePlace
-            if (state.isWalking && stampablePlace != null) {
-                FootprintStampBanner(
-                    placeName = stampablePlace.name,
-                    onDismiss = { viewModel.dismissStampPrompt() },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 4.dp)
-                )
-            }
 
             Spacer(modifier = Modifier.weight(1f))
 
@@ -1946,6 +1942,7 @@ private fun FootprintStampOverlay(
                                                     lastToneMs = elapsed
                                                 }
                                                 if (elapsed >= 3000L) {
+                                                    vibrator?.cancel()  // 도장 완료 시 즉시 진동 중단
                                                     onTap()
                                                     break
                                                 }
