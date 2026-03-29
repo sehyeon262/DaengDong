@@ -8,6 +8,7 @@ import com.frontend.domain.model.StampRequest
 import okhttp3.MultipartBody
 import okhttp3.RequestBody
 import retrofit2.http.Body
+import retrofit2.http.DELETE
 import retrofit2.http.GET
 import retrofit2.http.Header
 import retrofit2.http.Multipart
@@ -62,6 +63,14 @@ interface PlaceApi {
         @Header("Authorization") authorization: String,
         @Body request: StampRequest
     ): ApiResponse<Void>
+
+    /** 발자국 도장 취소 — DELETE /api/v1/maps/stamps?dogId=&placeId= */
+    @DELETE("maps/stamps")
+    suspend fun cancelStamp(
+        @Header("Authorization") authorization: String,
+        @Query("dogId") dogId: Long,
+        @Query("placeId") placeId: Long
+    ): ApiResponse<Unit>
 
     /** 신규 장소 등록 — POST /api/v1/places (multipart/form-data) */
     @Multipart
