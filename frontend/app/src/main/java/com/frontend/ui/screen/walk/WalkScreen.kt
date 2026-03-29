@@ -3,6 +3,8 @@ package com.frontend.ui.screen.walk
 import android.Manifest
 import android.content.pm.PackageManager
 import android.os.Build
+import android.os.VibrationEffect
+import android.os.Vibrator
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
@@ -80,7 +82,26 @@ import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.ui.graphics.BlendMode
+import androidx.compose.ui.graphics.CompositingStrategy
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalHapticFeedback
+import android.media.AudioManager
+import android.media.ToneGenerator
+import androidx.compose.ui.graphics.graphicsLayer
+import kotlin.coroutines.coroutineContext
+import kotlin.math.sin
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.res.painterResource
@@ -598,8 +619,9 @@ fun WalkScreen(
         }
 
         // ── 발자국 찍기 오버레이 ──────────────────────────────────────────
-        if (state.footprintAlertPlace != null && !state.isSelectingDangerZone) {
+        state.footprintAlertPlace?.takeIf { !state.isSelectingDangerZone }?.let { alertPlace ->
             FootprintStampOverlay(
+                placeName = alertPlace.name,
                 stamped = state.footprintStamped,
                 onTap = { viewModel.stampFootprint() }
             )
@@ -630,7 +652,7 @@ fun WalkScreen(
                 )
             }
 
-            // 발자국 도장 프롬프트 (산책 중 15m 이내 장소 감지 시)
+            // 발자국 도장 프롬프트 (산책 중 30m 이내 장소 감지 시)
             val stampablePlace = state.nearbyStampablePlace
             if (state.isWalking && stampablePlace != null) {
                 FootprintStampBanner(
@@ -1851,9 +1873,14 @@ private fun BadgeEarnedDialog(
 // ── 발자국 찍기 오버레이 ──────────────────────────────────────────────────────
 @Composable
 private fun FootprintStampOverlay(
+    placeName: String,
     stamped: Boolean,
     onTap: () -> Unit,
 ) {
+    var holdProgress by remember { mutableStateOf(0f) }
+    var waveOffset   by remember { mutableStateOf(0f) }
+    val context = LocalContext.current
+
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -1866,7 +1893,7 @@ private fun FootprintStampOverlay(
         ) {
             if (!stamped) {
                 Text(
-                    text = "터치하세요",
+                    text = placeName,
                     color = Color.White,
                     fontSize = 18.sp,
                     fontWeight = FontWeight.Medium,
@@ -1874,36 +1901,184 @@ private fun FootprintStampOverlay(
                 Spacer(modifier = Modifier.height(16.dp))
             }
 
-            Box(
-                modifier = Modifier
-                    .size(160.dp)
-                    .clip(CircleShape)
-                    .background(Color.White)
-                    .then(
-                        if (!stamped) Modifier.clickable(
-                            onClick = onTap,
-                            indication = null,
-                            interactionSource = remember { MutableInteractionSource() }
-                        ) else Modifier
-                    ),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    imageVector = Icons.Filled.Pets,
-                    contentDescription = "발자국",
-                    modifier = Modifier.size(90.dp),
-                    tint = if (stamped) PointGreen else PointGreen.copy(alpha = 0.4f)
-                )
+            Box(contentAlignment = Alignment.Center) {
+                Box(
+                    modifier = Modifier
+                        .size(160.dp)
+                        .clip(CircleShape)
+                        .background(Color.White)
+                        .then(
+                            if (!stamped) Modifier.pointerInput(Unit) {
+                                detectTapGestures(
+                                    onPress = { _ ->
+                                        holdProgress = 0f
+                                        waveOffset   = 0f
+                                        var released   = false
+                                        var lastToneMs = 0L
+                                        val start = System.currentTimeMillis()
+
+                                        // ── 진동 패턴 시작 ──────────────────────────────────
+                                        // 지잉·지잉·지잉(80ms×3, 간격 50ms) → 220ms 쉼 → 반복
+                                        // 3초 동안 약 5사이클 ≈ 15번의 짧은 진동
+                                        val vibrator = context.getSystemService(Vibrator::class.java)
+                                        val vibrateTimings = longArrayOf(0, 80, 50, 80, 50, 80, 220)
+                                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                                            vibrator?.vibrate(
+                                                VibrationEffect.createWaveform(vibrateTimings, 0)
+                                            )
+                                        } else {
+                                            @Suppress("DEPRECATION")
+                                            vibrator?.vibrate(vibrateTimings, 0)
+                                        }
+
+                                        // ── 오디오: 진행률에 따라 빨라지는 딸깍 소리 ────────
+                                        val toneGen = ToneGenerator(AudioManager.STREAM_MUSIC, 45)
+                                        val pressScope = CoroutineScope(coroutineContext)
+                                        val trackJob = pressScope.launch {
+                                            while (!released) {
+                                                val elapsed = System.currentTimeMillis() - start
+                                                holdProgress = (elapsed / 3000f).coerceIn(0f, 1f)
+                                                waveOffset  += 0.13f
+                                                val toneInterval = (500L * (1f - holdProgress * 0.75f))
+                                                    .toLong().coerceAtLeast(100L)
+                                                if (elapsed - lastToneMs >= toneInterval) {
+                                                    toneGen.startTone(ToneGenerator.TONE_PROP_ACK, 60)
+                                                    lastToneMs = elapsed
+                                                }
+                                                if (elapsed >= 3000L) {
+                                                    onTap()
+                                                    break
+                                                }
+                                                delay(16L)
+                                            }
+                                        }
+                                        tryAwaitRelease()
+                                        released = true
+                                        trackJob.cancel()
+                                        pressScope.cancel()
+                                        vibrator?.cancel()   // 손 떼면 즉시 진동 중단
+                                        toneGen.release()
+                                        holdProgress = 0f
+                                        waveOffset   = 0f
+                                    }
+                                )
+                            } else Modifier
+                        ),
+                    contentAlignment = Alignment.Center
+                ) {
+                    FootprintWaterFillIcon(
+                        progress   = holdProgress,
+                        waveOffset = waveOffset,
+                        stamped    = stamped,
+                    )
+                }
+                if (!stamped && holdProgress > 0f) {
+                    CircularProgressIndicator(
+                        progress     = { holdProgress },
+                        modifier     = Modifier.size(176.dp),
+                        color        = Color(0xFFA2CB8B),
+                        strokeWidth  = 6.dp,
+                        trackColor   = Color.Transparent,
+                    )
+                }
             }
 
             Spacer(modifier = Modifier.height(20.dp))
 
             Text(
-                text = if (stamped) "발자국을 남겼어요!" else "발자국을 남겨보세요!",
-                color = Color.White,
-                fontSize = 22.sp,
+                text       = if (stamped) "발자국을 남겼어요!" else "발자국을 꾸욱 눌러보세요!",
+                color      = Color.White,
+                fontSize   = 22.sp,
                 fontWeight = FontWeight.Bold
             )
         }
     }
+}
+
+// ── 발자국 물 채우기 아이콘 ────────────────────────────────────────────────────
+/**
+ * 발자국 아이콘 내부를 아래에서 위로 물이 차오르는 효과로 렌더링한다.
+ *
+ * 구현 원리:
+ *  1. Offscreen 버퍼에 발자국 아이콘을 풀컬러(#A2CB8B)로 그린다.
+ *  2. 수위 위쪽 영역을 웨이브 경계로 DstOut 블렌드로 지운다.
+ *     → 아이콘 외곽(투명) 영역은 처음부터 투명이므로 발자국 실루엣 밖으로
+ *       색이 넘치지 않는다.
+ *  3. 아래에 연한 아이콘을 미리 그려두어 수위 위쪽 윤곽선이 보이게 한다.
+ */
+@Composable
+private fun FootprintWaterFillIcon(
+    progress: Float,
+    waveOffset: Float,
+    stamped: Boolean,
+) {
+    val waterColor = Color(0xFFA2CB8B)
+
+    Box(
+        modifier = Modifier.size(90.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        // 레이어 1: 연한 윤곽선 아이콘 (수위 위쪽에도 형태가 보이도록)
+        Icon(
+            imageVector      = Icons.Filled.Pets,
+            contentDescription = null,
+            modifier         = Modifier.fillMaxSize(),
+            tint             = if (stamped) waterColor else waterColor.copy(alpha = 0.22f),
+        )
+
+        // 레이어 2: 물 채우기 (Offscreen 버퍼 → 아이콘 실루엣 안에만 색 표시)
+        if (!stamped) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen },
+            ) {
+                // 풀컬러 아이콘을 Offscreen 버퍼에 먼저 그린다 (마스크 + 색 원본)
+                Icon(
+                    imageVector      = Icons.Filled.Pets,
+                    contentDescription = null,
+                    modifier         = Modifier.fillMaxSize(),
+                    tint             = waterColor,
+                )
+                // 수위 위쪽 영역을 웨이브 경계로 DstOut 블렌드로 지운다
+                if (progress > 0f) {
+                    Canvas(modifier = Modifier.fillMaxSize()) {
+                        drawWaterEraseArea(
+                            progress      = progress,
+                            waveOffset    = waveOffset,
+                            waveAmplitude = 5.dp.toPx(),
+                            waveFreq      = 0.045f,
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+/** Offscreen 버퍼 위에서 수위 위쪽 영역을 웨이브 경계로 지운다 (DstOut). */
+private fun DrawScope.drawWaterEraseArea(
+    progress: Float,
+    waveOffset: Float,
+    waveAmplitude: Float,
+    waveFreq: Float,
+) {
+    val waterLevel = size.height * (1f - progress)
+    val path = Path().apply {
+        // 좌상단 모서리에서 시작
+        moveTo(0f, 0f)
+        // 왼쪽 수위 지점으로 이동
+        lineTo(0f, waterLevel + sin(waveOffset.toDouble()).toFloat() * waveAmplitude)
+        // 수위 라인을 웨이브 형태로 오른쪽까지 그린다
+        var x = 0f
+        while (x <= size.width + 2f) {
+            val y = waterLevel + sin((x * waveFreq + waveOffset).toDouble()).toFloat() * waveAmplitude
+            lineTo(x, y)
+            x += 2f
+        }
+        // 우상단 → 좌상단으로 닫기 (지울 영역 = 위쪽 사각형)
+        lineTo(size.width, 0f)
+        close()
+    }
+    drawPath(path, color = androidx.compose.ui.graphics.Color.White, blendMode = BlendMode.DstOut)
 }

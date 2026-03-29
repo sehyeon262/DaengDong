@@ -118,7 +118,7 @@ class WalkViewModel @Inject constructor(
         private const val ALERT_ENTER_RADIUS_M = 50.0   // 알림 발생 반경
         private const val ALERT_EXIT_RADIUS_M = 70.0    // 반경 이탈 판정 거리
         private const val ALERT_COOLDOWN_MS = 2 * 60 * 1000L  // 2분 쿨다운
-        private const val FOOTPRINT_ALERT_RADIUS_M = 3.0      // 발자국 알림 반경
+        private const val FOOTPRINT_ALERT_RADIUS_M = 10.0     // 발자국 알림 반경
 
         // 위험장소 알림 상수
         private const val RISK_ZONE_ENTER_RADIUS_M = 100.0    // 알림 발생 반경
@@ -168,6 +168,9 @@ class WalkViewModel @Inject constructor(
     // ── 발자국 도장 후보 장소 (산책 중 근접 감지용) ────────────────────────────
     private var stampCandidates: List<Place> = emptyList()
     private var stampCandidatesCenter: LatLng? = null
+
+    // ── 역대 도장 찍은 장소 ID (같은 장소 재방문 시 배너/오버레이 차단용) ──────────
+    private var historicalStampedPlaceIds: Set<Long> = emptySet()
 
     // ── 카메라 사진 자동 감지 (산책 중 촬영 사진 자동 업로드) ────────────────────
     private var photoObserver: ContentObserver? = null
@@ -312,8 +315,8 @@ class WalkViewModel @Inject constructor(
                     )
 
                     // 발자국 체크용 장소 최초 로드
+                    // walkPlacesLoaded 플래그는 loadWalkPlaces 내부에서 dogId 확인 후 설정
                     if (!walkPlacesLoaded) {
-                        walkPlacesLoaded = true
                         loadWalkPlaces(loc.latitude, loc.longitude)
                     }
                     // 20m 이내 장소 진입 감지
@@ -746,7 +749,7 @@ class WalkViewModel @Inject constructor(
 
     // ── 발자국 도장 근접 감지 ──────────────────────────────────────────────────
 
-    /** 현재 위치와 후보 장소 간 근접 여부 확인, 15m 이내 장소가 있으면 stamp prompt 표시 */
+    /** 현재 위치와 후보 장소 간 근접 여부 확인, 30m 이내 장소가 있으면 stamp prompt 표시 */
     private fun checkAndUpdateStampPrompt(lat: Double, lon: Double) {
         val loadedAt = stampCandidatesCenter
         // 처음이거나 300m 이상 이동했으면 후보 재로드
@@ -759,7 +762,8 @@ class WalkViewModel @Inject constructor(
         val stampedIds = _state.value.stampedPlaceIds
         val nearbyPlace = stampCandidates.firstOrNull { place ->
             place.id !in stampedIds &&
-                haversineMeters(lat, lon, place.latitude, place.longitude) <= 15.0
+                place.id !in historicalStampedPlaceIds &&
+                haversineMeters(lat, lon, place.latitude, place.longitude) <= 30.0
         }
         _state.update { it.copy(nearbyStampablePlace = nearbyPlace) }
     }
@@ -855,6 +859,7 @@ class WalkViewModel @Inject constructor(
     fun startFreeWalk() {
         // 즉시 UI 전환
         walkPlacesLoaded = false
+        historicalStampedPlaceIds = emptySet()
         _state.update {
             it.copy(
                 isWalking = true,
@@ -1754,15 +1759,22 @@ class WalkViewModel @Inject constructor(
 
     /** 발자국 감지용 주변 장소 로드 (산책 시작 시 1회) — 이미 도장 찍은 장소 제외 */
     private fun loadWalkPlaces(latitude: Double, longitude:Double) {
-        val dogId = _state.value.myDogId ?: return
+        val dogId = _state.value.myDogId ?: return  // dogId 없으면 로드 포기 → 다음 GPS 업데이트에서 재시도
+        walkPlacesLoaded = true  // dogId 확인 후에만 플래그 설정
         viewModelScope.launch {
-            val stampedIds = getFootprintPlacesUseCase(dogId)
+            // 역대 도장 찍은 장소 ID 로드 (배너/오버레이 차단 + walkPlaces 필터링 공통 사용)
+            historicalStampedPlaceIds = getFootprintPlacesUseCase(dogId)
                 .getOrDefault(emptyList())
                 .map { it.id }
                 .toSet()
-            getPlacesUseCase(latitude, longitude, radius = 500.0).onSuccess { places ->
-                _state.update { it.copy(walkPlaces = places.filter { it.id !in stampedIds }) }
-            }
+            // 이미 찍은 장소는 walkPlaces에서 제외 → 오버레이 절대 안 뜸
+            getPlacesUseCase(latitude, longitude, radius = 500.0)
+                .onSuccess { places ->
+                    _state.update { it.copy(walkPlaces = places.filter { it.id !in historicalStampedPlaceIds }) }
+                }
+                .onFailure {
+                    walkPlacesLoaded = false  // API 실패 시 다음 GPS 업데이트에서 재시도
+                }
         }
     }
 
