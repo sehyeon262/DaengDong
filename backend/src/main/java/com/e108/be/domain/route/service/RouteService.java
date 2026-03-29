@@ -113,13 +113,16 @@ public class RouteService {
         // 전체 고유 장소 수로 폴백 레벨 결정
         int totalUnique = countUniquePlaces(shortPlaces, recommendPlaces, explorePlaces);
 
+        RouteRecommendResponse response;
         if (totalUnique >= NORMAL_MIN) {
-            return buildNormalResponse(lat, lon, shortPlaces, recommendPlaces, explorePlaces, recommendedType);
+            response = buildNormalResponse(lat, lon, shortPlaces, recommendPlaces, explorePlaces, recommendedType);
         } else if (totalUnique >= REDUCED_MIN) {
-            return buildReducedResponse(lat, lon, shortPlaces, recommendPlaces, recommendedType);
+            response = buildReducedResponse(lat, lon, shortPlaces, recommendPlaces, recommendedType);
         } else {
-            return buildWalkOnlyResponse(lat, lon, shortPlaces);
+            response = buildWalkOnlyResponse(lat, lon, shortPlaces);
         }
+
+        return appendPreviewRoute(response, lat, lon);
     }
 
     /**
@@ -295,6 +298,30 @@ public class RouteService {
 
         reordered.addAll(rest);
         return reordered;
+    }
+
+    private RouteRecommendResponse appendPreviewRoute(
+            RouteRecommendResponse response,
+            double lat,
+            double lon
+    ) {
+        RouteDetailResponse previewRoute = routeGeneratorService.buildPreviewRoute(lat, lon);
+        if (previewRoute == null) {
+            return response;
+        }
+
+        List<RouteDetailResponse> routes = new ArrayList<>();
+        if (response.getRoutes() != null) {
+            routes.addAll(response.getRoutes());
+        }
+        routes.add(previewRoute);
+
+        return RouteRecommendResponse.builder()
+                .fallbackLevel(response.getFallbackLevel())
+                .fallbackMessage(response.getFallbackMessage())
+                .recommendedRouteType(response.getRecommendedRouteType())
+                .routes(routes)
+                .build();
     }
 
     private RouteRecommendResponse buildWalkOnlyResponse(
