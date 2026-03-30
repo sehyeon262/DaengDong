@@ -51,3 +51,5 @@ frontend/.gradle/
 
 # Markdown
 *.md
+!exec/porting_manual.md
+!dump.sql
