@@ -34,7 +34,7 @@
 
 **댕동여지도**는 반려견 보호자를 위한 올인원 산책 앱입니다. GPS 기반 실시간 산책 추적, AI 경로 추천, 주변 반려견 매칭, 위험 구역 알림 등 안전하고 즐거운 산책 경험을 제공합니다.
 
-Samsung Software Academy for Youth(SSAFY) 자율 프로젝트 — **너와 나의 연결꼬리팀**
+Samsung Software Academy for Youth(SSAFY) 특화 프로젝트 — **너와 나의 연결꼬리팀**
 
 ### 프로젝트 배경
 
