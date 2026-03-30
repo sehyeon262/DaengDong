@@ -54,8 +54,8 @@ data class WalkState(
     val fallbackMessage: String? = null,                           // 폴백 안내 메시지
     val showRecommendedRoute: Boolean = true,                      // 추천 경로 표시 여부 (토글)
 
-    // 다중 선택 필터 (각 항목을 독립적으로 on/off)
-    val activeFilters: Set<WalkFilterType> = emptySet(),
+    // 다중 선택 필터 (각 항목을 독립적으로 on/off) — 기본값: 전체 ON
+    val activeFilters: Set<WalkFilterType> = setOf(WalkFilterType.PLACE, WalkFilterType.NEARBY_DOG, WalkFilterType.FOOTPRINT),
     // 바텀시트에서 임시로 편집 중인 필터 상태 (적용하기 전)
     val pendingFilters: Set<WalkFilterType> = emptySet(),
 
@@ -69,6 +69,7 @@ data class WalkState(
     val isFootprintPlacesLoading: Boolean = false,    // 발자국 장소 로딩 중 여부
     val nearbyStampablePlace: Place? = null,          // 50m 이내 도장 찍을 수 있는 장소
     val stampedPlaceIds: Set<Long> = emptySet(),      // 이번 산책에서 도장 찍은 장소 ID
+    val cancelStampPlace: Place? = null,              // 취소 확인 다이얼로그 표시용 장소 (null=숨김)
 
     // ── 발자국 찍기 오버레이 ────────────────────────────────────────────────
     val footprintAlertPlace: Place? = null,                        // 현재 20m 이내의 장소 (null=오버레이 없음)

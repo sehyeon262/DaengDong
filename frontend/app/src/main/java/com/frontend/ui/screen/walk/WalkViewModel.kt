@@ -50,6 +50,7 @@ import com.frontend.domain.usecase.GetRecommendedRoutesUseCase
 import com.frontend.domain.usecase.ReportDangerZoneUseCase
 import com.frontend.domain.usecase.SaveLocationsUseCase
 import com.frontend.domain.usecase.SendStampUseCase
+import com.frontend.domain.usecase.CancelStampUseCase
 import com.frontend.domain.usecase.StampPlaceUseCase
 import com.frontend.domain.usecase.StartFreeWalkUseCase
 import com.frontend.notification.FootprintAlertManager
@@ -106,6 +107,7 @@ class WalkViewModel @Inject constructor(
     private val footprintAlertManager: FootprintAlertManager,
     private val riskZoneAlertManager: RiskZoneAlertManager,
     private val stampPlaceUseCase: StampPlaceUseCase,
+    private val cancelStampUseCase: CancelStampUseCase,
     private val stompChatClient: StompChatClient,
     private val wearableManager: WearableManager,
 ) : ViewModel() {
@@ -271,10 +273,9 @@ class WalkViewModel @Inject constructor(
                             }
                     }
                     is WearableAction.Stamp -> {
-                        stampPlaceUseCase(action.walkId, action.dogId, action.placeId)
-                            .onFailure { e ->
-                                android.util.Log.e("WalkVM", "워치 발자국 도장 실패: ${e.message}")
-                            }
+                        // 워치에서 발자국 찍기: 폰의 stampFootprint()와 동일한 상태 업데이트 수행
+                        // (footprintStamped, hasStamped, stampedPlaceIds, footprintPlaces 모두 반영)
+                        stampFootprint()
                     }
                 }
             }
@@ -1973,6 +1974,44 @@ class WalkViewModel @Inject constructor(
     /** 발자국 오버레이 닫기 (2초 자동 닫힘 후 호출) */
     fun dismissFootprintOverlay() {
         _state.update { it.copy(footprintAlertPlace = null, footprintStamped = false) }
+    }
+
+    // ── 발자국 취소 ────────────────────────────────────────────────────────────
+
+    /** 발자국 마커 탭 시 취소 확인 다이얼로그 표시 */
+    fun showCancelStampDialog(place: Place) {
+        _state.update { it.copy(cancelStampPlace = place) }
+    }
+
+    /** 취소 확인 다이얼로그 닫기 */
+    fun dismissCancelStampDialog() {
+        _state.update { it.copy(cancelStampPlace = null) }
+    }
+
+    /** 발자국 도장 취소 — DB 삭제 + 로컬 상태 초기화 (현재/과거 산책 도장 모두 제거) */
+    fun cancelStamp() {
+        val place = _state.value.cancelStampPlace ?: return
+        val dogId = _state.value.myDogId ?: return
+
+        _state.update { state ->
+            val newAlertStates = state.footprintAlertStates.toMutableMap()
+            newAlertStates[place.id] = FootprintAlertState(isInsideRadius = false, hasStamped = false)
+            state.copy(
+                cancelStampPlace = null,
+                stampedPlaceIds = state.stampedPlaceIds - place.id,
+                footprintPlaces = state.footprintPlaces.filter { it.id != place.id },
+                footprintAlertStates = newAlertStates,
+            )
+        }
+        // historicalStampedPlaceIds에서도 제거해 오버레이가 다시 나타날 수 있도록
+        historicalStampedPlaceIds = historicalStampedPlaceIds - place.id
+
+        viewModelScope.launch {
+            cancelStampUseCase(dogId, place.id)
+                .onFailure { e ->
+                    android.util.Log.w("WalkVM", "발자국 도장 취소 실패: ${e.message}")
+                }
+        }
     }
 
     // ── 채팅 관련 ─────────────────────────────────────────────────────────────

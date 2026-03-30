@@ -58,41 +58,76 @@ public class DiaryGenerationWorker {
         try {
             log.info("[일기생성] 시작: diaryId={}, walkId={}, dogId={}", diaryId, walkId, dogId);
 
+            // ===== [DEMO 시작] 시연용 - 시연 끝나면 이 블록 삭제하고 아래 주석 해제 =====
+            Thread.sleep(20_000);
+            String content = "오늘 아침에 형아랑 산책 나갔는데 하늘에 구름이 좀 많았어~ " +
+                    "바람도 살랑살랑 불어서 코끝이 간질간질했지 ㅎㅎ " +
+                    "풀밭 쪽으로 걸어가는데 갑자기 풀숲에서 고양이가 나타났어..! " +
+                    "깜짝 놀라서 서로 쳐다봤어!! " +
+                    "그 다음엔 형아랑 나란히 천천히 걸었어. " +
+                    "형아가 나 안아주기도 하고 머리도 쓰다듬어 줬어! " +
+                    "오늘 아침 산책 너무 즐거웠다 🐾 내일도 형아랑 또 나가고 싶어!!";
+            Diary diary = diaryRepository.findById(diaryId).orElseThrow();
+            diary.updateContent(content);
+            diary.updateEmotionTag("행복");
+
+            // 사진별 감정태그: 2번째=행복, 3번째=평온
+            WalkRecord walk = walkRecordRepository.findById(walkId)
+                    .orElseThrow(() -> new IllegalStateException("WalkRecord not found: " + walkId));
+            List<String> photoUrls = walk.getPhotoUrls() != null ? walk.getPhotoUrls() : List.of();
+            Map<String, String> photoEmotions = new LinkedHashMap<>();
+            if (photoUrls.size() > 1) photoEmotions.put(photoUrls.get(1), "행복");
+            if (photoUrls.size() > 2) photoEmotions.put(photoUrls.get(2), "평온");
+            if (!photoEmotions.isEmpty()) diary.updatePhotoEmotions(photoEmotions);
+
+            diaryRepository.save(diary);
+            log.info("[일기생성] 완료(DEMO): diaryId={}, walkId={}", diaryId, walkId);
+            // ===== [DEMO 끝] =====
+
+            /*
+            // ===== [원본 코드] 시연 끝나면 주석 해제 =====
             WalkRecord walk = walkRecordRepository.findById(walkId)
                     .orElseThrow(() -> new IllegalStateException("WalkRecord not found: " + walkId));
             Dog dog = dogRepository.findById(dogId)
                     .orElseThrow(() -> new IllegalStateException("Dog not found: " + dogId));
 
-            // 날씨 + 장소를 비동기로 조회
+            // 날씨 + 장소 + Vision + Emotion을 모두 병렬로 실행
+            List<String> photoUrls = walk.getPhotoUrls();
+
             CompletableFuture<WeatherService.WeatherData> weatherFuture =
                     CompletableFuture.supplyAsync(() -> fetchWeather(walkId));
             CompletableFuture<List<String>> placesFuture =
                     CompletableFuture.supplyAsync(() -> fetchNearbyPlaces(walkId));
+            CompletableFuture<Map<String, VisionLabelResult>> visionFuture =
+                    CompletableFuture.supplyAsync(() -> analyzeAllPhotosWithVision(photoUrls));
+            CompletableFuture<Map<String, EmotionResult>> emotionFuture =
+                    CompletableFuture.supplyAsync(() -> analyzeAllPhotos(photoUrls));
 
-            // 1단계: Vision API로 사진 라벨 분석 (강아지 탐지 + 주변 사물)
-            Map<String, VisionLabelResult> visionResults = analyzeAllPhotosWithVision(walk.getPhotoUrls());
+            CompletableFuture.allOf(weatherFuture, placesFuture, visionFuture, emotionFuture).join();
 
-            // 2단계: 강아지가 감지된 사진만 감정 분석 실행
-            List<String> dogPhotoUrls = visionResults.entrySet().stream()
-                    .filter(e -> e.getValue() != null && e.getValue().hasDog())
-                    .map(Map.Entry::getKey)
-                    .toList();
-            Map<String, EmotionResult> photoResults = analyzeAllPhotos(dogPhotoUrls);
-
+            Map<String, VisionLabelResult> visionResults = visionFuture.join();
+            Map<String, EmotionResult> allEmotionResults = emotionFuture.join();
             WeatherService.WeatherData weather = weatherFuture.join();
             List<String> nearbyPlaceNames = placesFuture.join();
+
+            Map<String, EmotionResult> photoResults = new LinkedHashMap<>();
+            for (Map.Entry<String, EmotionResult> entry : allEmotionResults.entrySet()) {
+                VisionLabelResult vr = visionResults.get(entry.getKey());
+                if (vr != null && vr.hasDog()) {
+                    photoResults.put(entry.getKey(), entry.getValue());
+                }
+            }
+
             log.debug("[일기생성] 데이터 수집 완료 - weather={}, places={}, vision={}장, emotion={}장",
                     weather != null, nearbyPlaceNames, visionResults.size(), photoResults.size());
 
             EmotionResult bestResult = findBestResult(photoResults);
 
-            // 프롬프트 구성 + LLM 호출 (Vision 라벨 + 감정 분석 결과 모두 반영)
             String userPrompt = promptBuilder.buildUserPrompt(dog, walk, weather, nearbyPlaceNames, photoResults, visionResults);
             log.debug("[일기생성] 프롬프트 생성 완료, AI 호출 시작...");
             String content = gmsAiClient.generate(DiaryPromptBuilder.DEVELOPER_PROMPT, userPrompt);
             log.debug("[일기생성] AI 응답 수신: {}자", content != null ? content.length() : 0);
 
-            // 일기 내용 + 대표 감정 태그 + 사진별 감정 저장
             Diary diary = diaryRepository.findById(diaryId).orElseThrow();
             diary.updateContent(content);
             if (bestResult != null) {
@@ -109,6 +144,8 @@ public class DiaryGenerationWorker {
                     diaryId, walkId,
                     bestResult != null ? bestResult.emotionTag() : "없음",
                     photoResults.size());
+            // ===== [원본 코드 끝] =====
+            */
 
         } catch (Exception e) {
             log.error("[일기생성] 실패: walkId={}, diaryId={}, 에러={}", walkId, diaryId, e.getMessage(), e);
