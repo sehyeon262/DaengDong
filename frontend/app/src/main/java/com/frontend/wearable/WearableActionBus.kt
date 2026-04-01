@@ -67,4 +67,5 @@ sealed class WearableAction {
     data class ProposalReject(val proposalId: String, val myWalkRecordId: Long) : WearableAction()
     data class Stamp(val walkId: Long, val dogId: Long, val placeId: Long) : WearableAction()
     data object DismissWalkSummary : WearableAction()
+    data object SetDangerZone : WearableAction()
 }
