@@ -3,11 +3,9 @@ package com.frontend.wearable
 import android.content.Context
 import android.util.Log
 import com.google.android.gms.common.api.ApiException
-import com.google.android.gms.wearable.DataClient
 import com.google.android.gms.wearable.MessageClient
 import com.google.android.gms.wearable.MessageEvent
 import com.google.android.gms.wearable.NodeClient
-import com.google.android.gms.wearable.PutDataMapRequest
 import com.google.android.gms.wearable.Wearable
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineScope
@@ -21,14 +19,12 @@ import javax.inject.Singleton
 
 /**
  * 폰→워치 통신을 담당하는 래퍼 클래스.
- * - DataClient: 산책 통계 (1초마다)
- * - MessageClient: 이벤트 알림 (비선호 강아지, 배지, 제안, 발자국)
+ * - MessageClient: 산책 통계 (1초마다) + 이벤트 알림 (비선호 강아지, 배지, 제안, 발자국)
  */
 @Singleton
 class WearableManager @Inject constructor(
     @ApplicationContext private val context: Context,
 ) {
-    private val dataClient: DataClient = Wearable.getDataClient(context)
     private val messageClient: MessageClient = Wearable.getMessageClient(context)
     private val nodeClient: NodeClient = Wearable.getNodeClient(context)
 
@@ -86,6 +82,7 @@ class WearableManager @Inject constructor(
                     )
                 }
             }
+            "/action/set_danger_zone" -> scope.launch { WearableActionBus.emit(WearableAction.SetDangerZone) }
         }
     }
 
@@ -130,7 +127,7 @@ class WearableManager @Inject constructor(
     }
 
     /**
-     * 산책 통계를 DataClient로 워치에 전송 (1초마다 호출)
+     * 산책 통계를 MessageClient로 워치에 전송 (1초마다 호출)
      */
     suspend fun sendWalkStats(
         elapsedSeconds: Int,
@@ -200,19 +197,6 @@ class WearableManager @Inject constructor(
         val distanceKm: Double,
         val durationMin: Int,
     )
-
-    /**
-     * 산책 종료 시 DataItem 삭제
-     */
-    suspend fun clearWalkStats() {
-        if (!isAvailable()) return
-        try {
-            val uri = PutDataMapRequest.create("/walk/stats").uri
-            dataClient.deleteDataItems(uri).await()
-        } catch (e: Exception) {
-            Log.e("WearableManager", "clearWalkStats 실패: ${e.message}")
-        }
-    }
 
     private suspend fun sendMessageToAllNodes(path: String, json: JSONObject) {
         try {

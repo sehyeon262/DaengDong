@@ -72,6 +72,9 @@ class PhoneWearableListenerService : WearableListenerService() {
                     WearableActionBus.emit(WearableAction.Stamp(walkId, dogId, placeId))
                 }
             }
+            "/action/set_danger_zone" -> serviceScope.launch {
+                WearableActionBus.emit(WearableAction.SetDangerZone)
+            }
         }
     }
 
