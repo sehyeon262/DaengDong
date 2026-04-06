@@ -26,6 +26,7 @@
 ### <a href="#background"> 📌 기획 배경</a>
 ### <a href="#skills">✨ 주요 기능</a>
 ### <a href="#techStack">🛠 기술 스택</a>
+### <a href="#mainTech">🚀 핵심 기술</a>
 ### <a href="#systemArchitecture">🌐 시스템 아키텍처</a>
 ### <a href="#erd">🗂️ ERD</a>
 ### <a href="#directories">📂 프로젝트 구조</a>
