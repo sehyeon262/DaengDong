@@ -5,17 +5,14 @@ import android.app.NotificationManager
 import android.content.Context
 import android.os.Build
 import androidx.core.app.NotificationCompat
-import com.google.android.gms.wearable.DataEvent
-import com.google.android.gms.wearable.DataEventBuffer
-import com.google.android.gms.wearable.DataMapItem
 import com.google.android.gms.wearable.MessageEvent
 import com.google.android.gms.wearable.WearableListenerService
 import org.json.JSONObject
 
 /**
- * 폰 앱에서 전송하는 DataItem(실시간 산책 통계)과 Message(이벤트 알림)를 수신하는 서비스.
- * - DataItem 경로: /walk/stats
- * - Message 경로: /notification/{dog_warning|danger_zone|footprint|badge}
+ * 폰 앱에서 전송하는 Message를 수신하는 서비스.
+ * - 산책 통계: /walk/stats (MessageClient, 1초마다)
+ * - 이벤트 알림: /notification/{dog_warning|danger_zone|footprint|badge}
  */
 class WearListenerService : WearableListenerService() {
 
@@ -31,30 +28,7 @@ class WearListenerService : WearableListenerService() {
         createNotificationChannels()
     }
 
-    // ── 산책 통계 DataItem 수신 (1초마다) ────────────────────────────────
-    override fun onDataChanged(dataEvents: DataEventBuffer) {
-        android.util.Log.d("WearListener", "onDataChanged 호출됨: ${dataEvents.count}개 이벤트")
-        dataEvents.forEach { event ->
-            android.util.Log.d("WearListener", "이벤트: type=${event.type}, path=${event.dataItem.uri.path}")
-            if (event.type == DataEvent.TYPE_CHANGED &&
-                event.dataItem.uri.path == "/walk/stats"
-            ) {
-                val dataMap = DataMapItem.fromDataItem(event.dataItem).dataMap
-                val isWalking = dataMap.getBoolean("isWalking")
-                val elapsed = dataMap.getInt("elapsedSeconds")
-                android.util.Log.d("WearListener", "walk/stats 수신: elapsed=$elapsed, isWalking=$isWalking")
-                WalkStatsHolder.update(
-                    elapsedSeconds = elapsed,
-                    distanceMeters = dataMap.getDouble("distanceMeters"),
-                    calories = dataMap.getInt("calories"),
-                    isWalking = isWalking,
-                    isPaused = dataMap.getBoolean("isPaused"),
-                )
-            }
-        }
-    }
-
-    // ── 이벤트 알림 Message 수신 ─────────────────────────────────────────
+    // ── Message 수신 ─────────────────────────────────────────────────────
     override fun onMessageReceived(messageEvent: MessageEvent) {
         val json = runCatching { JSONObject(String(messageEvent.data)) }.getOrNull()
         val path = messageEvent.path

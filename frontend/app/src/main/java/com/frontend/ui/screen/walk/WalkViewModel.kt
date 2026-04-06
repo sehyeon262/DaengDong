@@ -277,6 +277,7 @@ class WalkViewModel @Inject constructor(
                         // (footprintStamped, hasStamped, stampedPlaceIds, footprintPlaces 모두 반영)
                         stampFootprint()
                     }
+                    is WearableAction.SetDangerZone -> reportDangerZoneFromWatch()
                 }
             }
         }
@@ -1024,7 +1025,6 @@ class WalkViewModel @Inject constructor(
         // 워치에 산책 종료 전송
         viewModelScope.launch {
             wearableManager.sendWalkStats(0, 0.0, 0, isWalking = false, isPaused = false)
-            wearableManager.clearWalkStats()
         }
 
         // 비선호 강아지 알림 정리
@@ -1808,6 +1808,33 @@ class WalkViewModel @Inject constructor(
                         error = "위험장소 신고 실패: ${e.message}"
                     )
                 }
+            }
+        }
+    }
+
+    /**
+     * 워치에서 위험장소 신고 버튼을 눌렀을 때 호출.
+     * 폰의 현재 GPS 위치를 사용해 서버에 신고하고, 지도 마커를 갱신한다.
+     */
+    private fun reportDangerZoneFromWatch() {
+        val pos = _currentPosition.value ?: return
+        viewModelScope.launch {
+            reportDangerZoneUseCase(
+                walkId = currentWalkId,
+                location = DangerLocation(pos.latitude, pos.longitude),
+                reason = DangerReason.OTHER,
+                customReason = null
+            ).onSuccess { result ->
+                _state.update {
+                    it.copy(
+                        dangerZones = it.dangerZones + result.dangerZone,
+                        newBadges = it.newBadges + result.newBadges
+                    )
+                }
+                loadPersistedDangerZones()
+                android.util.Log.d("WalkVM", "워치 위험장소 신고 성공: lat=${pos.latitude}, lng=${pos.longitude}")
+            }.onFailure { e ->
+                android.util.Log.e("WalkVM", "워치 위험장소 신고 실패: ${e.message}")
             }
         }
     }
