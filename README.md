@@ -46,7 +46,7 @@
         <td width="33%" align="center"> <a href="https://github.com/hjh1248">
             <img src="./readme_assets/images/jungho.png" width="160px" /> <br> 하정호 <br>(BE & AI & Leader) </a> <br></td>
         <td width="33%" align="center"> <a href="https://github.com/sehyeon262">
-            <img src="./eadme_assets/images/sehyeon.jpg" width="160px" /> <br> 김세현 <br>(BE & FE) </a> <br></td>
+            <img src="./readme_assets/images/sehyeon.jpg" width="160px" /> <br> 김세현 <br>(BE & FE) </a> <br></td>
         <td width="33%" align="center"> <a href="https://github.com/Seorins">
             <img src="./readme_assets/images/seorin.png" width="160px" /> <br> 박서린 <br>(BE Leader & FE & AI) </a> <br></td>
     </tr>
