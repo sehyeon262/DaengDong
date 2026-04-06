@@ -13,7 +13,7 @@
 - **기관** : 삼성 청년 SW·AI 아카데미 14기 
 
 <p align="center">
-  <img src="readme_assets\images\service_cover.png" alt="댕동여지도 서비스 표지" width="800"/>
+  <img src="readme_assets/images/service_cover.png" alt="댕동여지도 서비스 표지" width="800"/>
 </p>
 
 ---
@@ -44,11 +44,11 @@
 <table>
     <tr>
         <td width="33%" align="center"> <a href="https://github.com/hjh1248">
-            <img src=".\readme_assets\images\jungho.png" width="160px" /> <br> 하정호 <br>(BE & AI & Leader) </a> <br></td>
+            <img src="./readme_assets/images/jungho.png" width="160px" /> <br> 하정호 <br>(BE & AI & Leader) </a> <br></td>
         <td width="33%" align="center"> <a href="https://github.com/sehyeon262">
-            <img src=".\readme_assets\images\sehyeon.jpg" width="160px" /> <br> 김세현 <br>(BE & FE) </a> <br></td>
+            <img src="./eadme_assets/images/sehyeon.jpg" width="160px" /> <br> 김세현 <br>(BE & FE) </a> <br></td>
         <td width="33%" align="center"> <a href="https://github.com/Seorins">
-            <img src=".\readme_assets\images\seorin.png" width="160px" /> <br> 박서린 <br>(BE Leader & FE & AI) </a> <br></td>
+            <img src="./readme_assets/images/seorin.png" width="160px" /> <br> 박서린 <br>(BE Leader & FE & AI) </a> <br></td>
     </tr>
     <tr>
       <td width="280px" valign="top">
@@ -86,11 +86,11 @@
 <table>
     <tr>
         <td width="33%" align="center"> <a href="https://github.com/dain2822">
-        <img src=".\readme_assets\images\dain.png" width="160px" /> <br> 심다인 <br>(BE & FE Leader) </a> <br></td>
+        <img src="./readme_assets/images/dain.png" width="160px" /> <br> 심다인 <br>(BE & FE Leader) </a> <br></td>
         <td width="33%" align="center"> <a href="https://github.com/gunbread0418">
-        <img src=".\readme_assets\images\geonbin.jpg" width="160px" /> <br> 임건빈 <br>(BE & FE & Infra) </a> <br></td>
+        <img src="./readme_assets/images/geonbin.jpg" width="160px" /> <br> 임건빈 <br>(BE & FE & Infra) </a> <br></td>
         <td width="33%" align="center"> <a href="https://github.com/SPh0052">
-        <img src=".\readme_assets\images\inhoo.jpeg" width="160px" /> <br> 황인후 <br>(BE & FE) </a> <br></td>
+        <img src="./readme_assets/images/inhoo.jpeg" width="160px" /> <br> 황인후 <br>(BE & FE) </a> <br></td>
     </tr>
     <tr>
         <td width="280px" valign="top"> 
@@ -459,7 +459,7 @@ GPS 좌표는 Redis List(`walk:gps:{walkId}`)에 배치 저장 후, 산책 종�
 <a name="systemArchitecture"></a>
 
 <p align="center">
-  <img src="readme_assets\images\System_Architecture.png" alt="시스템 아키텍처" width="900"/>
+  <img src="readme_assets/images/System_Architecture.png" alt="시스템 아키텍처" width="900"/>
 </p>
 
 <br>
@@ -469,7 +469,7 @@ GPS 좌표는 Redis List(`walk:gps:{walkId}`)에 배치 저장 후, 산책 종�
 <a name="erd"></a>
 
 <p align="center">
-  <img src="readme_assets\images\ERD.png" alt="ERD" width="900"/>
+  <img src="readme_assets/images/ERD.png" alt="ERD" width="900"/>
 </p>
 
 
