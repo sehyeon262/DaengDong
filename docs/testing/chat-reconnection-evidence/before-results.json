@@ -1,0 +1,32 @@
+[
+  {
+    "name": "abrupt_drop_recovery_three_cycles",
+    "passed": true,
+    "detail": "recoveryMs=[1077, 1051, 1023]; receivedIds=[1, 2, 3]; one SUBSCRIBE per recovered session",
+    "durationMs": 4599
+  },
+  {
+    "name": "retry_backoff_and_stop_after_five",
+    "passed": true,
+    "detail": "totalAttempts=6; actualIntervalsMs=[1026, 2010, 4022, 8013, 16032]; no extra attempt during 1500ms observation",
+    "durationMs": 32666
+  },
+  {
+    "name": "reference_count_survives_reconnection",
+    "passed": true,
+    "detail": "two consumers -> one SUBSCRIBE; after recovery first release -> zero UNSUBSCRIBE; last -> one",
+    "durationMs": 1387
+  },
+  {
+    "name": "manual_disconnect_cancels_pending_retry",
+    "passed": true,
+    "detail": "one initial connection; zero retry requests during 1800ms after disconnect",
+    "durationMs": 1955
+  },
+  {
+    "name": "server_close_frame_reconnects",
+    "passed": false,
+    "detail": "java.lang.IllegalStateException: No recovery within 4000ms: requests=1, isConnected=true; Timeout: reconnect after server Close frame",
+    "durationMs": 4088
+  }
+]

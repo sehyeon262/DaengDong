@@ -1,0 +1,80 @@
+TEST_START abrupt_drop_recovery_three_cycles
+2026-09-24T03:32:48.716054Z D StompChatClient WebSocket 연결 성공
+2026-09-24T03:32:48.752732400Z D StompChatClient STOMP CONNECTED
+2026-09-24T03:32:48.786796100Z D StompChatClient 채팅방 42 구독: sub-0
+2026-09-24T03:32:48.791806300Z E StompChatClient WebSocket 오류: Socket closed
+2026-09-24T03:32:48.804043200Z D StompChatClient 재연결 예약: 1/5 시도, 1000ms 후
+2026-09-24T03:32:49.828405700Z D StompChatClient 재연결 시도 중...
+2026-09-24T03:32:49.834404100Z D StompChatClient WebSocket 연결 성공
+2026-09-24T03:32:49.835403800Z D StompChatClient STOMP CONNECTED
+2026-09-24T03:32:49.839425300Z D StompChatClient 채팅방 42 재구독: sub-1 (구독자 수: 1)
+2026-09-24T03:32:50.013966400Z E StompChatClient WebSocket 오류: Socket closed
+2026-09-24T03:32:50.014976100Z D StompChatClient 재연결 예약: 1/5 시도, 1000ms 후
+2026-09-24T03:32:51.027715500Z D StompChatClient 재연결 시도 중...
+2026-09-24T03:32:51.034138Z D StompChatClient WebSocket 연결 성공
+2026-09-24T03:32:51.034656100Z D StompChatClient STOMP CONNECTED
+2026-09-24T03:32:51.035164100Z D StompChatClient 채팅방 42 재구독: sub-2 (구독자 수: 1)
+2026-09-24T03:32:51.205087200Z E StompChatClient WebSocket 오류: Socket closed
+2026-09-24T03:32:51.205087200Z D StompChatClient 재연결 예약: 1/5 시도, 1000ms 후
+2026-09-24T03:32:52.213704600Z D StompChatClient 재연결 시도 중...
+2026-09-24T03:32:52.218658100Z D StompChatClient WebSocket 연결 성공
+2026-09-24T03:32:52.219658500Z D StompChatClient STOMP CONNECTED
+2026-09-24T03:32:52.219658500Z D StompChatClient 채팅방 42 재구독: sub-3 (구독자 수: 1)
+2026-09-24T03:32:52.394040400Z E StompChatClient WebSocket 오류: null
+TEST_PASS abrupt_drop_recovery_three_cycles recoveryMs=[1054, 1028, 1024]; receivedIds=[1, 2, 3]; one SUBSCRIBE per recovered session
+TEST_START retry_backoff_and_stop_after_five
+2026-09-24T03:32:52.407941500Z E StompChatClient WebSocket 오류: Expected HTTP 101 response but was '503 Server Error'
+2026-09-24T03:32:52.407941500Z D StompChatClient 재연결 예약: 1/5 시도, 1000ms 후
+2026-09-24T03:32:53.413513100Z D StompChatClient 재연결 시도 중...
+2026-09-24T03:32:53.416475600Z E StompChatClient WebSocket 오류: Expected HTTP 101 response but was '503 Server Error'
+2026-09-24T03:32:53.416475600Z D StompChatClient 재연결 예약: 2/5 시도, 2000ms 후
+2026-09-24T03:32:55.430811600Z D StompChatClient 재연결 시도 중...
+2026-09-24T03:32:55.433821700Z E StompChatClient WebSocket 오류: Expected HTTP 101 response but was '503 Server Error'
+2026-09-24T03:32:55.433821700Z D StompChatClient 재연결 예약: 3/5 시도, 4000ms 후
+2026-09-24T03:32:59.443494600Z D StompChatClient 재연결 시도 중...
+2026-09-24T03:32:59.446551300Z E StompChatClient WebSocket 오류: Expected HTTP 101 response but was '503 Server Error'
+2026-09-24T03:32:59.447543600Z D StompChatClient 재연결 예약: 4/5 시도, 8000ms 후
+2026-09-24T03:33:07.477783Z D StompChatClient 재연결 시도 중...
+2026-09-24T03:33:07.482785800Z E StompChatClient WebSocket 오류: Expected HTTP 101 response but was '503 Server Error'
+2026-09-24T03:33:07.482785800Z D StompChatClient 재연결 예약: 5/5 시도, 16000ms 후
+2026-09-24T03:33:23.489668900Z D StompChatClient 재연결 시도 중...
+2026-09-24T03:33:23.502060Z E StompChatClient WebSocket 오류: Expected HTTP 101 response but was '503 Server Error'
+2026-09-24T03:33:23.502060Z W StompChatClient 최대 재연결 시도 횟수(5) 초과, 재연결 중단
+TEST_PASS retry_backoff_and_stop_after_five totalAttempts=6; actualIntervalsMs=[1009, 2017, 4013, 8035, 16019]; no extra attempt during 1500ms observation
+TEST_START reference_count_survives_reconnection
+2026-09-24T03:33:25.052774100Z D StompChatClient WebSocket 연결 성공
+2026-09-24T03:33:25.055002100Z D StompChatClient STOMP CONNECTED
+2026-09-24T03:33:25.065296200Z D StompChatClient 채팅방 42 구독: sub-0
+2026-09-24T03:33:25.071215300Z D StompChatClient 채팅방 42 구독자 수 증가: 2
+2026-09-24T03:33:25.223934600Z E StompChatClient WebSocket 오류: Socket closed
+2026-09-24T03:33:25.224935400Z D StompChatClient 재연결 예약: 1/5 시도, 1000ms 후
+2026-09-24T03:33:26.235148400Z D StompChatClient 재연결 시도 중...
+2026-09-24T03:33:26.245272400Z D StompChatClient WebSocket 연결 성공
+2026-09-24T03:33:26.248682Z D StompChatClient STOMP CONNECTED
+2026-09-24T03:33:26.250725400Z D StompChatClient 채팅방 42 재구독: sub-1 (구독자 수: 2)
+2026-09-24T03:33:26.262023500Z D StompChatClient 채팅방 42 구독자 수 감소: 1
+2026-09-24T03:33:26.414246200Z D StompChatClient 채팅방 42 브로커 구독 해제: sub-1
+2026-09-24T03:33:26.417247100Z D StompChatClient WebSocket 종료 요청 수신: code=1000, reason=test cleanup
+2026-09-24T03:33:26.417247100Z D StompChatClient WebSocket 종료: code=1000, reason=test cleanup
+TEST_PASS reference_count_survives_reconnection two consumers -> one SUBSCRIBE; after recovery first release -> zero UNSUBSCRIBE; last -> one
+TEST_START manual_disconnect_cancels_pending_retry
+2026-09-24T03:33:26.429028800Z D StompChatClient WebSocket 연결 성공
+2026-09-24T03:33:26.430029200Z D StompChatClient STOMP CONNECTED
+2026-09-24T03:33:26.451785100Z E StompChatClient WebSocket 오류: Socket closed
+2026-09-24T03:33:26.452791400Z D StompChatClient 재연결 예약: 1/5 시도, 1000ms 후
+TEST_PASS manual_disconnect_cancels_pending_retry one initial connection; zero retry requests during 1800ms after disconnect
+TEST_START server_close_frame_reconnects
+2026-09-24T03:33:28.390405400Z D StompChatClient WebSocket 연결 성공
+2026-09-24T03:33:28.392404Z D StompChatClient STOMP CONNECTED
+2026-09-24T03:33:28.398546500Z D StompChatClient 채팅방 42 구독: sub-0
+2026-09-24T03:33:28.401879800Z D StompChatClient WebSocket 종료 요청 수신: code=1001, reason=test server restart
+2026-09-24T03:33:28.403873800Z D StompChatClient WebSocket 종료: code=1001, reason=test server restart
+2026-09-24T03:33:28.404870600Z D StompChatClient 재연결 예약: 1/5 시도, 1000ms 후
+2026-09-24T03:33:29.418833500Z D StompChatClient 재연결 시도 중...
+2026-09-24T03:33:29.423092400Z D StompChatClient WebSocket 연결 성공
+2026-09-24T03:33:29.424091500Z D StompChatClient STOMP CONNECTED
+2026-09-24T03:33:29.424091500Z D StompChatClient 채팅방 42 재구독: sub-1 (구독자 수: 1)
+2026-09-24T03:33:29.434341200Z D StompChatClient WebSocket 종료 요청 수신: code=1000, reason=test cleanup
+2026-09-24T03:33:29.435590800Z D StompChatClient WebSocket 종료: code=1000, reason=test cleanup
+TEST_PASS server_close_frame_reconnects server Close frame followed by new connection and SUBSCRIBE
+SUMMARY passed=5 total=5

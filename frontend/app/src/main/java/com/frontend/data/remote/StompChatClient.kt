@@ -134,6 +134,15 @@ class StompChatClient @Inject constructor(
                 scheduleReconnectIfNeeded()
             }
 
+            override fun onClosing(webSocket: WebSocket, code: Int, reason: String) {
+                Log.d(TAG, "WebSocket 종료 요청 수신: code=$code, reason=$reason")
+                _connected.value = false
+                // 상대의 Close 프레임에 응답해야 종료가 완료되고 onClosed로 이어진다.
+                // 재연결 예약은 기존 onClosed에서 처리한다.
+                webSocket.close(code, reason)
+            }
+
+
             override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
                 Log.d(TAG, "WebSocket 종료: code=$code, reason=$reason")
                 _connected.value = false

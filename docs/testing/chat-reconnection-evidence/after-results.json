@@ -1,0 +1,32 @@
+[
+  {
+    "name": "abrupt_drop_recovery_three_cycles",
+    "passed": true,
+    "detail": "recoveryMs=[1054, 1028, 1024]; receivedIds=[1, 2, 3]; one SUBSCRIBE per recovered session",
+    "durationMs": 4312
+  },
+  {
+    "name": "retry_backoff_and_stop_after_five",
+    "passed": true,
+    "detail": "totalAttempts=6; actualIntervalsMs=[1009, 2017, 4013, 8035, 16019]; no extra attempt during 1500ms observation",
+    "durationMs": 32638
+  },
+  {
+    "name": "reference_count_survives_reconnection",
+    "passed": true,
+    "detail": "two consumers -> one SUBSCRIBE; after recovery first release -> zero UNSUBSCRIBE; last -> one",
+    "durationMs": 1380
+  },
+  {
+    "name": "manual_disconnect_cancels_pending_retry",
+    "passed": true,
+    "detail": "one initial connection; zero retry requests during 1800ms after disconnect",
+    "durationMs": 1950
+  },
+  {
+    "name": "server_close_frame_reconnects",
+    "passed": true,
+    "detail": "server Close frame followed by new connection and SUBSCRIBE",
+    "durationMs": 1063
+  }
+]
