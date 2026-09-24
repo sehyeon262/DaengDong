@@ -1,0 +1,84 @@
+TEST_START abrupt_drop_recovery_three_cycles
+2026-09-24T03:30:02.189741100Z D StompChatClient WebSocket 연결 성공
+2026-09-24T03:30:02.218150Z D StompChatClient STOMP CONNECTED
+2026-09-24T03:30:02.253505300Z D StompChatClient 채팅방 42 구독: sub-0
+2026-09-24T03:30:02.260787300Z E StompChatClient WebSocket 오류: Socket closed
+2026-09-24T03:30:02.272331900Z D StompChatClient 재연결 예약: 1/5 시도, 1000ms 후
+2026-09-24T03:30:03.303197700Z D StompChatClient 재연결 시도 중...
+2026-09-24T03:30:03.315292100Z D StompChatClient WebSocket 연결 성공
+2026-09-24T03:30:03.318446500Z D StompChatClient STOMP CONNECTED
+2026-09-24T03:30:03.338849100Z D StompChatClient 채팅방 42 재구독: sub-1 (구독자 수: 1)
+2026-09-24T03:30:03.516976800Z E StompChatClient WebSocket 오류: Socket closed
+2026-09-24T03:30:03.517996700Z D StompChatClient 재연결 예약: 1/5 시도, 1000ms 후
+2026-09-24T03:30:04.536123300Z D StompChatClient 재연결 시도 중...
+2026-09-24T03:30:04.552650800Z D StompChatClient WebSocket 연결 성공
+2026-09-24T03:30:04.555649300Z D StompChatClient STOMP CONNECTED
+2026-09-24T03:30:04.555649300Z D StompChatClient 채팅방 42 재구독: sub-2 (구독자 수: 1)
+2026-09-24T03:30:04.730308Z E StompChatClient WebSocket 오류: Socket closed
+2026-09-24T03:30:04.730308Z D StompChatClient 재연결 예약: 1/5 시도, 1000ms 후
+2026-09-24T03:30:05.738514800Z D StompChatClient 재연결 시도 중...
+2026-09-24T03:30:05.746784700Z D StompChatClient WebSocket 연결 성공
+2026-09-24T03:30:05.747786200Z D StompChatClient STOMP CONNECTED
+2026-09-24T03:30:05.748788100Z D StompChatClient 채팅방 42 재구독: sub-3 (구독자 수: 1)
+2026-09-24T03:30:05.928363Z E StompChatClient WebSocket 오류: null
+TEST_PASS abrupt_drop_recovery_three_cycles recoveryMs=[1077, 1051, 1023]; receivedIds=[1, 2, 3]; one SUBSCRIBE per recovered session
+TEST_START retry_backoff_and_stop_after_five
+2026-09-24T03:30:05.975842Z E StompChatClient WebSocket 오류: Expected HTTP 101 response but was '503 Server Error'
+2026-09-24T03:30:05.975842Z D StompChatClient 재연결 예약: 1/5 시도, 1000ms 후
+2026-09-24T03:30:06.986718200Z D StompChatClient 재연결 시도 중...
+2026-09-24T03:30:06.991301900Z E StompChatClient WebSocket 오류: Expected HTTP 101 response but was '503 Server Error'
+2026-09-24T03:30:06.992296600Z D StompChatClient 재연결 예약: 2/5 시도, 2000ms 후
+2026-09-24T03:30:08.996442700Z D StompChatClient 재연결 시도 중...
+2026-09-24T03:30:09.002574900Z E StompChatClient WebSocket 오류: Expected HTTP 101 response but was '503 Server Error'
+2026-09-24T03:30:09.002574900Z D StompChatClient 재연결 예약: 3/5 시도, 4000ms 후
+2026-09-24T03:30:13.009283200Z D StompChatClient 재연결 시도 중...
+2026-09-24T03:30:13.025480500Z E StompChatClient WebSocket 오류: Expected HTTP 101 response but was '503 Server Error'
+2026-09-24T03:30:13.025914200Z D StompChatClient 재연결 예약: 4/5 시도, 8000ms 후
+2026-09-24T03:30:21.030798Z D StompChatClient 재연결 시도 중...
+2026-09-24T03:30:21.038090500Z E StompChatClient WebSocket 오류: Expected HTTP 101 response but was '503 Server Error'
+2026-09-24T03:30:21.039086300Z D StompChatClient 재연결 예약: 5/5 시도, 16000ms 후
+2026-09-24T03:30:37.047630900Z D StompChatClient 재연결 시도 중...
+2026-09-24T03:30:37.070833100Z E StompChatClient WebSocket 오류: Expected HTTP 101 response but was '503 Server Error'
+2026-09-24T03:30:37.071835700Z W StompChatClient 최대 재연결 시도 횟수(5) 초과, 재연결 중단
+TEST_PASS retry_backoff_and_stop_after_five totalAttempts=6; actualIntervalsMs=[1026, 2010, 4022, 8013, 16032]; no extra attempt during 1500ms observation
+TEST_START reference_count_survives_reconnection
+2026-09-24T03:30:38.635556Z D StompChatClient WebSocket 연결 성공
+2026-09-24T03:30:38.639546400Z D StompChatClient STOMP CONNECTED
+2026-09-24T03:30:38.643536400Z D StompChatClient 채팅방 42 구독: sub-0
+2026-09-24T03:30:38.656795700Z D StompChatClient 채팅방 42 구독자 수 증가: 2
+2026-09-24T03:30:38.809720500Z E StompChatClient WebSocket 오류: Socket closed
+2026-09-24T03:30:38.809720500Z D StompChatClient 재연결 예약: 1/5 시도, 1000ms 후
+2026-09-24T03:30:39.819656900Z D StompChatClient 재연결 시도 중...
+2026-09-24T03:30:39.827754800Z D StompChatClient WebSocket 연결 성공
+2026-09-24T03:30:39.829777400Z D StompChatClient STOMP CONNECTED
+2026-09-24T03:30:39.829777400Z D StompChatClient 채팅방 42 재구독: sub-1 (구독자 수: 2)
+2026-09-24T03:30:39.835943600Z D StompChatClient 채팅방 42 구독자 수 감소: 1
+2026-09-24T03:30:39.988224600Z D StompChatClient 채팅방 42 브로커 구독 해제: sub-1
+2026-09-24T03:30:39.991248600Z D StompChatClient WebSocket 종료: code=1000, reason=test cleanup
+TEST_PASS reference_count_survives_reconnection two consumers -> one SUBSCRIBE; after recovery first release -> zero UNSUBSCRIBE; last -> one
+TEST_START manual_disconnect_cancels_pending_retry
+2026-09-24T03:30:40.013247500Z D StompChatClient WebSocket 연결 성공
+2026-09-24T03:30:40.018975600Z D StompChatClient STOMP CONNECTED
+2026-09-24T03:30:40.028047100Z E StompChatClient WebSocket 오류: Socket closed
+2026-09-24T03:30:40.028047100Z D StompChatClient 재연결 예약: 1/5 시도, 1000ms 후
+TEST_PASS manual_disconnect_cancels_pending_retry one initial connection; zero retry requests during 1800ms after disconnect
+TEST_START server_close_frame_reconnects
+2026-09-24T03:30:41.970503900Z D StompChatClient WebSocket 연결 성공
+2026-09-24T03:30:41.973494700Z D StompChatClient STOMP CONNECTED
+2026-09-24T03:30:41.979538Z D StompChatClient 채팅방 42 구독: sub-0
+2026-09-24T03:30:46.032427100Z D StompChatClient WebSocket 종료: code=1001, reason=test server restart
+java.exe : java.lang.IllegalStateException: No recovery within 4000ms: requests=1, isConnected=true; 
+Timeout: reconnect after server Close frame
+위치 C:\Users\user\Documents\Codex\2026-09-23\4-api-db-5-1-16\outputs\chat-tests\run.ps1:34 문자:1
++ & $java '-Dfile.encoding=UTF-8' '-Dstdout.encoding=UTF-8' '-Dstderr.e ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (java.lang.Illeg...ver Close frame:String) [], RemoteExc 
+   eption
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+	at ChatHarnessKt.main$lambda$29(ChatHarness.kt:187)
+	at ChatHarnessKt.main$test(ChatHarness.kt:78)
+	at ChatHarnessKt.main(ChatHarness.kt:176)
+	at ChatHarnessKt.main(ChatHarness.kt)
+TEST_FAIL server_close_frame_reconnects java.lang.IllegalStateException: No recovery within 4000ms: requests=1, isConnected=true; Timeout: reconnect after server Close frame
+SUMMARY passed=4 total=5
